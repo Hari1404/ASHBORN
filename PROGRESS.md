@@ -8,6 +8,7 @@
 - Login card: pure solid white, on the RIGHT side of the screen, black blob moving along its edge
 - Login field: User ID instead of email (look only for now)
 - Login left side: animated text using React Bits BlurText, one line picked at random each time the screen loads (list lives in src/loginLines.ts)
+- Login card: dark smoked glass using React Bits GlassSurface (owner's choice; applied in the next packet)
 
 ## Done
 - Packet 01: project setup
@@ -16,6 +17,7 @@
 - Packet 02B: login screen (look only, no real login)
 - Packet 02C: BlurText installed
 - Packet 02D: login layout (card right, text left, pure white card, User ID field)
+- Packet 02E: GlassSurface installed (not used yet)
 
 ## Next
 - Owner checks the login screen by eye (desktop and phone)
