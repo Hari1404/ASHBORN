@@ -12,6 +12,7 @@
 - Login left side: animated text using React Bits BlurText, one line picked at random each time the screen loads (list lives in src/loginLines.ts)
 - Code tags: every part of the code has a tag AB:<PAGE>.<PART> listed in CODE_MAP.md; rules are in TAGGING_RULES.md; check with node scripts/check-tags.mjs (from Packet 02I)
 - Connections: CONNECTIONS.md lists which parts of the code are tied to which other parts; every packet that changes code also updates it; node scripts/check-tags.mjs checks it (from Packet 02J)
+- Login name: ASHBORN is shown in the top left corner as React Bits Fuzzy Text in the font Syne ExtraBold, not inside the card (from Packet 02K)
 
 ## Done
 - Packet 01: project setup
@@ -26,6 +27,7 @@
 - Packet 02H: Sign in button glow instead of outline, faster change
 - Packet 02I: code tags, CODE_MAP.md, TAGGING_RULES.md, tag checker
 - Packet 02J: CONNECTIONS.md, checker extended to connections, agent rule 11
+- Packet 02K: ASHBORN name moved to the top left as Fuzzy Text (Syne), card title removed, connections C14 to C16
 
 ## Next
 - Owner checks the login screen by eye (desktop and phone)

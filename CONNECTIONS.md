@@ -34,13 +34,14 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:LOGIN.HERO @ src/login.css = @media (min-width: 900px)`
 
 ### C03: The front page is built for white on black
-- Tags: `AB:LOGIN.BG`, `AB:LOGIN.LAYOUT`, `AB:LOGIN.HERO`
-- If you change: the background colour (backgroundColor in BG), the page base colour (.ab-screen in LAYOUT), or the hero text colour (HERO)
-- Then also: keep the background colour and the page base colour the same. Then look at the hero line: it is white and sits straight on the animation, helped only by its dark shadow.
+- Tags: `AB:LOGIN.BG`, `AB:LOGIN.LAYOUT`, `AB:LOGIN.HERO`, `AB:LOGIN.BRAND`
+- If you change: the background colour (backgroundColor in BG), the page base colour (.ab-screen in LAYOUT), the hero text colour (HERO), or the colour of the name in the top left corner (color in BRAND)
+- Then also: keep the background colour and the page base colour the same. Then look at the hero line and at the ASHBORN name in the corner: both are white and sit straight on the animation (the hero line is helped by a dark shadow, the name by nothing).
 - If you forget: with a light or colourful background the white line on the left becomes hard or impossible to read; a base colour that differs from the animation shows as a flash or a band before the animation loads.
 - Anchor: `AB:LOGIN.BG @ src/App.tsx = backgroundColor="#000000"`
 - Anchor: `AB:LOGIN.LAYOUT @ src/login.css = background: #000;`
 - Anchor: `AB:LOGIN.HERO @ src/login.css = color: #fff;`
+- Anchor: `AB:LOGIN.BRAND @ src/components/LoginBrand.tsx = color="#fff"`
 
 ### C04: The card text and the Sign in button are built for dark glass
 - Tags: `AB:LOGIN.GLASS`, `AB:LOGIN.FORM`, `AB:LOGIN.BUTTON`
@@ -132,6 +133,36 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - If you forget: a setting silently does nothing.
 - Check by hand: change the setting, look at the card, and compare with the names in the handoff, section 17.
 
+### C14: The name in the corner is a canvas with a see-through margin
+- Tags: `AB:LOGIN.BRAND`
+- If you change: fuzzRange in LoginBrand.tsx, or the margin-left of the canvas in login.css
+- Then also: Fuzzy Text draws on a canvas that is wider than the letters: it adds a see-through margin of fuzzRange + 20 pixels on each side, plus 5 pixels of its own. The negative margin-left in BRAND (now -55px, which is 30 + 20 + 5) cancels it so the letters start at the corner offset. If you change fuzzRange to a new number, margin-left becomes minus (new number + 25).
+- If you forget: the name sits too far to the right, or is cut off at the left edge of the screen, and no longer lines up with the hero line below it.
+- Anchor: `AB:LOGIN.BRAND @ src/components/LoginBrand.tsx = fuzzRange={30}`
+- Anchor: `AB:LOGIN.BRAND @ src/login.css = margin-left: -55px;`
+
+### C15: The name in the corner sits on top of the page and the content is kept clear of it
+- Tags: `AB:LOGIN.BRAND`, `AB:LOGIN.LAYOUT`
+- If you change: the size of the name (fontSize in LoginBrand.tsx), its position or z-index (BRAND), the top padding of the phone layout (.ab-center in LAYOUT), the z-index of .ab-center (LAYOUT), or where LoginBrand sits in App.tsx
+- Then also: the name is positioned in the top left corner of the whole page (.ab-screen in LAYOUT is position: relative) and has z-index 2, above the content (z-index 1). The phone layout has 84px of padding on top so the hero line and the card start below the name. A bigger name needs more top padding. LoginBrand must stay OUTSIDE the .ab-center grid in App.tsx: inside it, it would become a grid cell and break the column order (see C12).
+- If you forget: the name overlaps the hero line or the card on a phone, hides behind the content, or pushes the hero line and the card out of their columns on a laptop.
+- Check by hand: the checker cannot see whether LoginBrand is inside or outside the .ab-center grid, or whether the name overlaps anything. After any change, look at the page on a laptop and on a phone.
+- Anchor: `AB:LOGIN.BRAND @ src/App.tsx = <LoginBrand />`
+- Anchor: `AB:LOGIN.BRAND @ src/login.css = position: absolute;`
+- Anchor: `AB:LOGIN.BRAND @ src/login.css = z-index: 2;`
+- Anchor: `AB:LOGIN.LAYOUT @ src/login.css = padding: 84px 24px 24px;`
+
+### C16: The font of the name is a package, a css import and a font family name
+- Tags: `AB:LOGIN.BRAND`
+- If you change: the font of the name (now Syne, weight 800)
+- Then also: three places must change together: the package (npm install @fontsource-variable/<new font>), the @import line at the top of login.css (it sits outside every tag, above LAYOUT), and fontFamily in LoginBrand.tsx (the family name is written the way the package defines it, for example "Syne Variable"). The weight (fontWeight 800) must exist in the new font. Pick a heavy font: Fuzzy Text shifts rows of pixels, and thin letters turn to mush.
+- If you forget: the name appears in a plain fallback font, or the build fails because the css import cannot find the package.
+- Anchor: `src/login.css = @import "@fontsource-variable/syne";`
+- Anchor: `AB:LOGIN.BRAND @ src/components/LoginBrand.tsx = fontFamily='"Syne Variable", sans-serif'`
+- Check by hand: after a font change look at the name; the checker does not see whether the font really loaded.
+
 ## Things to know (no check is possible)
 - The glass card redraws what is behind it while the background animates. Phone speed and battery with both together have NOT been tested. If a phone feels slow, the background speed (BG) and the glass settings (GLASS) are the first two things to look at.
 - The hero line is a different length each time. Very long lines wrap onto more rows; the font size in HERO is set for short lines.
+- The name in the corner (BRAND) is drawn on a canvas 60 times a second, on top of the moving background and the glass card. Phone speed and battery with all three together have NOT been tested. If a phone feels slow, lower fps in LoginBrand.tsx first.
+- The name is a picture of text, not real text: it cannot be selected or copied. The wrapper has role="img" and aria-label="ASHBORN" so screen readers still say the name.

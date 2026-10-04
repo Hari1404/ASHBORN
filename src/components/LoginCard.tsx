@@ -33,7 +33,6 @@ export default function LoginCard() {
     <GlassSurface {...GLASS} className="ab-glass">
       <form className="ab-content" onSubmit={handleSubmit}>
         {/* AB:LOGIN.FORM:START */}
-        <h1 className="ab-title">ASHBORN</h1>
         <p className="ab-subtitle">Sign in to continue</p>
         <div className="ab-field">
           <label className="ab-label" htmlFor="ab-userid">

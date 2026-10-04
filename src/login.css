@@ -2,6 +2,8 @@
 /* All glass settings live in the GLASS object at the top of src/components/LoginCard.tsx. */
 /* Input and button ideas adapted from Uiverse.io by Praashoo7 */
 
+@import "@fontsource-variable/syne";
+
 /* AB:LOGIN.LAYOUT:START */
 .ab-screen {
   position: relative;
@@ -24,7 +26,7 @@
   align-content: center;
   justify-items: center;
   gap: 28px;
-  padding: 24px;
+  padding: 84px 24px 24px;
 }
 
 @media (min-width: 900px) {
@@ -37,6 +39,23 @@
   }
 }
 /* AB:LOGIN.LAYOUT:END */
+
+/* AB:LOGIN.BRAND:START */
+/* The ASHBORN name in the top left corner. It is a Fuzzy Text canvas, see src/components/LoginBrand.tsx. */
+/* The canvas has a see-through margin of (fuzzRange + 25) pixels on its left side. The negative margin-left below cancels it, so the letters start exactly at the left offset. If fuzzRange changes, change margin-left too. */
+.ab-brand {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 2;
+  line-height: 0;
+}
+
+.ab-brand canvas {
+  display: block;
+  margin-left: -55px;
+}
+/* AB:LOGIN.BRAND:END */
 
 /* AB:LOGIN.HERO:START */
 .ab-hero {
@@ -88,18 +107,8 @@
   color: #fff;
 }
 
-.ab-title {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: 0.32em;
-  text-align: center;
-  color: #fff;
-  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.5);
-}
-
 .ab-subtitle {
-  margin: -8px 0 8px;
+  margin: 0 0 8px;
   font-size: 14px;
   text-align: center;
   color: rgba(255, 255, 255, 0.72);

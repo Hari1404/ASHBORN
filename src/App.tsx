@@ -1,6 +1,7 @@
 import PatternWaves from "@/components/PatternWaves"
 import LoginCard from "@/components/LoginCard"
 import LoginHero from "@/components/LoginHero"
+import LoginBrand from "@/components/LoginBrand"
 import "./login.css"
 
 export default function App() {
@@ -34,6 +35,9 @@ export default function App() {
         />
       </div>
       {/* AB:LOGIN.BG:END */}
+      {/* AB:LOGIN.BRAND:START */}
+      <LoginBrand />
+      {/* AB:LOGIN.BRAND:END */}
       {/* AB:LOGIN.LAYOUT:START */}
       <div className="ab-center">
         <LoginHero />
