@@ -18,6 +18,7 @@ Full rules: TAGGING_RULES.md
 | CALENDAR | Calendar (not built yet) |
 | GUIDE | Guide (not built yet) |
 | SHARED | Things used on several pages, such as theme settings (not built yet) |
+| AUTH | Sign-in plumbing: the Supabase connection, the saved sign-in, the choice of screen, the temporary signed-in screen |
 
 ## LOGIN (front page)
 | Tag | What it is | Files | What you can change there |
@@ -29,8 +30,16 @@ Full rules: TAGGING_RULES.md
 | `AB:LOGIN.LINES` | The list of lines, one is picked at random each time the page loads | `src/loginLines.ts` | add, remove or reword lines |
 | `AB:LOGIN.GLASS` | The dark glass card: frost, edge refraction, size, darkness | `src/components/LoginCard.tsx`, `src/login.css` | the GLASS settings (blur, displace, distortionScale, width); darkness (--ab-glass-tint), border and shadow in the css |
 | `AB:LOGIN.FORM` | Card subtitle ("Sign in to continue") and the User ID and Password fields | `src/components/LoginCard.tsx`, `src/login.css` | wording; how the fields look (colours, hover, focus) in the css |
-| `AB:LOGIN.SUBMIT` | What happens when the form is submitted (nothing yet) | `src/components/LoginCard.tsx` | real login goes here later |
+| `AB:LOGIN.SUBMIT` | What happens when the form is submitted: real sign in with Supabase, the busy state, the red error text (shown in FORM) | `src/components/LoginCard.tsx` | the wording of the messages |
 | `AB:LOGIN.BUTTON` | The Sign in button and its hover effect | `src/components/LoginCard.tsx`, `src/login.css` | wording; colours, glow and speed in the css |
+
+## AUTH (sign-in plumbing)
+| Tag | What it is | Files | What you can change there |
+|---|---|---|---|
+| `AB:AUTH.CLIENT` | The one connection to Supabase, and the rule that turns a User ID into an email | `src/lib/supabase.ts` | what a User ID may contain; the three settings themselves are in the file .env |
+| `AB:AUTH.SESSION` | Reads the saved sign-in and follows sign in and sign out | `src/lib/useSession.ts` | nothing yet |
+| `AB:AUTH.GATE` | Chooses the screen: blank while loading, the front page, or the signed-in screen | `src/App.tsx` | which screen follows a sign in (the real app later) |
+| `AB:AUTH.STUB` | The temporary signed-in screen with a Sign out button | `src/components/SignedInStub.tsx`, `src/auth.css` | thrown away when the real app shell is built |
 
 ## Library components (installed React Bits source: not tagged, never edited)
 To change how one looks or moves, change its props where it is used, at the tag named here.
@@ -42,4 +51,4 @@ To change how one looks or moves, change its props where it is used, at the tag 
 | FuzzyText (the ASHBORN name) | `src/components/FuzzyText.tsx` | `AB:LOGIN.BRAND` |
 
 ## Untagged files
-Setup and config files (package.json, vite and tsconfig files, index.html), `src/index.css`, `src/main.tsx`, AGENTS.md, PROGRESS.md, CODE_MAP.md, CONNECTIONS.md, TAGGING_RULES.md, the packets folder, the scripts folder.
+Setup and config files (package.json, vite and tsconfig files, index.html, src/env.d.ts, the file .env which is never committed), `src/index.css`, `src/main.tsx`, AGENTS.md, PROGRESS.md, CODE_MAP.md, CONNECTIONS.md, TAGGING_RULES.md, the packets folder, the scripts folder.

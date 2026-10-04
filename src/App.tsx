@@ -3,8 +3,20 @@ import LoginCard from "@/components/LoginCard"
 import LoginHero from "@/components/LoginHero"
 import LoginBrand from "@/components/LoginBrand"
 import "./login.css"
+import SignedInStub from "@/components/SignedInStub"
+import { useSession } from "@/lib/useSession"
 
+// AB:AUTH.GATE:START
+// Chooses the screen: blank while the saved sign-in is read, the front page when nobody is signed in, the temporary signed-in screen otherwise.
 export default function App() {
+  const session = useSession()
+  if (session === "loading") return <main className="ab-screen" />
+  if (session) return <SignedInStub email={session.user.email ?? ""} />
+  return <LoginScreen />
+}
+// AB:AUTH.GATE:END
+
+function LoginScreen() {
   return (
     <main className="ab-screen">
       {/* AB:LOGIN.BG:START */}

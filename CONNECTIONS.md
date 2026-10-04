@@ -79,6 +79,8 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:LOGIN.FORM @ src/components/LoginCard.tsx = htmlFor="ab-password"`
 - Anchor: `AB:LOGIN.FORM @ src/components/LoginCard.tsx = name="username"`
 - Anchor: `AB:LOGIN.FORM @ src/components/LoginCard.tsx = name="password"`
+- Anchor: `AB:LOGIN.SUBMIT @ src/components/LoginCard.tsx = form.get("username")`
+- Anchor: `AB:LOGIN.SUBMIT @ src/components/LoginCard.tsx = form.get("password")`
 
 ### C08: The button gets its place from the form layout
 - Tags: `AB:LOGIN.FORM`, `AB:LOGIN.BUTTON`
@@ -161,7 +163,49 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:LOGIN.BRAND @ src/components/LoginBrand.tsx = fontFamily='"Syne Variable", sans-serif'`
 - Check by hand: after a font change look at the name; the checker does not see whether the font really loaded.
 
+## Connections on the AUTH plumbing
+
+### C17: The email form is written in three places: .env, the code rule and the Supabase user
+- Tags: `AB:AUTH.CLIENT`, `AB:LOGIN.SUBMIT`
+- If you change: the line VITE_LOGIN_EMAIL_TEMPLATE in .env, the User ID rule inside userIdToEmail, or the name userIdToEmail
+- Then also: SUBMIT turns the typed User ID into an email with userIdToEmail, and Supabase knows each user only by that exact email. If the form changes, every user in the Supabase dashboard must get the matching new email (or be created again). A user created again is a NEW user: data tied to the old one is not reachable from it. After any change to .env, stop and restart `npm run dev`.
+- If you forget: "User ID or password is wrong" with a correct password.
+- Anchor: `AB:AUTH.CLIENT @ src/lib/supabase.ts = export function userIdToEmail`
+- Anchor: `AB:AUTH.CLIENT @ src/lib/supabase.ts = VITE_LOGIN_EMAIL_TEMPLATE`
+- Anchor: `AB:LOGIN.SUBMIT @ src/components/LoginCard.tsx = userIdToEmail(userId)`
+- Check by hand: the checker does NOT read .env and does NOT see the Supabase dashboard. After any change, sign in once to prove the three places still agree.
+
+### C18: The names of the three settings in .env and in the code
+- Tags: `AB:AUTH.CLIENT`
+- If you change: VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY in supabase.ts, or the same names in .env
+- Then also: .env must use exactly the same names. Only names that start with VITE_ reach the browser. The secret key (or the old service_role key) must NEVER be written into .env or any file, with or without a VITE_ name.
+- If you forget: the Sign in button shows "Not connected" because the code finds no setting.
+- Anchor: `AB:AUTH.CLIENT @ src/lib/supabase.ts = import.meta.env.VITE_SUPABASE_URL`
+- Anchor: `AB:AUTH.CLIENT @ src/lib/supabase.ts = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY`
+
+### C19: Which screen is shown comes from the saved sign-in
+- Tags: `AB:AUTH.GATE`, `AB:AUTH.SESSION`, `AB:AUTH.STUB`
+- If you change: the name useSession, the three states it gives (loading, null, a session), or the SignedInStub screen
+- Then also: App (GATE) shows nothing while the state is loading, the front page when it is null, and the signed-in screen when it is a session. The Sign out button lives in AUTH.STUB. When the real app shell replaces the stub, the gate and the sign out button move with it.
+- If you forget: the front page flashes before the app, a signed-in person is stuck on the front page, or there is no way to sign out.
+- Anchor: `AB:AUTH.GATE @ src/App.tsx = const session = useSession()`
+- Anchor: `AB:AUTH.GATE @ src/App.tsx = <SignedInStub`
+- Anchor: `AB:AUTH.SESSION @ src/lib/useSession.ts = export function useSession`
+- Anchor: `AB:AUTH.STUB @ src/components/SignedInStub.tsx = auth.signOut()`
+
+### C20: The red message and the busy state are made in SUBMIT and shown in FORM and BUTTON
+- Tags: `AB:LOGIN.SUBMIT`, `AB:LOGIN.FORM`, `AB:LOGIN.BUTTON`
+- If you change: the names message or busy, the red line under the fields (FORM), or the disabled setting of the button (BUTTON)
+- Then also: handleSubmit (SUBMIT) holds the state. FORM shows `message`, BUTTON is switched off with `busy` while the sign in runs, so a double tap cannot send two requests. Rename in all three places.
+- If you forget: errors never show, or the button never switches back on after a wrong password.
+- Anchor: `AB:LOGIN.SUBMIT @ src/components/LoginCard.tsx = const [message, setMessage] = useState("")`
+- Anchor: `AB:LOGIN.SUBMIT @ src/components/LoginCard.tsx = const [busy, setBusy] = useState(false)`
+- Anchor: `AB:LOGIN.FORM @ src/components/LoginCard.tsx = {message ? (`
+- Anchor: `AB:LOGIN.BUTTON @ src/components/LoginCard.tsx = disabled={busy}`
+
 ## Things to know (no check is possible)
+- The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).
+- Sign-ups are OFF in the Supabase dashboard. Users are created there by hand, with "Auto Confirm User" ticked.
 - The glass card redraws what is behind it while the background animates. Phone speed and battery with both together have NOT been tested. If a phone feels slow, the background speed (BG) and the glass settings (GLASS) are the first two things to look at.
 - The hero line is a different length each time. Very long lines wrap onto more rows; the font size in HERO is set for short lines.
 - The name in the corner (BRAND) is drawn on a canvas 60 times a second, on top of the moving background and the glass card. Phone speed and battery with all three together have NOT been tested. If a phone feels slow, lower fps in LoginBrand.tsx first.

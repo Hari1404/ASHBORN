@@ -28,6 +28,8 @@
 - Packet 02I: code tags, CODE_MAP.md, TAGGING_RULES.md, tag checker
 - Packet 02J: CONNECTIONS.md, checker extended to connections, agent rule 11
 - Packet 02K: ASHBORN name moved to the top left as Fuzzy Text (Syne), card title removed, connections C14 to C16
+- Packet 02L: phone text size, card subtitle 16px and labels 15px under 900px wide, laptop unchanged
+- Packet 03A: Supabase connected (settings in .env, never committed), real sign in with User ID and password, temporary signed-in screen with Sign out; owner still has to fill .env and create his user in the Supabase dashboard
 
 ## Next
 - Owner checks the login screen by eye (desktop and phone)

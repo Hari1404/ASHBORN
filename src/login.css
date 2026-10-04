@@ -109,7 +109,7 @@
 
 .ab-subtitle {
   margin: 0 0 8px;
-  font-size: 14px;
+  font-size: 16px;
   text-align: center;
   color: rgba(255, 255, 255, 0.72);
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
@@ -122,7 +122,7 @@
 }
 
 .ab-label {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.92);
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
@@ -163,6 +163,24 @@
   caret-color: #fff;
   transition: background-color 5000s ease-in-out 0s;
 }
+/* Phone text is bigger (subtitle 16px and labels 15px above). From 900px wide (laptop) it goes back to the original sizes. */
+@media (min-width: 900px) {
+  .ab-subtitle {
+    font-size: 14px;
+  }
+
+  .ab-label {
+    font-size: 13px;
+  }
+}
+/* The red line under the fields: wrong password, not connected, and so on. Text comes from handleSubmit in LoginCard.tsx. */
+.ab-error {
+  margin: -4px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #ffb4b4;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
+}
 /* AB:LOGIN.FORM:END */
 
 /* AB:LOGIN.BUTTON:START */
@@ -186,6 +204,11 @@
     color: #fff;
     box-shadow: 0 0 22px 3px rgba(255, 255, 255, 0.55);
   }
+}
+
+.ab-button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .ab-button:active {
