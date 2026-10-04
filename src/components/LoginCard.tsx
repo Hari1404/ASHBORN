@@ -14,15 +14,18 @@ export default function LoginCard() {
         <h1 className="ab-title">ASHBORN</h1>
         <p className="ab-subtitle">Sign in to continue</p>
         <div className="ab-field">
-          <label className="ab-label" htmlFor="ab-email">
-            Email
+          <label className="ab-label" htmlFor="ab-userid">
+            User ID
           </label>
           <input
             className="ab-input"
-            id="ab-email"
-            name="email"
-            type="email"
-            autoComplete="email"
+            id="ab-userid"
+            name="username"
+            type="text"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
           />
         </div>
         <div className="ab-field">

@@ -1,5 +1,6 @@
 import PatternWaves from "@/components/PatternWaves"
 import LoginCard from "@/components/LoginCard"
+import LoginHero from "@/components/LoginHero"
 import "./login.css"
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
         />
       </div>
       <div className="ab-center">
+        <LoginHero />
         <LoginCard />
       </div>
     </main>
