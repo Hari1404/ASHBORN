@@ -14,3 +14,4 @@ You execute written packets. You do not design.
    packet's done check. Maximum 5 lines. No summary, no explanation.
 9. To find code, open CODE_MAP.md first. Then search the project for the tag it names, followed by :START (example: AB:LOGIN.BG:START). Edit only between that START line and its END line. Never scan the repo.
 10. Never invent, rename or delete a tag. Tags are written in packets. After any change to code, run `node scripts/check-tags.mjs`. It must print TAGS OK.
+11. Before you change tagged code, open CONNECTIONS.md and search it for that tag. Change a linked place only if the packet names it. After any change to code, run `node scripts/check-tags.mjs`: it must print TAGS OK and CONNECTIONS OK. If it prints CONNECTIONS FAILED, stop and report the full output. Do not fix it.

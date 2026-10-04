@@ -1,10 +1,11 @@
 # ASHBORN CODE MAP
-Kept up to date by the planner: every packet that touches code also updates this file. Checked by `node scripts/check-tags.mjs`.
+Kept up to date by the planner: every packet that touches code also updates this file. Checked by `node scripts/check-tags.mjs`. What is tied to what is in CONNECTIONS.md.
 
 ## How to use
 1. Find the thing you want to change in the tables below (plain words).
 2. Search the whole project for its tag followed by :START, for example `AB:LOGIN.BG:START` (VS Code: Ctrl+Shift+F).
-3. Change only the lines between that START and its END.
+3. Before you change it, search CONNECTIONS.md for the same tag and read every connection that names it. Those are the other places your change can break.
+4. Change only the lines between that START and its END.
 Full rules: TAGGING_RULES.md
 
 ## Page codes
@@ -39,4 +40,4 @@ To change how one looks or moves, change its props where it is used, at the tag 
 | GlassSurface (glass card) | `src/components/GlassSurface.tsx` | `AB:LOGIN.GLASS` |
 
 ## Untagged files
-Setup and config files (package.json, vite and tsconfig files, index.html), `src/index.css`, `src/main.tsx`, AGENTS.md, PROGRESS.md, the packets folder, the scripts folder.
+Setup and config files (package.json, vite and tsconfig files, index.html), `src/index.css`, `src/main.tsx`, AGENTS.md, PROGRESS.md, CODE_MAP.md, CONNECTIONS.md, TAGGING_RULES.md, the packets folder, the scripts folder.
