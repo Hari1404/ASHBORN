@@ -8,6 +8,8 @@
 
 ## Done
 - Packet 01: project setup
+- Packet 01b: build fixed
+- Packet 02A: Pattern Waves installed (not used yet)
 
 ## Next
-- Packet 02: login screen with Pattern Waves background
+- Packet 02B: login screen using Pattern Waves
