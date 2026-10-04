@@ -1,0 +1,183 @@
+/* Card style adapted from Uiverse.io by dylanharriscameron */
+/* Input and button styles adapted from Uiverse.io by Praashoo7 */
+.ab-screen {
+  position: relative;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: #000;
+}
+
+.ab-bg {
+  position: fixed;
+  inset: 0;
+}
+
+.ab-center {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.ab-card {
+  position: relative;
+  isolation: isolate;
+  width: min(100%, 440px);
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 30px 80px rgba(0, 0, 0, 0.7);
+}
+
+.ab-blob {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background-color: #000;
+  opacity: 1;
+  filter: blur(20px);
+  transform: translate(-100%, -100%);
+  animation: ab-blob-bounce 5s infinite ease;
+}
+
+@keyframes ab-blob-bounce {
+  0% {
+    transform: translate(-100%, -100%) translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate(-100%, -100%) translate3d(100%, 0, 0);
+  }
+  50% {
+    transform: translate(-100%, -100%) translate3d(100%, 100%, 0);
+  }
+  75% {
+    transform: translate(-100%, -100%) translate3d(0, 100%, 0);
+  }
+  100% {
+    transform: translate(-100%, -100%) translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ab-blob {
+    animation: none;
+  }
+}
+
+.ab-glass {
+  position: absolute;
+  z-index: 2;
+  inset: 6px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  outline: 2px solid #fff;
+}
+
+.ab-content {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 48px 40px 40px;
+  color: #0a0a0a;
+}
+
+.ab-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  text-align: center;
+}
+
+.ab-subtitle {
+  margin: -8px 0 8px;
+  font-size: 14px;
+  text-align: center;
+  color: #525252;
+}
+
+.ab-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ab-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ab-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 13px 14px;
+  font-size: 16px;
+  color: #0a0a0a;
+  background: #f5f5f5;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  transition: 0.4s ease-in-out;
+}
+
+@media (hover: hover) {
+  .ab-input:hover {
+    box-shadow: 4px 4px 0 #969696;
+  }
+}
+
+.ab-input:focus {
+  outline: 2px solid #000;
+  outline-offset: 1px;
+  border-color: #000;
+  background: #fff;
+  box-shadow: inset 2px 5px 10px rgba(0, 0, 0, 0.3);
+}
+
+.ab-button {
+  margin-top: 8px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  background: #000;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: 0.4s ease-in-out;
+  box-shadow: rgba(0, 0, 0, 0.4) 1px 1px 1px;
+}
+
+@media (hover: hover) {
+  .ab-button:hover {
+    background: #1f1f1f;
+    box-shadow: 4px 4px 0 #969696;
+    transform: translate(-3px, -3px);
+  }
+}
+
+.ab-button:active {
+  transition: 0.2s;
+  transform: none;
+  box-shadow: none;
+}
+
+.ab-button:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ab-input,
+  .ab-button {
+    transition: none;
+  }
+}
