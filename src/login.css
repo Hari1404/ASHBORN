@@ -1,6 +1,10 @@
-/* Card style adapted from Uiverse.io by dylanharriscameron */
-/* Input and button styles adapted from Uiverse.io by Praashoo7 */
+/* Dark glass login for ASHBORN. */
+/* The darkness of the glass is the value --ab-glass-tint right below. Raise the last number to make it darker. */
+/* All other glass settings live in the GLASS object at the top of src/components/LoginCard.tsx. */
+/* Input and button ideas adapted from Uiverse.io by Praashoo7 */
 .ab-screen {
+  --ab-glass-tint: rgba(0, 0, 0, 0.55);
+
   position: relative;
   min-height: 100dvh;
   overflow: hidden;
@@ -57,72 +61,22 @@
   }
 }
 
-.ab-card {
-  position: relative;
-  isolation: isolate;
-  width: min(100%, 440px);
-  border-radius: 22px;
-  overflow: hidden;
-  background: #fff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 30px 80px rgba(0, 0, 0, 0.7);
-}
-
-.ab-blob {
-  position: absolute;
-  z-index: 1;
-  top: 50%;
-  left: 50%;
-  width: 320px;
-  height: 320px;
-  border-radius: 50%;
-  background-color: #000;
-  opacity: 1;
-  filter: blur(20px);
-  transform: translate(-100%, -100%);
-  animation: ab-blob-bounce 5s infinite ease;
-}
-
-@keyframes ab-blob-bounce {
-  0% {
-    transform: translate(-100%, -100%) translate3d(0, 0, 0);
-  }
-  25% {
-    transform: translate(-100%, -100%) translate3d(100%, 0, 0);
-  }
-  50% {
-    transform: translate(-100%, -100%) translate3d(100%, 100%, 0);
-  }
-  75% {
-    transform: translate(-100%, -100%) translate3d(0, 100%, 0);
-  }
-  100% {
-    transform: translate(-100%, -100%) translate3d(0, 0, 0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ab-blob {
-    animation: none;
-  }
-}
-
+/* The GlassSurface component sets its own background, border and shadow from the viewer's light/dark setting. */
+/* These !important lines make the glass dark for everyone. */
 .ab-glass {
-  position: absolute;
-  z-index: 2;
-  inset: 6px;
-  border-radius: 16px;
-  background: #fff;
-  outline: 2px solid #fff;
+  background: var(--ab-glass-tint) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 30px 80px rgba(0, 0, 0, 0.6) !important;
 }
 
 .ab-content {
-  position: relative;
-  z-index: 3;
+  width: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  padding: 48px 40px 40px;
-  color: #0a0a0a;
+  padding: 40px 32px 32px;
+  color: #fff;
 }
 
 .ab-title {
@@ -131,13 +85,16 @@
   font-weight: 800;
   letter-spacing: 0.32em;
   text-align: center;
+  color: #fff;
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.5);
 }
 
 .ab-subtitle {
   margin: -8px 0 8px;
   font-size: 14px;
   text-align: center;
-  color: #525252;
+  color: rgba(255, 255, 255, 0.72);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
 }
 
 .ab-field {
@@ -149,6 +106,8 @@
 .ab-label {
   font-size: 13px;
   font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
 }
 
 .ab-input {
@@ -156,25 +115,35 @@
   box-sizing: border-box;
   padding: 13px 14px;
   font-size: 16px;
-  color: #0a0a0a;
-  background: #f5f5f5;
-  border: 1px solid rgba(0, 0, 0, 0.25);
+  color: #fff;
+  caret-color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 12px;
-  transition: 0.4s ease-in-out;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 @media (hover: hover) {
   .ab-input:hover {
-    box-shadow: 4px 4px 0 #969696;
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
   }
 }
 
 .ab-input:focus {
-  outline: 2px solid #000;
-  outline-offset: 1px;
-  border-color: #000;
-  background: #fff;
-  box-shadow: inset 2px 5px 10px rgba(0, 0, 0, 0.3);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18);
+}
+
+.ab-input:-webkit-autofill,
+.ab-input:-webkit-autofill:hover,
+.ab-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fff;
+  caret-color: #fff;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 .ab-button {
@@ -182,32 +151,31 @@
   padding: 14px;
   font-size: 16px;
   font-weight: 700;
-  color: #fff;
-  background: #000;
+  color: #000;
+  background: #fff;
   border: 0;
   border-radius: 12px;
   cursor: pointer;
-  transition: 0.4s ease-in-out;
-  box-shadow: rgba(0, 0, 0, 0.4) 1px 1px 1px;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
 }
 
 @media (hover: hover) {
   .ab-button:hover {
-    background: #1f1f1f;
-    box-shadow: 4px 4px 0 #969696;
-    transform: translate(-3px, -3px);
+    background: #e8e8e8;
+    box-shadow: 0 8px 28px rgba(255, 255, 255, 0.22);
+    transform: translateY(-2px);
   }
 }
 
 .ab-button:active {
-  transition: 0.2s;
+  transition-duration: 0.1s;
   transform: none;
   box-shadow: none;
 }
 
 .ab-button:focus-visible {
-  outline: 2px solid #000;
-  outline-offset: 2px;
+  outline: 2px solid #fff;
+  outline-offset: 3px;
 }
 
 @media (prefers-reduced-motion: reduce) {
