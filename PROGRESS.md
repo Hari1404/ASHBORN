@@ -7,7 +7,7 @@
 - Login/main background: React Bits Pattern Waves (black background, white pattern, stays)
 - Login card: dark smoked glass using React Bits GlassSurface, on the RIGHT side of the screen
 - Glass settings live in the GLASS object at the top of src/components/LoginCard.tsx; the darkness is --ab-glass-tint at the top of .ab-screen in src/login.css
-- Login button: solid white with black text; on mouse hover the whole button turns black with white text (white border), and goes back when the pointer leaves
+- Login button: solid white with black text; on mouse hover the whole button turns black with white text and a soft white glow around the edge (no outline), 0.15s change, and goes back when the pointer leaves
 - Login field: User ID instead of email (look only for now)
 - Login left side: animated text using React Bits BlurText, one line picked at random each time the screen loads (list lives in src/loginLines.ts)
 
@@ -21,6 +21,7 @@
 - Packet 02E: GlassSurface installed
 - Packet 02F: dark glass login card (replaces the white card)
 - Packet 02G: Sign in button hover (white to black)
+- Packet 02H: Sign in button glow instead of outline, faster change
 
 ## Next
 - Owner checks the login screen by eye (desktop and phone)
