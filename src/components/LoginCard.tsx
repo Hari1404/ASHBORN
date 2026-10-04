@@ -2,6 +2,7 @@ import type { FormEvent } from "react"
 import GlassSurface from "@/components/GlassSurface"
 import "../login.css"
 
+// AB:LOGIN.GLASS:START
 // All glass settings are here, in one place. The darkness is --ab-glass-tint in src/login.css.
 const GLASS = {
   width: "min(100%, 440px)",
@@ -19,15 +20,19 @@ const GLASS = {
   greenOffset: 0,
   blueOffset: 0,
 }
+// AB:LOGIN.GLASS:END
 
 export default function LoginCard() {
+  // AB:LOGIN.SUBMIT:START
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
   }
+  // AB:LOGIN.SUBMIT:END
 
   return (
     <GlassSurface {...GLASS} className="ab-glass">
       <form className="ab-content" onSubmit={handleSubmit}>
+        {/* AB:LOGIN.FORM:START */}
         <h1 className="ab-title">ASHBORN</h1>
         <p className="ab-subtitle">Sign in to continue</p>
         <div className="ab-field">
@@ -57,9 +62,12 @@ export default function LoginCard() {
             autoComplete="current-password"
           />
         </div>
+        {/* AB:LOGIN.FORM:END */}
+        {/* AB:LOGIN.BUTTON:START */}
         <button className="ab-button" type="submit">
           Sign in
         </button>
+        {/* AB:LOGIN.BUTTON:END */}
       </form>
     </GlassSurface>
   )

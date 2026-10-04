@@ -6,6 +6,7 @@ import "./login.css"
 export default function App() {
   return (
     <main className="ab-screen">
+      {/* AB:LOGIN.BG:START */}
       <div className="ab-bg">
         <PatternWaves
           color="#ffffff"
@@ -32,10 +33,13 @@ export default function App() {
           paused={false}
         />
       </div>
+      {/* AB:LOGIN.BG:END */}
+      {/* AB:LOGIN.LAYOUT:START */}
       <div className="ab-center">
         <LoginHero />
         <LoginCard />
       </div>
+      {/* AB:LOGIN.LAYOUT:END */}
     </main>
   )
 }

@@ -3,6 +3,7 @@ import BlurText from "@/components/BlurText"
 import { LOGIN_LINES } from "@/loginLines"
 import "../login.css"
 
+// AB:LOGIN.HERO:START
 export default function LoginHero() {
   const [line] = useState(
     () => LOGIN_LINES[Math.floor(Math.random() * LOGIN_LINES.length)]
@@ -20,3 +21,4 @@ export default function LoginHero() {
     </div>
   )
 }
+// AB:LOGIN.HERO:END

@@ -1,3 +1,4 @@
+// AB:LOGIN.LINES:START
 export const LOGIN_LINES: string[] = [
   "Show up. Every day.",
   "Small steps. Big streak.",
@@ -6,3 +7,4 @@ export const LOGIN_LINES: string[] = [
   "Focus first. Everything else later.",
   "Be better than yesterday.",
 ]
+// AB:LOGIN.LINES:END

@@ -1,10 +1,9 @@
-/* Dark glass login for ASHBORN. */
-/* The darkness of the glass is the value --ab-glass-tint right below. Raise the last number to make it darker. */
-/* All other glass settings live in the GLASS object at the top of src/components/LoginCard.tsx. */
+/* Dark glass login for ASHBORN. Every part below has a tag, see CODE_MAP.md in the project root. */
+/* All glass settings live in the GLASS object at the top of src/components/LoginCard.tsx. */
 /* Input and button ideas adapted from Uiverse.io by Praashoo7 */
-.ab-screen {
-  --ab-glass-tint: rgba(0, 0, 0, 0.55);
 
+/* AB:LOGIN.LAYOUT:START */
+.ab-screen {
   position: relative;
   min-height: 100dvh;
   overflow: hidden;
@@ -28,6 +27,18 @@
   padding: 24px;
 }
 
+@media (min-width: 900px) {
+  .ab-center {
+    grid-template-columns: 1fr minmax(0, 440px);
+    justify-items: stretch;
+    align-items: center;
+    gap: 64px;
+    padding: 48px 8vw;
+  }
+}
+/* AB:LOGIN.LAYOUT:END */
+
+/* AB:LOGIN.HERO:START */
 .ab-hero {
   width: min(100%, 440px);
 }
@@ -43,14 +54,6 @@
 }
 
 @media (min-width: 900px) {
-  .ab-center {
-    grid-template-columns: 1fr minmax(0, 440px);
-    justify-items: stretch;
-    align-items: center;
-    gap: 64px;
-    padding: 48px 8vw;
-  }
-
   .ab-hero {
     width: auto;
     max-width: 640px;
@@ -60,15 +63,21 @@
     font-size: clamp(48px, 6vw, 88px);
   }
 }
+/* AB:LOGIN.HERO:END */
 
+/* AB:LOGIN.GLASS:START */
+/* The darkness of the glass is --ab-glass-tint below. Raise the last number to make it darker. */
 /* The GlassSurface component sets its own background, border and shadow from the viewer's light/dark setting. */
 /* These !important lines make the glass dark for everyone. */
 .ab-glass {
+  --ab-glass-tint: rgba(0, 0, 0, 0.55);
   background: var(--ab-glass-tint) !important;
   border: 1px solid rgba(255, 255, 255, 0.22) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 30px 80px rgba(0, 0, 0, 0.6) !important;
 }
+/* AB:LOGIN.GLASS:END */
 
+/* AB:LOGIN.FORM:START */
 .ab-content {
   width: 100%;
   box-sizing: border-box;
@@ -145,7 +154,9 @@
   caret-color: #fff;
   transition: background-color 5000s ease-in-out 0s;
 }
+/* AB:LOGIN.FORM:END */
 
+/* AB:LOGIN.BUTTON:START */
 .ab-button {
   margin-top: 8px;
   padding: 14px;
@@ -177,9 +188,11 @@
   outline-offset: 3px;
 }
 
+/* Also turns off the input transitions of the form when reduced motion is requested. */
 @media (prefers-reduced-motion: reduce) {
   .ab-input,
   .ab-button {
     transition: none;
   }
 }
+/* AB:LOGIN.BUTTON:END */

@@ -12,3 +12,5 @@ You execute written packets. You do not design.
 7. Never put secrets (keys, passwords) in any file.
 8. When finished, reply only: "DONE <packet id>" and the result of the
    packet's done check. Maximum 5 lines. No summary, no explanation.
+9. To find code, open CODE_MAP.md first. Then search the project for the tag it names, followed by :START (example: AB:LOGIN.BG:START). Edit only between that START line and its END line. Never scan the repo.
+10. Never invent, rename or delete a tag. Tags are written in packets. After any change to code, run `node scripts/check-tags.mjs`. It must print TAGS OK.
