@@ -23,7 +23,7 @@ Full rules: TAGGING_RULES.md
 ## LOGIN (front page)
 | Tag | What it is | Files | What you can change there |
 |---|---|---|---|
-| `AB:LOGIN.BG` | The moving background (Dark Veil) | `src/App.tsx` | its props: speed, noiseIntensity, warpAmount, hueShift, scanlineIntensity, scanlineFrequency (resolutionScale must stay 1 and lightMode must stay false, see CONNECTIONS.md C03 and C21) |
+| `AB:LOGIN.BG` | The moving background (Pattern Waves) | `src/App.tsx` | its props, for example speed, scale, direction, colours, wave style (spacing and scale have a second, lite value, see CONNECTIONS.md C21) |
 | `AB:LOGIN.LAYOUT` | Page structure and grid: text on the left and card on the right on wide screens, stacked on phones | `src/App.tsx`, `src/login.css` | spacing, gaps, the width where it switches to two columns |
 | `AB:LOGIN.BRAND` | The ASHBORN name in the top left corner (Fuzzy Text: fuzzes, more on hover, short glitch every 2 seconds) | `src/App.tsx`, `src/components/LoginBrand.tsx`, `src/login.css` | the Fuzzy Text settings (intensity, fuzzRange, glitch, fontSize) in LoginBrand.tsx; position in the css |
 | `AB:LOGIN.HERO` | The animated line on the left (BlurText) | `src/components/LoginHero.tsx`, `src/login.css` | reveal speed, by words or letters, direction; text size and shadow in the css |
@@ -46,8 +46,7 @@ Full rules: TAGGING_RULES.md
 To change how one looks or moves, change its props where it is used, at the tag named here.
 | Component | File | Settings live at |
 |---|---|---|
-| Dark Veil (moving background) | `src/components/DarkVeil.tsx` | `AB:LOGIN.BG` |
-| Pattern Waves (the old background: no longer used, kept in the project) | `src/components/PatternWaves.tsx` | nowhere |
+| Pattern Waves (moving background) | `src/components/PatternWaves.tsx` | `AB:LOGIN.BG` |
 | BlurText (animated line) | `src/components/BlurText.tsx` | `AB:LOGIN.HERO` |
 | GlassSurface (glass card) | `src/components/GlassSurface.tsx` | `AB:LOGIN.GLASS` |
 | FuzzyText (the ASHBORN name) | `src/components/FuzzyText.tsx` | `AB:LOGIN.BRAND` |

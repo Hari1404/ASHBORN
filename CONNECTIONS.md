@@ -33,12 +33,12 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:LOGIN.LAYOUT @ src/login.css = @media (min-width: 900px)`
 - Anchor: `AB:LOGIN.HERO @ src/login.css = @media (min-width: 900px)`
 
-### C03: The front page is built for a dark background with white text
+### C03: The front page is built for white on black
 - Tags: `AB:LOGIN.BG`, `AB:LOGIN.LAYOUT`, `AB:LOGIN.HERO`, `AB:LOGIN.BRAND`
-- If you change: the background look (Dark Veil in BG: its colours are fixed inside the component, hueShift only turns them, and lightMode makes it light, so lightMode stays false), the page base colour (.ab-screen in LAYOUT), the hero text colour (HERO), or the colour of the name in the top left corner (color in BRAND)
-- Then also: keep the page base colour dark. Then look at the hero line and at the ASHBORN name in the corner: both are white and sit straight on the animation (the hero line is helped by a dark shadow, the name by nothing). Check by eye that the brightest part of Dark Veil still leaves both readable.
-- If you forget: with a light or bright background the white line on the left becomes hard or impossible to read; a base colour that differs from the animation shows as a flash or a band before the animation loads.
-- Anchor: `AB:LOGIN.BG @ src/App.tsx = lightMode={false}`
+- If you change: the background colour (backgroundColor in BG), the page base colour (.ab-screen in LAYOUT), the hero text colour (HERO), or the colour of the name in the top left corner (color in BRAND)
+- Then also: keep the background colour and the page base colour the same. Then look at the hero line and at the ASHBORN name in the corner: both are white and sit straight on the animation (the hero line is helped by a dark shadow, the name by nothing).
+- If you forget: with a light or colourful background the white line on the left becomes hard or impossible to read; a base colour that differs from the animation shows as a flash or a band before the animation loads.
+- Anchor: `AB:LOGIN.BG @ src/App.tsx = backgroundColor="#000000"`
 - Anchor: `AB:LOGIN.LAYOUT @ src/login.css = background: #000;`
 - Anchor: `AB:LOGIN.HERO @ src/login.css = color: #fff;`
 - Anchor: `AB:LOGIN.BRAND @ src/components/LoginBrand.tsx = color="#fff"`
@@ -163,23 +163,24 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:LOGIN.BRAND @ src/components/LoginBrand.tsx = fontFamily='"Syne Variable", sans-serif'`
 - Check by hand: after a font change look at the name; the checker does not see whether the font really loaded.
 
-### C21: The lite background is drawn in a half size box and scaled back up
+### C21: The lite background is drawn at half size and scaled back up
 - Tags: `AB:LOGIN.BG`, `AB:LOGIN.LAYOUT`
-- If you change: resolutionScale in BG, or the size or scale lines of `.ab-bg[data-lite]` in LAYOUT
-- Then also: in lite mode the animation sits in a box of half the size (50% wide and high, plus 1px) and the css scales it up by 2 (scale(2)). Dark Veil draws itself to fill the box it sits in, so a phone draws a quarter of the pixels with no other setting. resolutionScale must stay 1 in every level: the component sets its canvas to the size of the box times resolutionScale, so any other value leaves the canvas smaller than the box and shows a black band. The attribute data-lite in App.tsx and the css selector `.ab-bg[data-lite]` are linked by that name.
-- If you forget: a resolutionScale other than 1 shows a black band at the edge; the background stays full size and the phone stays slow (a misspelled data-lite is not an error anywhere).
-- Anchor: `AB:LOGIN.BG @ src/App.tsx = resolutionScale={1}`
+- If you change: spacing or scale of the background in BG, or the size or scale lines of `.ab-bg[data-lite]` in LAYOUT
+- Then also: in lite mode the animation is drawn in a box of half the size (50% wide and high, plus 1px) and the css scales it up by 2 (scale(2)). A phone then draws a quarter of the pixels. So the lite value of spacing must be half of the full value (now 4 and 8) and the lite value of scale must be half of the full value (now 0.575 and 1.15); otherwise the dots and waves look twice as big or small in lite mode. Spacing cannot go below 4 (the component's own limit), so with a full spacing of 8 the box cannot be shrunk by more than 2. The attribute data-lite in App.tsx and the css selector `.ab-bg[data-lite]` are linked by that name.
+- If you forget: lite mode shows the wrong dot size or wave size, or the background stays full size and the phone stays slow (a misspelled data-lite is not an error anywhere).
+- Anchor: `AB:LOGIN.BG @ src/App.tsx = spacing={LITE_LEVEL > 0 ? 4 : 8}`
+- Anchor: `AB:LOGIN.BG @ src/App.tsx = scale={LITE_LEVEL > 0 ? 0.575 : 1.15}`
 - Anchor: `AB:LOGIN.BG @ src/App.tsx = data-lite={`
 - Anchor: `AB:LOGIN.LAYOUT @ src/login.css = .ab-bg[data-lite] {`
 - Anchor: `AB:LOGIN.LAYOUT @ src/login.css = width: calc(50% + 1px);`
 - Anchor: `AB:LOGIN.LAYOUT @ src/login.css = height: calc(50% + 1px);`
 - Anchor: `AB:LOGIN.LAYOUT @ src/login.css = transform: scale(2);`
-- Check by hand: after any change look at the page on a laptop with ?lite=0 and with ?lite=1 in the page address. The picture must fill the whole screen with no band at the edges and look the same in both (lite is only a little softer).
+- Check by hand: after any change look at the page on a laptop with ?lite=0 and with ?lite=1 in the page address. The dots and the waves must look the same size in both.
 
 ### C22: Lite mode is one switch that three files read
 - Tags: `AB:LOGIN.LITE`, `AB:LOGIN.BG`, `AB:LOGIN.BRAND`, `AB:LOGIN.GLASS`
 - If you change: how lite is decided or what its levels mean (the file src/lib/lite.ts), or add or remove a lite effect
-- Then also: LITE_LEVEL is read in three files. App.tsx (BG): half-size box (see C21), and at level 2 the speed of the background is 0, a still picture (Dark Veil has no pause: it still redraws that one picture on every frame). LoginCard.tsx: at level 1 and 2 the card is a plain dark box with the classes ab-glass and ab-glass-lite instead of GlassSurface; the box takes its width and corner radius from the GLASS object, so it adds no new place for the card width in C01. LoginBrand.tsx (BRAND): 30 frames per second instead of 60. The css of the plain box is `.ab-glass-lite` in GLASS (login.css); it must stay below `.ab-glass` because it replaces the tint set there. The page address can force a level: ?lite=0 full look, ?lite=1 lite, ?lite=2 lite with a still background.
+- Then also: LITE_LEVEL is read in three files. App.tsx (BG): half-size background with its own spacing and scale (see C21), and a still background at level 2. LoginCard.tsx: at level 1 and 2 the card is a plain dark box with the classes ab-glass and ab-glass-lite instead of GlassSurface; the box takes its width and corner radius from the GLASS object, so it adds no new place for the card width in C01. LoginBrand.tsx (BRAND): 30 frames per second instead of 60. The css of the plain box is `.ab-glass-lite` in GLASS (login.css); it must stay below `.ab-glass` because it replaces the tint set there. The page address can force a level: ?lite=0 full look, ?lite=1 lite, ?lite=2 lite with a still background.
 - If you forget: a phone gets the heavy glass again, or a laptop gets the lite look; a lite effect that is not listed here is forgotten the next time somebody changes lite mode.
 - Anchor: `AB:LOGIN.LITE @ src/lib/lite.ts = export const LITE_LEVEL`
 - Anchor: `src/App.tsx = import { LITE_LEVEL } from "@/lib/lite"`
