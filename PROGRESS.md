@@ -31,6 +31,7 @@
 - Packet 02L: phone text size, card subtitle 16px and labels 15px under 900px wide, laptop unchanged
 - Packet 03A: Supabase connected (settings in .env, never committed), real sign in with User ID and password, temporary signed-in screen with Sign out; owner still has to fill .env and create his user in the Supabase dashboard
 - Packet 03B: phone speed, lite mode on touch screens (plain dark card, half-size background, name at 30 frames per second); page address ?lite=0, ?lite=1 or ?lite=2 forces a level
+- Packet 04A: Dark Veil installed (not used yet)
 
 ## Next
 - Owner checks the login screen by eye (desktop and phone)
