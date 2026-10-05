@@ -5,6 +5,7 @@ import LoginBrand from "@/components/LoginBrand"
 import "./login.css"
 import SignedInStub from "@/components/SignedInStub"
 import { useSession } from "@/lib/useSession"
+import { LITE_LEVEL } from "@/lib/lite"
 
 // AB:AUTH.GATE:START
 // Chooses the screen: blank while the saved sign-in is read, the front page when nobody is signed in, the temporary signed-in screen otherwise.
@@ -20,21 +21,22 @@ function LoginScreen() {
   return (
     <main className="ab-screen">
       {/* AB:LOGIN.BG:START */}
-      <div className="ab-bg">
+      {/* Lite mode (src/lib/lite.ts): the animation is drawn at half size and the css scales it back up. That is why spacing and scale have a second, lite value: half of the full value. See CONNECTIONS.md C21. */}
+      <div className="ab-bg" data-lite={LITE_LEVEL > 0 ? "on" : undefined}>
         <PatternWaves
           color="#ffffff"
           backgroundColor="#000000"
           pattern="square"
           wave="silk"
           characters=".:-=+*#%@"
-          spacing={8}
+          spacing={LITE_LEVEL > 0 ? 4 : 8}
           markSize={0.9}
           depth={1.05}
           light={0}
           shine={0.5}
           contrast={1.25}
           speed={0.7}
-          scale={1.15}
+          scale={LITE_LEVEL > 0 ? 0.575 : 1.15}
           direction={33}
           fade="none"
           fadeSize={0.35}
@@ -43,7 +45,7 @@ function LoginScreen() {
           cursorSize={50}
           cursorStrength={0.6}
           intro={true}
-          paused={false}
+          paused={LITE_LEVEL === 2}
         />
       </div>
       {/* AB:LOGIN.BG:END */}

@@ -12,6 +12,17 @@
   background: #000;
 }
 
+/* Lite mode (src/lib/lite.ts): the animation is drawn at half size and scaled back up, so a phone draws a quarter of the pixels. This rule is more specific than .ab-bg below, so it wins. The 50%, the scale(2) and the lite values of spacing and scale in App.tsx are linked, see CONNECTIONS.md C21. */
+.ab-bg[data-lite] {
+  inset: auto;
+  top: 0;
+  left: 0;
+  width: calc(50% + 1px);
+  height: calc(50% + 1px);
+  transform: scale(2);
+  transform-origin: 0 0;
+}
+
 .ab-bg {
   position: fixed;
   inset: 0;
@@ -93,6 +104,12 @@
   background: var(--ab-glass-tint) !important;
   border: 1px solid rgba(255, 255, 255, 0.22) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 30px 80px rgba(0, 0, 0, 0.6) !important;
+}
+/* Lite mode (phones, see src/lib/lite.ts): the card is a plain dark box and GlassSurface is not used. Nothing blurs the animation behind it, so it is darker than the glass. The 8px padding is what GlassSurface adds around its content. This rule must stay below .ab-glass: it replaces the tint set there. */
+.ab-glass-lite {
+  --ab-glass-tint: rgba(0, 0, 0, 0.82);
+  box-sizing: border-box;
+  padding: 8px;
 }
 /* AB:LOGIN.GLASS:END */
 

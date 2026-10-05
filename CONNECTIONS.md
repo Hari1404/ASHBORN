@@ -163,6 +163,33 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:LOGIN.BRAND @ src/components/LoginBrand.tsx = fontFamily='"Syne Variable", sans-serif'`
 - Check by hand: after a font change look at the name; the checker does not see whether the font really loaded.
 
+### C21: The lite background is drawn at half size and scaled back up
+- Tags: `AB:LOGIN.BG`, `AB:LOGIN.LAYOUT`
+- If you change: spacing or scale of the background in BG, or the size or scale lines of `.ab-bg[data-lite]` in LAYOUT
+- Then also: in lite mode the animation is drawn in a box of half the size (50% wide and high, plus 1px) and the css scales it up by 2 (scale(2)). A phone then draws a quarter of the pixels. So the lite value of spacing must be half of the full value (now 4 and 8) and the lite value of scale must be half of the full value (now 0.575 and 1.15); otherwise the dots and waves look twice as big or small in lite mode. Spacing cannot go below 4 (the component's own limit), so with a full spacing of 8 the box cannot be shrunk by more than 2. The attribute data-lite in App.tsx and the css selector `.ab-bg[data-lite]` are linked by that name.
+- If you forget: lite mode shows the wrong dot size or wave size, or the background stays full size and the phone stays slow (a misspelled data-lite is not an error anywhere).
+- Anchor: `AB:LOGIN.BG @ src/App.tsx = spacing={LITE_LEVEL > 0 ? 4 : 8}`
+- Anchor: `AB:LOGIN.BG @ src/App.tsx = scale={LITE_LEVEL > 0 ? 0.575 : 1.15}`
+- Anchor: `AB:LOGIN.BG @ src/App.tsx = data-lite={`
+- Anchor: `AB:LOGIN.LAYOUT @ src/login.css = .ab-bg[data-lite] {`
+- Anchor: `AB:LOGIN.LAYOUT @ src/login.css = width: calc(50% + 1px);`
+- Anchor: `AB:LOGIN.LAYOUT @ src/login.css = height: calc(50% + 1px);`
+- Anchor: `AB:LOGIN.LAYOUT @ src/login.css = transform: scale(2);`
+- Check by hand: after any change look at the page on a laptop with ?lite=0 and with ?lite=1 in the page address. The dots and the waves must look the same size in both.
+
+### C22: Lite mode is one switch that three files read
+- Tags: `AB:LOGIN.LITE`, `AB:LOGIN.BG`, `AB:LOGIN.BRAND`, `AB:LOGIN.GLASS`
+- If you change: how lite is decided or what its levels mean (the file src/lib/lite.ts), or add or remove a lite effect
+- Then also: LITE_LEVEL is read in three files. App.tsx (BG): half-size background with its own spacing and scale (see C21), and a still background at level 2. LoginCard.tsx: at level 1 and 2 the card is a plain dark box with the classes ab-glass and ab-glass-lite instead of GlassSurface; the box takes its width and corner radius from the GLASS object, so it adds no new place for the card width in C01. LoginBrand.tsx (BRAND): 30 frames per second instead of 60. The css of the plain box is `.ab-glass-lite` in GLASS (login.css); it must stay below `.ab-glass` because it replaces the tint set there. The page address can force a level: ?lite=0 full look, ?lite=1 lite, ?lite=2 lite with a still background.
+- If you forget: a phone gets the heavy glass again, or a laptop gets the lite look; a lite effect that is not listed here is forgotten the next time somebody changes lite mode.
+- Anchor: `AB:LOGIN.LITE @ src/lib/lite.ts = export const LITE_LEVEL`
+- Anchor: `src/App.tsx = import { LITE_LEVEL } from "@/lib/lite"`
+- Anchor: `src/components/LoginCard.tsx = import { LITE_LEVEL } from "@/lib/lite"`
+- Anchor: `src/components/LoginBrand.tsx = import { LITE_LEVEL } from "@/lib/lite"`
+- Anchor: `src/components/LoginCard.tsx = className="ab-glass ab-glass-lite"`
+- Anchor: `AB:LOGIN.GLASS @ src/login.css = .ab-glass-lite {`
+- Check by hand: after any change look at the card on a laptop with ?lite=0 (glass) and ?lite=1 (plain dark box), then on the phone. The checker does not see how it looks or how smooth it is.
+
 ## Connections on the AUTH plumbing
 
 ### C17: The email form is written in three places: .env, the code rule and the Supabase user
@@ -206,7 +233,7 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 ## Things to know (no check is possible)
 - The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).
 - Sign-ups are OFF in the Supabase dashboard. Users are created there by hand, with "Auto Confirm User" ticked.
-- The glass card redraws what is behind it while the background animates. Phone speed and battery with both together have NOT been tested. If a phone feels slow, the background speed (BG) and the glass settings (GLASS) are the first two things to look at.
+- The glass card redraws what is behind it while the background animates. On a real phone (the Vercel link, 2026-10-05) the full look was very laggy and not smooth. The cause was reasoned, not measured: on Chrome the glass runs a displacement filter over the moving background on every frame, and the background is drawn at the full phone resolution. Lite mode (AB:LOGIN.LITE, C21, C22) was added for this. Whether lite is smooth on the phone has NOT been reported yet.
 - The hero line is a different length each time. Very long lines wrap onto more rows; the font size in HERO is set for short lines.
-- The name in the corner (BRAND) is drawn on a canvas 60 times a second, on top of the moving background and the glass card. Phone speed and battery with all three together have NOT been tested. If a phone feels slow, lower fps in LoginBrand.tsx first.
+- The name in the corner (BRAND) is drawn on a canvas 60 times a second on a laptop and 30 times a second in lite mode (LoginBrand.tsx). It sits on top of the moving background and the card.
 - The name is a picture of text, not real text: it cannot be selected or copied. The wrapper has role="img" and aria-label="ASHBORN" so screen readers still say the name.

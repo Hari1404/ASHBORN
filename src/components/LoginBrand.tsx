@@ -1,4 +1,5 @@
 import FuzzyText from "@/components/FuzzyText"
+import { LITE_LEVEL } from "@/lib/lite"
 import "../login.css"
 
 // AB:LOGIN.BRAND:START
@@ -16,7 +17,7 @@ export default function LoginBrand() {
         baseIntensity={0.2}
         hoverIntensity={0.5}
         fuzzRange={30}
-        fps={60}
+        fps={LITE_LEVEL > 0 ? 30 : 60}
         direction="horizontal"
         transitionDuration={0}
         clickEffect={true}

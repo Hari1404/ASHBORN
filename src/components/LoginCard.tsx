@@ -1,11 +1,13 @@
 import { useState } from "react"
 import type { FormEvent } from "react"
 import { supabase, userIdToEmail } from "@/lib/supabase"
+import { LITE_LEVEL } from "@/lib/lite"
 import GlassSurface from "@/components/GlassSurface"
 import "../login.css"
 
 // AB:LOGIN.GLASS:START
 // All glass settings are here, in one place. The darkness is --ab-glass-tint in src/login.css.
+// In lite mode (src/lib/lite.ts) the card is a plain dark box and GlassSurface is not used; the box takes its width and corner radius from this same object.
 const GLASS = {
   width: "min(100%, 440px)",
   height: "auto",
@@ -64,50 +66,62 @@ export default function LoginCard() {
   }
   // AB:LOGIN.SUBMIT:END
 
+  const form = (
+    <form className="ab-content" onSubmit={handleSubmit}>
+      {/* AB:LOGIN.FORM:START */}
+      <p className="ab-subtitle">Sign in to continue</p>
+      <div className="ab-field">
+        <label className="ab-label" htmlFor="ab-userid">
+          User ID
+        </label>
+        <input
+          className="ab-input"
+          id="ab-userid"
+          name="username"
+          type="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+      </div>
+      <div className="ab-field">
+        <label className="ab-label" htmlFor="ab-password">
+          Password
+        </label>
+        <input
+          className="ab-input"
+          id="ab-password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+        />
+      </div>
+      {message ? (
+        <p className="ab-error" role="alert">
+          {message}
+        </p>
+      ) : null}
+      {/* AB:LOGIN.FORM:END */}
+      {/* AB:LOGIN.BUTTON:START */}
+      <button className="ab-button" type="submit" disabled={busy}>
+        Sign in
+      </button>
+      {/* AB:LOGIN.BUTTON:END */}
+    </form>
+  )
+
+  if (LITE_LEVEL > 0) {
+    return (
+      <div className="ab-glass ab-glass-lite" style={{ width: GLASS.width, borderRadius: GLASS.borderRadius }}>
+        {form}
+      </div>
+    )
+  }
+
   return (
     <GlassSurface {...GLASS} className="ab-glass">
-      <form className="ab-content" onSubmit={handleSubmit}>
-        {/* AB:LOGIN.FORM:START */}
-        <p className="ab-subtitle">Sign in to continue</p>
-        <div className="ab-field">
-          <label className="ab-label" htmlFor="ab-userid">
-            User ID
-          </label>
-          <input
-            className="ab-input"
-            id="ab-userid"
-            name="username"
-            type="text"
-            autoComplete="username"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-        </div>
-        <div className="ab-field">
-          <label className="ab-label" htmlFor="ab-password">
-            Password
-          </label>
-          <input
-            className="ab-input"
-            id="ab-password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-          />
-        </div>
-        {message ? (
-          <p className="ab-error" role="alert">
-            {message}
-          </p>
-        ) : null}
-        {/* AB:LOGIN.FORM:END */}
-        {/* AB:LOGIN.BUTTON:START */}
-        <button className="ab-button" type="submit" disabled={busy}>
-          Sign in
-        </button>
-        {/* AB:LOGIN.BUTTON:END */}
-      </form>
+      {form}
     </GlassSurface>
   )
 }
