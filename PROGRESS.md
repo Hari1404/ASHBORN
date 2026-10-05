@@ -33,6 +33,7 @@
 - Packet 03B: phone speed, lite mode on touch screens (plain dark card, half-size background, name at 30 frames per second); page address ?lite=0, ?lite=1 or ?lite=2 forces a level
 - Packet 04A: Dark Veil installed (not used yet)
 - Packet 04D: Packet 04C undone. The login page has Pattern Waves again. Dark Veil stays installed and unused, it is meant for the page after login.
+- Packet 04E: Dark Veil is the background of the page after login (the temporary signed-in screen). The login page is unchanged.
 
 ## Next
 - Owner checks the login screen by eye (desktop and phone)

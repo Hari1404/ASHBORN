@@ -177,15 +177,16 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:LOGIN.LAYOUT @ src/login.css = transform: scale(2);`
 - Check by hand: after any change look at the page on a laptop with ?lite=0 and with ?lite=1 in the page address. The dots and the waves must look the same size in both.
 
-### C22: Lite mode is one switch that three files read
+### C22: Lite mode is one switch that four files read
 - Tags: `AB:LOGIN.LITE`, `AB:LOGIN.BG`, `AB:LOGIN.BRAND`, `AB:LOGIN.GLASS`
 - If you change: how lite is decided or what its levels mean (the file src/lib/lite.ts), or add or remove a lite effect
-- Then also: LITE_LEVEL is read in three files. App.tsx (BG): half-size background with its own spacing and scale (see C21), and a still background at level 2. LoginCard.tsx: at level 1 and 2 the card is a plain dark box with the classes ab-glass and ab-glass-lite instead of GlassSurface; the box takes its width and corner radius from the GLASS object, so it adds no new place for the card width in C01. LoginBrand.tsx (BRAND): 30 frames per second instead of 60. The css of the plain box is `.ab-glass-lite` in GLASS (login.css); it must stay below `.ab-glass` because it replaces the tint set there. The page address can force a level: ?lite=0 full look, ?lite=1 lite, ?lite=2 lite with a still background.
+- Then also: LITE_LEVEL is read in four files. SignedInStub.tsx (STUB): the Dark Veil background of the signed-in screen, in the same half-size box, with speed 0 at level 2 (see C23). App.tsx (BG): half-size background with its own spacing and scale (see C21), and a still background at level 2. LoginCard.tsx: at level 1 and 2 the card is a plain dark box with the classes ab-glass and ab-glass-lite instead of GlassSurface; the box takes its width and corner radius from the GLASS object, so it adds no new place for the card width in C01. LoginBrand.tsx (BRAND): 30 frames per second instead of 60. The css of the plain box is `.ab-glass-lite` in GLASS (login.css); it must stay below `.ab-glass` because it replaces the tint set there. The page address can force a level: ?lite=0 full look, ?lite=1 lite, ?lite=2 lite with a still background.
 - If you forget: a phone gets the heavy glass again, or a laptop gets the lite look; a lite effect that is not listed here is forgotten the next time somebody changes lite mode.
 - Anchor: `AB:LOGIN.LITE @ src/lib/lite.ts = export const LITE_LEVEL`
 - Anchor: `src/App.tsx = import { LITE_LEVEL } from "@/lib/lite"`
 - Anchor: `src/components/LoginCard.tsx = import { LITE_LEVEL } from "@/lib/lite"`
 - Anchor: `src/components/LoginBrand.tsx = import { LITE_LEVEL } from "@/lib/lite"`
+- Anchor: `src/components/SignedInStub.tsx = import { LITE_LEVEL } from "@/lib/lite"`
 - Anchor: `src/components/LoginCard.tsx = className="ab-glass ab-glass-lite"`
 - Anchor: `AB:LOGIN.GLASS @ src/login.css = .ab-glass-lite {`
 - Check by hand: after any change look at the card on a laptop with ?lite=0 (glass) and ?lite=1 (plain dark box), then on the phone. The checker does not see how it looks or how smooth it is.
@@ -229,6 +230,21 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:LOGIN.SUBMIT @ src/components/LoginCard.tsx = const [busy, setBusy] = useState(false)`
 - Anchor: `AB:LOGIN.FORM @ src/components/LoginCard.tsx = {message ? (`
 - Anchor: `AB:LOGIN.BUTTON @ src/components/LoginCard.tsx = disabled={busy}`
+
+### C23: The signed-in screen draws Dark Veil in the same half size box as the front page
+- Tags: `AB:AUTH.STUB`, `AB:LOGIN.LAYOUT`, `AB:LOGIN.LITE`
+- If you change: the Dark Veil settings or the wrapper line in STUB, the `.ab-bg` rules in LAYOUT (login.css), or the lite levels in `src/lib/lite.ts`
+- Then also: the background of the signed-in screen is a div with the class ab-bg and the attribute data-lite, the SAME class and attribute as the front page (C11, C21). It gets its place behind the content and its half-size lite box from the `.ab-bg` rules in login.css; those rules are loaded because App.tsx imports login.css. If `.ab-bg` is renamed, or login.css stops being loaded, the background of the signed-in screen loses its place. The text and the button sit above it because of the rule `.ab-stub > :not(.ab-bg)` in auth.css. resolutionScale must stay 1 and lightMode must stay false (see C03 and C21).
+- If you forget: the background shows as a small box, covers the text, or stays full size on a phone.
+- Anchor: `AB:AUTH.STUB @ src/components/SignedInStub.tsx = className="ab-bg"`
+- Anchor: `AB:AUTH.STUB @ src/components/SignedInStub.tsx = data-lite={`
+- Anchor: `AB:AUTH.STUB @ src/components/SignedInStub.tsx = resolutionScale={1}`
+- Anchor: `AB:AUTH.STUB @ src/components/SignedInStub.tsx = lightMode={false}`
+- Anchor: `AB:AUTH.STUB @ src/auth.css = .ab-stub > :not(.ab-bg) {`
+- Anchor: `AB:LOGIN.LAYOUT @ src/login.css = .ab-bg {`
+- Anchor: `AB:LOGIN.LAYOUT @ src/login.css = .ab-bg[data-lite] {`
+- Anchor: `AB:LOGIN.LITE @ src/lib/lite.ts = export const LITE_LEVEL`
+- Check by hand: after any change sign in, then look at the signed-in screen on a laptop with ?lite=0 and with ?lite=1 in the page address. The picture must fill the whole screen with no band at the edges, and the text and the Sign out button must be readable.
 
 ## Things to know (no check is possible)
 - The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).

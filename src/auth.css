@@ -45,4 +45,10 @@
   border-radius: 12px;
   cursor: pointer;
 }
+
+/* The Dark Veil background is the div with the class ab-bg. login.css places and sizes it (CONNECTIONS.md C23). The rule below lifts the text and the button above it. */
+.ab-stub > :not(.ab-bg) {
+  position: relative;
+  z-index: 1;
+}
 /* AB:AUTH.STUB:END */
