@@ -12,7 +12,7 @@
   background: #000;
 }
 
-/* Lite mode (src/lib/lite.ts): the animation is drawn at half size and scaled back up, so a phone draws a quarter of the pixels. This rule is more specific than .ab-bg below, so it wins. The 50%, the scale(2) and the lite values of spacing and scale in App.tsx are linked, see CONNECTIONS.md C21. */
+/* Lite mode (src/lib/lite.ts): the animation is drawn at half size and scaled back up, so a phone draws a quarter of the pixels. This rule is more specific than .ab-bg below, so it wins. The 50% and the scale(2) are linked, see CONNECTIONS.md C21. */
 .ab-bg[data-lite] {
   inset: auto;
   top: 0;
