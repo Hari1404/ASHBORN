@@ -12,7 +12,7 @@ Full rules: TAGGING_RULES.md
 | Code | Page or area |
 |---|---|
 | LOGIN | Front page: the login screen |
-| MENU | Overlay menu with the hamburger button (not built yet) |
+| MENU | The menu: a button in the top right corner that opens a panel with the four screens |
 | OVERVIEW | Overview / Hub page (not built yet) |
 | TIMER | Pro Timer (not built yet) |
 | CALENDAR | Calendar (not built yet) |
@@ -40,7 +40,14 @@ Full rules: TAGGING_RULES.md
 | `AB:AUTH.CLIENT` | The one connection to Supabase, and the rule that turns a User ID into an email | `src/lib/supabase.ts` | what a User ID may contain; the three settings themselves are in the file .env |
 | `AB:AUTH.SESSION` | Reads the saved sign-in and follows sign in and sign out | `src/lib/useSession.ts` | nothing yet |
 | `AB:AUTH.GATE` | Chooses the screen: blank while loading, the front page, or the signed-in screen | `src/App.tsx` | which screen follows a sign in (the real app later) |
-| `AB:AUTH.STUB` | The temporary signed-in screen with a Sign out button, on a Dark Veil background | `src/components/SignedInStub.tsx`, `src/auth.css` | the Dark Veil props: speed, noiseIntensity, warpAmount, hueShift, scanlineIntensity, scanlineFrequency (resolutionScale must stay 1 and lightMode must stay false, see CONNECTIONS.md C23); the screen itself is thrown away when the real app shell is built |
+| `AB:AUTH.STUB` | The temporary signed-in screen with a Sign out button, on a Dark Veil background; its title is the name of the screen chosen in the menu | `src/components/SignedInStub.tsx`, `src/auth.css` | the Dark Veil props: speed, noiseIntensity, warpAmount, hueShift, scanlineIntensity, scanlineFrequency (resolutionScale must stay 1 and lightMode must stay false, see CONNECTIONS.md C23); the screen itself is thrown away when the real app shell is built |
+
+## MENU (the menu)
+| Tag | What it is | Files | What you can change there |
+|---|---|---|---|
+| `AB:MENU.NAV` | The list of the four screens (id and name) and the reading of the page address (#timer) that chooses one | `src/lib/screens.ts` | the names of the screens; a new screen needs a new line here (see CONNECTIONS.md C24) |
+| `AB:MENU.PANEL` | The menu itself: the Staggered Menu with its settings (side, layer colours, button colour, items) | `src/components/AppMenu.tsx` | the side it opens from (position), the colours of the sliding layers (colors); isFixed and displayItemNumbering must stay as they are (see CONNECTIONS.md C25) |
+| `AB:MENU.LOOK` | The dark look of the menu: panel colour, text size, button size, the box that holds it | `src/menu.css` | colours and sizes; the blur must stay switched off (see CONNECTIONS.md C25) |
 
 ## Library components (installed React Bits source: not tagged, never edited)
 To change how one looks or moves, change its props where it is used, at the tag named here.
@@ -51,6 +58,7 @@ To change how one looks or moves, change its props where it is used, at the tag 
 | BlurText (animated line) | `src/components/BlurText.tsx` | `AB:LOGIN.HERO` |
 | GlassSurface (glass card) | `src/components/GlassSurface.tsx` | `AB:LOGIN.GLASS` |
 | FuzzyText (the ASHBORN name) | `src/components/FuzzyText.tsx` | `AB:LOGIN.BRAND` |
+| Staggered Menu (the menu) | `src/components/StaggeredMenu.tsx` | `AB:MENU.PANEL` |
 
 ## Untagged files
 Setup and config files (package.json, vite and tsconfig files, index.html, src/env.d.ts, the file .env which is never committed), `src/index.css`, `src/main.tsx`, AGENTS.md, PROGRESS.md, CODE_MAP.md, CONNECTIONS.md, TAGGING_RULES.md, the packets folder, the scripts folder.

@@ -34,6 +34,7 @@
 - Packet 04A: Dark Veil installed (not used yet)
 - Packet 04D: Packet 04C undone. The login page has Pattern Waves again. Dark Veil stays installed and unused, it is meant for the page after login.
 - Packet 04E: Dark Veil is the background of the page after login (the temporary signed-in screen). The login page is unchanged.
+- Packet 04F: the menu (Staggered Menu) is on the signed-in screen, with four placeholder screens: Overview, Pro Timer, Calendar, Guide.
 
 ## Next
 - Owner checks the login screen by eye (desktop and phone)

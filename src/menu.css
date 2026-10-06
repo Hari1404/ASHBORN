@@ -1,0 +1,47 @@
+/* Styles of the menu. Tag: see CODE_MAP.md in the project root. */
+
+/* AB:MENU.LOOK:START */
+/* The library component Staggered Menu draws a white panel with black text and has its own css inside the component. Every rule below starts with .ab-menu and the library class .sm-scope, so it is more specific than the library css and wins without editing the library file. If the library file is installed again in a newer version and a class is renamed, the look quietly goes back to white: see CONNECTIONS.md C25. */
+
+/* The box that holds the menu: fixed over the whole screen, and it lets every tap through. Only the button and the panel take taps again (the library does that). */
+.ab-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* The library always draws a logo. We have none here, so it is hidden, and the button goes to the right. */
+.ab-menu .sm-scope .sm-logo {
+  display: none;
+}
+
+.ab-menu .sm-scope .staggered-menu-header {
+  justify-content: flex-end;
+  padding: 20px 24px;
+}
+
+.ab-menu .sm-scope .sm-toggle {
+  font-size: 18px;
+  padding: 6px 0;
+}
+
+/* The panel: solid dark. The blur is switched off with !important on purpose: the library sets it inline on the panel, and a blur over the moving background made the front page laggy on the phone (CONNECTIONS.md C22, C25). */
+.ab-menu .sm-scope .staggered-menu-panel {
+  background: #050505;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* The items: white text, smaller on a phone so that "PRO TIMER" fits on one row. */
+.ab-menu .sm-scope .sm-panel-item {
+  color: #fff;
+  font-size: clamp(2.4rem, 12vw, 3.5rem);
+  padding-right: 0;
+}
+
+.ab-menu .sm-scope .sm-panel-item:hover {
+  color: rgba(255, 255, 255, 0.55);
+}
+/* AB:MENU.LOOK:END */
