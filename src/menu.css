@@ -29,19 +29,19 @@
 
 /* The panel: solid dark. The blur is switched off with !important on purpose: the library sets it inline on the panel, and a blur over the moving background made the front page laggy on the phone (CONNECTIONS.md C22, C25). */
 .ab-menu .sm-scope .staggered-menu-panel {
-  background: #050505;
+  background: linear-gradient(165deg, #2a0509 0%, #120306 55%, #070103 100%);
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 
 /* The items: white text, smaller on a phone so that "PRO TIMER" fits on one row. */
 .ab-menu .sm-scope .sm-panel-item {
-  color: #fff;
+  color: #fff1f1;
   font-size: clamp(2.4rem, 12vw, 3.5rem);
   padding-right: 0;
 }
 
 .ab-menu .sm-scope .sm-panel-item:hover {
-  color: rgba(255, 255, 255, 0.55);
+  color: #ff4d4d;
 }
 /* AB:MENU.LOOK:END */
