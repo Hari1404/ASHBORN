@@ -17,7 +17,7 @@ export default function SignedInStub({ email }: { email: string }) {
       <main className="ab-stub">
         <div className="ab-bg" data-lite={LITE_LEVEL > 0 ? "on" : undefined}>
           <DarkVeil
-            hueShift={278}
+            hueShift={0}
             noiseIntensity={0.11}
             scanlineIntensity={0}
             speed={LITE_LEVEL === 2 ? 0 : 0.8}

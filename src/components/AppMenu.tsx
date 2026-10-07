@@ -26,15 +26,15 @@ export default function AppMenu() {
       <StaggeredMenu
         isFixed={false}
         position="right"
-        colors={["#4a0508", "#a1121f"]}
+        colors={["#2b1763", "#5b34d6"]}
         items={ITEMS}
         displaySocials={false}
         displayItemNumbering={false}
         logoUrl={NO_LOGO}
-        menuButtonColor="#fff1f1"
-        openMenuButtonColor="#fff1f1"
+        menuButtonColor="#f4f0ff"
+        openMenuButtonColor="#f4f0ff"
         changeMenuColorOnOpen={false}
-        accentColor="#ff4d4d"
+        accentColor="#b69cff"
         closeOnClickAway={true}
       />
     </div>
