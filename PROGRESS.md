@@ -38,6 +38,7 @@
 - Packet 05A: the Pro Timer database is set up in Supabase (two tables, row-level security, eight functions). The SQL is in supabase/timer_schema.sql and supabase/timer_verify.sql. The owner ran both by hand and all 5 check rows matched.
 - Packet 05B: the Pro Timer maths as pure functions in src/lib/timerMaths.ts, with automated tests in src/lib/timerMaths.test.ts (run them with npm test, vitest).
 - Packet 05C0: the React Bits Hold Button and the font Space Grotesk are installed (not used yet)
+- Packet 05C: the Pro Timer screen at the page address #timer (big clock of the session with the hour ring, small clock with the day total, Start, Pause and Resume, End Session as the Hold Button, a No connection state), the calls to the database (src/lib/timerApi.ts) and the live state (src/lib/useTimer.ts), with automated tests (npm test; jsdom installed for the screen tests). The stop alert and the messages come in later packets.
 
 ## Next
 - Owner checks the login screen by eye (desktop and phone)

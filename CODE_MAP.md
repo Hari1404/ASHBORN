@@ -14,7 +14,7 @@ Full rules: TAGGING_RULES.md
 | LOGIN | Front page: the login screen |
 | MENU | The menu: a button in the top right corner that opens a panel with the four screens |
 | OVERVIEW | Overview / Hub page (not built yet) |
-| TIMER | Pro Timer: the maths and its tests are built; the screen is not built yet |
+| TIMER | Pro Timer: the maths, the database calls, the live state, the screen (page address #timer) and their tests are built; the stop alert and the messages are not built yet |
 | CALENDAR | Calendar (not built yet) |
 | GUIDE | Guide (not built yet) |
 | SHARED | Things used on several pages, such as theme settings (not built yet) |
@@ -40,7 +40,7 @@ Full rules: TAGGING_RULES.md
 | `AB:AUTH.CLIENT` | The one connection to Supabase, and the rule that turns a User ID into an email | `src/lib/supabase.ts` | what a User ID may contain; the three settings themselves are in the file .env |
 | `AB:AUTH.SESSION` | Reads the saved sign-in and follows sign in and sign out | `src/lib/useSession.ts` | nothing yet |
 | `AB:AUTH.GATE` | Chooses the screen: blank while loading, the front page, or the signed-in screen | `src/App.tsx` | which screen follows a sign in (the real app later) |
-| `AB:AUTH.STUB` | The temporary signed-in screen with a Sign out button, on a Dark Veil background; its title is the name of the screen chosen in the menu | `src/components/SignedInStub.tsx`, `src/auth.css` | the Dark Veil props: speed, noiseIntensity, warpAmount, hueShift, scanlineIntensity, scanlineFrequency (resolutionScale must stay 1 and lightMode must stay false, see CONNECTIONS.md C23); the screen itself is thrown away when the real app shell is built |
+| `AB:AUTH.STUB` | The temporary signed-in screen with a Sign out button, on a Dark Veil background; its title is the name of the screen chosen in the menu; when Pro Timer is chosen it shows the Pro Timer screen instead (see CONNECTIONS.md C30) | `src/components/SignedInStub.tsx`, `src/auth.css` | the Dark Veil props: speed, noiseIntensity, warpAmount, hueShift, scanlineIntensity, scanlineFrequency (resolutionScale must stay 1 and lightMode must stay false, see CONNECTIONS.md C23); the screen itself is thrown away when the real app shell is built |
 
 ## MENU (the menu)
 | Tag | What it is | Files | What you can change there |
@@ -53,7 +53,10 @@ Full rules: TAGGING_RULES.md
 | Tag | What it is | Files | What you can change there |
 |---|---|---|---|
 | `AB:TIMER.MATHS` | The Pro Timer maths: whole seconds of a session, the clock text, quality (meh, solid, deep, flow), GO BACK IN, milestone messages, the hour ring and its colours, the day total. Pure functions: no screen and no database call | `src/lib/timerMaths.ts` | the neon colours of the ring (NEON_COLORS); the cut-offs, the milestone times and the 60 second rule are decisions, see CONNECTIONS.md C26 and C27 |
-| `AB:TIMER.TESTS` | The automated tests of that maths. Run them with npm test | `src/lib/timerMaths.test.ts` | add tests; the numbers written in them must match the maths, see CONNECTIONS.md C27 |
+| `AB:TIMER.API` | The calls from the app to the six database functions of the Pro Timer, and the checking of every answer; turns a database error name into a name the screen understands | `src/lib/timerApi.ts` | the waiting time before "no connection" (REQUEST_TIMEOUT_MS, see CONNECTIONS.md C33); the error names, function names and answer keys are tied to supabase/timer_schema.sql (CONNECTIONS.md C28 and C29) |
+| `AB:TIMER.STATE` | The live state of the Pro Timer screen (a React hook): reads the database again every 30 seconds and when the page comes back, works out the seconds from the stored times, runs the buttons Start, Pause, Resume and End, the no connection state and the midnight rule | `src/lib/useTimer.ts` | how often it reads again (POLL_ONLINE_MS and POLL_OFFLINE_MS, see CONNECTIONS.md C33); the texts of the problem messages (problemText) |
+| `AB:TIMER.SCREEN` | The Pro Timer screen at the page address #timer: the big clock of the session with the hour ring, the small clock with the day total, Start, Pause and Resume, End Session (hold the button), the line for No connection and for what happened to the session that was just ended. Plain black background, Space Grotesk digits | `src/components/TimerScreen.tsx`, `src/timer.css` | colours, sizes and spacing in the css (the ring stroke width must stay 10 or less, see CONNECTIONS.md C31; the fixed width digits must stay, see C32); the Hold Button settings (holdTime, colours, labels) and the wording of the line under the clock (noticeText) in TimerScreen.tsx |
+| `AB:TIMER.TESTS` | The automated tests of the Pro Timer: the maths, the database calls, the live state, the screen, and the choice of screen in the signed-in stub. Run them with npm test | `src/lib/timerMaths.test.ts`, `src/lib/timerApi.test.ts`, `src/lib/useTimer.test.ts`, `src/lib/useTimer.hook.test.ts`, `src/components/TimerScreen.test.tsx`, `src/components/SignedInStub.test.tsx` | add tests; the numbers and names written in them must match the code, see CONNECTIONS.md C27, C28, C29 and C33 |
 
 ## Library components (installed React Bits source: not tagged, never edited)
 To change how one looks or moves, change its props where it is used, at the tag named here.
@@ -65,6 +68,7 @@ To change how one looks or moves, change its props where it is used, at the tag 
 | GlassSurface (glass card) | `src/components/GlassSurface.tsx` | `AB:LOGIN.GLASS` |
 | FuzzyText (the ASHBORN name) | `src/components/FuzzyText.tsx` | `AB:LOGIN.BRAND` |
 | Staggered Menu (the menu) | `src/components/StaggeredMenu.tsx` | `AB:MENU.PANEL` |
+| Hold Button (the End Session button) | `src/components/HoldButton.tsx` | `AB:TIMER.SCREEN` |
 
 ## Untagged files
 Setup and config files (package.json, vite and tsconfig files, index.html, src/env.d.ts, the file .env which is never committed), `src/index.css`, `src/main.tsx`, AGENTS.md, PROGRESS.md, CODE_MAP.md, CONNECTIONS.md, TAGGING_RULES.md, the packets folder, the scripts folder.

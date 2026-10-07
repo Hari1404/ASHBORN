@@ -1,0 +1,165 @@
+/* Styles of the Pro Timer screen. Tag: see CODE_MAP.md in the project root. */
+
+@import "@fontsource-variable/space-grotesk";
+
+/* AB:TIMER.SCREEN:START */
+/* The screen: plain black for now. The menu button (menu.css) floats above it, so the top has room for it. */
+.ab-timer {
+  min-height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 72px 20px 32px;
+  background: #000;
+  color: #fff;
+  font-family: "Space Grotesk Variable", system-ui, sans-serif;
+}
+
+/* The dial: a square box. The ring fills it and the two clocks sit in the middle. */
+.ab-timer-dial {
+  position: relative;
+  width: min(84vw, 400px);
+  aspect-ratio: 1;
+}
+
+/* The ring is drawn in a box of 100 by 100 with a radius of 45 (TimerScreen.tsx), so a stroke width of 10 or less stays inside the box (CONNECTIONS.md C31). */
+.ab-timer-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: opacity 400ms ease;
+}
+
+.ab-timer-track,
+.ab-timer-arc {
+  fill: none;
+  stroke-width: 6;
+}
+
+.ab-timer-arc {
+  stroke-linecap: round;
+}
+
+.ab-timer-readout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* The digits: Space Grotesk medium. Its digits are not all the same width by default, so tabular-nums switches on the fixed width ones (checked in the font file at weights 400, 500 and 600). CONNECTIONS.md C32. */
+.ab-timer-big {
+  margin: 0;
+  font-size: clamp(2.4rem, 13vw, 4.25rem);
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ab-timer-small {
+  margin: 0;
+  font-size: clamp(1.05rem, 4.6vw, 1.5rem);
+  font-weight: 500;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Paused: the digits blink slowly and the ring dims. Still loading: the whole dial is dim. */
+.ab-timer[data-state="paused"] .ab-timer-ring {
+  opacity: 0.3;
+}
+
+.ab-timer[data-state="paused"] .ab-timer-big {
+  animation: ab-timer-blink 1.8s ease-in-out infinite;
+}
+
+.ab-timer[data-link="loading"] .ab-timer-dial {
+  opacity: 0.45;
+}
+
+@keyframes ab-timer-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ab-timer[data-state="paused"] .ab-timer-big {
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
+/* The line under the dial: No connection, an error, or what happened to the session that was just ended. It keeps its height so that nothing jumps. */
+.ab-timer-note {
+  margin: 0;
+  min-height: 1.4em;
+  max-width: 320px;
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ab-timer-retry {
+  padding: 8px 18px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+/* The buttons: Start, or Pause and Resume above the Hold Button. The box keeps its height while loading so that the dial does not move. */
+.ab-timer-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 320px;
+  min-height: 124px;
+}
+
+.ab-timer-pill {
+  width: 100%;
+  height: 58px;
+  padding: 0 28px;
+  font: inherit;
+  font-size: 19px;
+  font-weight: 700;
+  color: #000;
+  background: #fff;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ab-timer-pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ab-timer-pill:active:enabled {
+  transform: scale(0.98);
+}
+
+.ab-timer-end {
+  width: 100%;
+}
+/* AB:TIMER.SCREEN:END */

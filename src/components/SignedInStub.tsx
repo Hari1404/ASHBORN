@@ -1,5 +1,6 @@
 import AppMenu from "@/components/AppMenu"
 import DarkVeil from "@/components/DarkVeil"
+import TimerScreen from "@/components/TimerScreen"
 import { supabase } from "@/lib/supabase"
 import { LITE_LEVEL } from "@/lib/lite"
 import { SCREENS, useScreen } from "@/lib/screens"
@@ -9,9 +10,18 @@ import "../auth.css"
 // TEMPORARY screen shown after a sign in. It is thrown away when the real app shell is built.
 // The background is Dark Veil. It sits in the same ab-bg box, with the same lite mode, as the front page. See CONNECTIONS.md C23.
 // The title is the name of the screen chosen in the menu (the list is in src/lib/screens.ts). The four screens are empty placeholders for now. The menu (AppMenu) sits BESIDE the main element, not inside it, see CONNECTIONS.md C25.
+// The Pro Timer screen (#timer) is the one real screen: when it is chosen, TimerScreen is shown instead of this placeholder. It has its own plain black background (no Dark Veil), and AppMenu sits beside it in the same way. See CONNECTIONS.md C30.
 export default function SignedInStub({ email }: { email: string }) {
   const screen = useScreen()
   const title = SCREENS.find((s) => s.id === screen)?.label ?? ""
+  if (screen === "timer") {
+    return (
+      <>
+        <TimerScreen />
+        <AppMenu />
+      </>
+    )
+  }
   return (
     <>
       <main className="ab-stub">

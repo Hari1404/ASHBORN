@@ -315,6 +315,91 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:TIMER.TESTS @ src/lib/timerMaths.test.ts = expect(MAX_LIVE_STEP_SECONDS).toBe(10)`
 - Anchor: `AB:TIMER.TESTS @ src/lib/timerMaths.test.ts = expect(RING_LOOP_SECONDS).toBe(3600)`
 
+### C28: The error names are written in the database, in the app's list and in the screen's rules
+- Tags: `AB:TIMER.API`, `AB:TIMER.STATE`, `AB:TIMER.TESTS`
+- If you change: an error name in supabase/timer_schema.sql (a line raise exception), the list DATABASE_ERRORS in timerApi.ts, the list CONFLICTS or the function problemText in useTimer.ts
+- Then also: the SQL functions raise six names: ALREADY_RUNNING, NOT_RUNNING, NOT_PAUSED, DAY_ENDED, BAD_TIMEZONE and NOT_SIGNED_IN. The database client delivers the name as the text of the error; classifyError finds it there and makes a TimerError with that name. useTimer reacts to the names: the first four (the list CONFLICTS) mean that the state on the server is not what this screen showed, so the screen reads the state again and shows what is true; NOT_SIGNED_IN and BAD_TIMEZONE get their own text in problemText. A name must be the same in all three places. A change in the SQL file has to be run again in the Supabase SQL Editor by the owner (the agent cannot run SQL). The checker does not read SQL files, but npm test does: timerApi.test.ts reads the text of supabase/timer_schema.sql and fails when the SQL raises a name that is not in DATABASE_ERRORS, or the other way round. Old copies of the site in a phone browser keep working only if the names stay the same.
+- If you forget: a button that does nothing, a state that is out of step with the other device, or an error shown as Something went wrong.
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts =   "ALREADY_RUNNING",`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts =   "NOT_RUNNING",`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts =   "NOT_PAUSED",`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts =   "DAY_ENDED",`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts =   "BAD_TIMEZONE",`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts =   "NOT_SIGNED_IN",`
+- Anchor: `AB:TIMER.STATE @ src/lib/useTimer.ts = const CONFLICTS: readonly TimerErrorKind[] = ["ALREADY_RUNNING", "NOT_RUNNING", "NOT_PAUSED", "DAY_ENDED"]`
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerApi.test.ts = expect([...raised].sort()).toEqual([...DATABASE_ERRORS].sort())`
+- Check by hand: after any change in supabase/timer_schema.sql run npm test (it reads that file), and the owner runs the changed SQL in the Supabase SQL Editor.
+
+### C29: The calls to the database use the function names, argument names and answer keys of the SQL file
+- Tags: `AB:TIMER.API`, `AB:TIMER.TESTS`
+- If you change: the name of a function in supabase/timer_schema.sql (timer_state, timer_day_total, timer_start, timer_pause, timer_resume, timer_end), an argument name (p_tz, p_day), or a key in an answer (server_now, running, saved, capped, session, day, active_seconds, and the six fields of a running session)
+- Then also: timerApi.ts calls each function by name through supabase.rpc and sends each argument by name. The readers (readStateReply, readRunningReply, readEndReply, readDayTotal and readTimerRow) read the keys by name and refuse anything else with the error BAD_REPLY. The six fields of a running session are the type TimerRow in timerMaths.ts (see C26). A name changed on one side only makes the call fail, or makes the screen say that the timer got an answer it could not read. The key server_now is read by the same line in two readers (readStateReply and readEndReply): the checker pins that line once and notices when it is gone from both, and npm test checks each reader. The SQL side is checked by npm test (timerApi.test.ts reads supabase/timer_schema.sql); the checker cannot read SQL. A change in the SQL file has to be run again in the Supabase SQL Editor by the owner.
+- If you forget: Start, Pause, Resume or End fail, or the screen shows an error instead of the time.
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = call("timer_state")`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = call("timer_day_total", { p_day: day })`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = call("timer_start", { p_tz: zone })`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = call("timer_pause")`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = call("timer_resume")`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = call("timer_end")`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.server_now`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = const row = json.running === null ? null : readTimerRow(json.running)`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = if (typeof json.saved !== "boolean") return bad("saved is not true or false")`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = if (typeof json.capped !== "boolean") return bad("capped is not true or false")`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = const session = json.session`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = session.active_seconds`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = session.day`
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerApi.test.ts = "timer_state()", "timer_day_total(p_day date)", "timer_start(p_tz text)", "timer_pause()", "timer_resume()", "timer_end()"`
+- Check by hand: after any change in supabase/timer_schema.sql run npm test (it reads that file), and the owner runs the changed SQL in the Supabase SQL Editor.
+
+### C30: The Pro Timer screen is chosen by the screen id timer, and the menu stays beside it
+- Tags: `AB:MENU.NAV`, `AB:AUTH.STUB`, `AB:TIMER.SCREEN`
+- If you change: the id timer in SCREENS (screens.ts), the choice of screen in SignedInStub.tsx, the place of AppMenu there, or the main element of TimerScreen.tsx and its class ab-timer
+- Then also: SignedInStub asks useScreen which screen the page address chose. When the id is timer it shows TimerScreen and, BESIDE it and not inside it, AppMenu (the same rule as C25), and nothing else: no Dark Veil, no title, no Sign out button. The other three ids still show the temporary placeholder with Dark Veil and the Sign out button (C23). The Pro Timer screen has its own plain black background (the rule .ab-timer in timer.css) and does not use the box .ab-bg. If the id timer is renamed, the menu item Pro Timer shows the placeholder instead of the timer. The Sign out button is not on the timer screen yet. The tests in SignedInStub.test.tsx check which screen is shown and that the menu sits beside it.
+- If you forget: the menu item Pro Timer shows the placeholder, the timer is drawn twice, or the menu button is hidden behind the timer.
+- Anchor: `AB:MENU.NAV @ src/lib/screens.ts = { id: "timer", label: "Pro Timer" },`
+- Anchor: `AB:AUTH.STUB @ src/components/SignedInStub.tsx = if (screen === "timer") {`
+- Anchor: `AB:AUTH.STUB @ src/components/SignedInStub.tsx = <TimerScreen />`
+- Anchor: `src/components/SignedInStub.tsx = import TimerScreen from "@/components/TimerScreen"`
+- Anchor: `AB:TIMER.SCREEN @ src/components/TimerScreen.tsx = <main className="ab-timer" data-state={timer.status} data-link={timer.link}>`
+- Anchor: `AB:TIMER.SCREEN @ src/timer.css = .ab-timer {`
+- Check by hand: after any change open the page address #timer on a laptop and on the phone. The timer is on a black screen, the menu button is in the top right corner and opens the panel, a tap on Overview shows the placeholder with the moving background again, and a tap on Pro Timer shows the timer.
+
+### C31: The ring is drawn in a box of 100 by 100, so its stroke width in the css must stay 10 or less
+- Tags: `AB:TIMER.SCREEN`
+- If you change: the box (viewBox) or the radius of the two ring circles in TimerScreen.tsx, the way the arc is drawn (pathLength and strokeDasharray), or the stroke-width of .ab-timer-track and .ab-timer-arc in timer.css
+- Then also: the ring is two circles with the radius 45 in a box of 100 by 100, so a stroke of up to 10 stays inside the box (45 plus half of 10 is 50). A thicker stroke is cut off at the edge of the box. The arc is drawn with pathLength 1 and the dash fill followed by 1, so fill is a number from 0 to 1 and the arc starts at the top (rotate -90). The stroke width itself is safe to tune up to 10 and is not pinned here; a test in TimerScreen.test.tsx reads timer.css and fails above 10.
+- If you forget: the ring is cut off at the edges, or the arc is the wrong length.
+- Anchor: `AB:TIMER.SCREEN @ src/components/TimerScreen.tsx = viewBox="0 0 100 100"`
+- Anchor: `AB:TIMER.SCREEN @ src/components/TimerScreen.tsx = <circle className="ab-timer-track" cx="50" cy="50" r="45" stroke={trackColor} transform="rotate(-90 50 50)" />`
+- Anchor: `AB:TIMER.SCREEN @ src/components/TimerScreen.tsx = pathLength={1}`
+- Anchor: `AB:TIMER.SCREEN @ src/components/TimerScreen.tsx = strokeDasharray={fill + " 1"}`
+- Anchor: `AB:TIMER.SCREEN @ src/timer.css = .ab-timer-track,`
+- Check by hand: look at the ring on the phone while a session runs: the whole circle is inside the screen with nothing cut off at the edges.
+
+### C32: The clock digits use Space Grotesk with fixed width digits, loaded from the font package
+- Tags: `AB:TIMER.SCREEN`
+- If you change: the font package, the font name in timer.css, the rules .ab-timer-big and .ab-timer-small, or the font weights
+- Then also: timer.css loads the package @fontsource-variable/space-grotesk (installed by Packet 05C0) with one import line and names the font Space Grotesk Variable, the name the package gives it. A different name loads nothing and the screen falls back to the system font. The digits of Space Grotesk are not all the same width by default (555 to 648 units in the font file). Both clocks switch on font-variant-numeric: tabular-nums, which makes all ten digits 620 units wide at the weights 300 to 700; without it the clock would shake from side to side every second. The line with tabular-nums is in both clock rules: the checker notices when it is gone from both, the test checks each clock. The weight must stay between 300 and 700, the range of the font. The test the css of the screen in TimerScreen.test.tsx reads timer.css and the css file of the font package and checks the name, the weight range and tabular-nums on both clocks.
+- If you forget: the clock shakes from side to side, or it is drawn in the system font.
+- Anchor: `src/timer.css = @import "@fontsource-variable/space-grotesk";`
+- Anchor: `AB:TIMER.SCREEN @ src/timer.css = font-family: "Space Grotesk Variable", system-ui, sans-serif;`
+- Anchor: `AB:TIMER.SCREEN @ src/timer.css = font-variant-numeric: tabular-nums;`
+- Check by hand: on the phone let a session run through a minute change with different digits (for example from 11:11 to 11:12). The digits do not move sideways. The widths were checked in the font file, not yet on a phone.
+
+### C33: The waiting times are written in the code and written again in the tests, on purpose
+- Tags: `AB:TIMER.API`, `AB:TIMER.STATE`, `AB:TIMER.TESTS`
+- If you change: REQUEST_TIMEOUT_MS in timerApi.ts, or POLL_ONLINE_MS, POLL_OFFLINE_MS or TIME_BASE_JITTER_MS in useTimer.ts
+- Then also: the same numbers are written again in the tests, so that the tests say what was decided: a call without an answer after 15 seconds counts as no connection; the state is read again every 30 seconds, and every 3 seconds while there is no connection; a new reading of the server time replaces the old one only when the two differ by 1.5 seconds or more (otherwise the seconds would step back now and then). Change the code and its test in the same step and run npm test.
+- If you forget: npm test fails, or this checker fails first.
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = export const REQUEST_TIMEOUT_MS = 15000`
+- Anchor: `AB:TIMER.STATE @ src/lib/useTimer.ts = export const POLL_ONLINE_MS = 30000`
+- Anchor: `AB:TIMER.STATE @ src/lib/useTimer.ts = export const POLL_OFFLINE_MS = 3000`
+- Anchor: `AB:TIMER.STATE @ src/lib/useTimer.ts = export const TIME_BASE_JITTER_MS = 1500`
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerApi.test.ts = expect(REQUEST_TIMEOUT_MS).toBe(15000)`
+- Anchor: `AB:TIMER.TESTS @ src/lib/useTimer.test.ts = expect(POLL_ONLINE_MS).toBe(30000)`
+- Anchor: `AB:TIMER.TESTS @ src/lib/useTimer.test.ts = expect(POLL_OFFLINE_MS).toBe(3000)`
+- Anchor: `AB:TIMER.TESTS @ src/lib/useTimer.test.ts = expect(TIME_BASE_JITTER_MS).toBe(1500)`
+
 ## Things to know (no check is possible)
 - The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).
 - Sign-ups are OFF in the Supabase dashboard. Users are created there by hand, with "Auto Confirm User" ticked.
