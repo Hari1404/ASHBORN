@@ -14,7 +14,7 @@ Full rules: TAGGING_RULES.md
 | LOGIN | Front page: the login screen |
 | MENU | The menu: a button in the top right corner that opens a panel with the four screens |
 | OVERVIEW | Overview / Hub page (not built yet) |
-| TIMER | Pro Timer (not built yet) |
+| TIMER | Pro Timer: the maths and its tests are built; the screen is not built yet |
 | CALENDAR | Calendar (not built yet) |
 | GUIDE | Guide (not built yet) |
 | SHARED | Things used on several pages, such as theme settings (not built yet) |
@@ -48,6 +48,12 @@ Full rules: TAGGING_RULES.md
 | `AB:MENU.NAV` | The list of the four screens (id and name) and the reading of the page address (#timer) that chooses one | `src/lib/screens.ts` | the names of the screens; a new screen needs a new line here (see CONNECTIONS.md C24) |
 | `AB:MENU.PANEL` | The menu itself: the Staggered Menu with its settings (side, layer colours, button colour, items) | `src/components/AppMenu.tsx` | the side it opens from (position), the colours of the sliding layers (colors); isFixed and displayItemNumbering must stay as they are (see CONNECTIONS.md C25) |
 | `AB:MENU.LOOK` | The dark look of the menu: panel colour, text size, button size, the box that holds it | `src/menu.css` | colours and sizes; the blur must stay switched off (see CONNECTIONS.md C25) |
+
+## TIMER (the Pro Timer)
+| Tag | What it is | Files | What you can change there |
+|---|---|---|---|
+| `AB:TIMER.MATHS` | The Pro Timer maths: whole seconds of a session, the clock text, quality (meh, solid, deep, flow), GO BACK IN, milestone messages, the hour ring and its colours, the day total. Pure functions: no screen and no database call | `src/lib/timerMaths.ts` | the neon colours of the ring (NEON_COLORS); the cut-offs, the milestone times and the 60 second rule are decisions, see CONNECTIONS.md C26 and C27 |
+| `AB:TIMER.TESTS` | The automated tests of that maths. Run them with npm test | `src/lib/timerMaths.test.ts` | add tests; the numbers written in them must match the maths, see CONNECTIONS.md C27 |
 
 ## Library components (installed React Bits source: not tagged, never edited)
 To change how one looks or moves, change its props where it is used, at the tag named here.

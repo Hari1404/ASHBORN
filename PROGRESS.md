@@ -35,6 +35,8 @@
 - Packet 04D: Packet 04C undone. The login page has Pattern Waves again. Dark Veil stays installed and unused, it is meant for the page after login.
 - Packet 04E: Dark Veil is the background of the page after login (the temporary signed-in screen). The login page is unchanged.
 - Packet 04F: the menu (Staggered Menu) is on the signed-in screen, with four placeholder screens: Overview, Pro Timer, Calendar, Guide.
+- Packet 05A: the Pro Timer database is set up in Supabase (two tables, row-level security, eight functions). The SQL is in supabase/timer_schema.sql and supabase/timer_verify.sql. The owner ran both by hand and all 5 check rows matched.
+- Packet 05B: the Pro Timer maths as pure functions in src/lib/timerMaths.ts, with automated tests in src/lib/timerMaths.test.ts (run them with npm test, vitest).
 
 ## Next
 - Owner checks the login screen by eye (desktop and phone)

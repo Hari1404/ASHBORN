@@ -278,6 +278,43 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:AUTH.STUB @ src/components/SignedInStub.tsx = <AppMenu />`
 - Check by hand: after any change open the signed-in screen on a laptop and on the phone. The menu button (the word Menu and a plus) is in the top right corner. A tap opens a dark panel (the full width on a phone, a column on the right on a laptop) with Overview, Pro Timer, Calendar and Guide. A tap on an item changes the title of the screen and closes the panel. The Sign out button still works when the panel is closed. The checker does not see how it looks.
 
+## Connections on the TIMER
+
+### C26: The timer maths copies how the database counts a session
+- Tags: `AB:TIMER.MATHS`, `AB:TIMER.TESTS`
+- If you change: the 60 second rule, the way the seconds of a session are counted, the names of the fields of a running session (the type TimerRow), the day rule, or any function in supabase/timer_schema.sql (timer_end, timer_cap_at, timer_row_json, timer_state)
+- Then also: the maths copies timer_end: the end is the smaller of now and cap_at (local midnight); a paused session counts up to paused_at only; then whole seconds (cut off, never rounded) of that moment minus started_at minus paused_seconds, never below 0. The 60 second rule is in the database twice (the table rule timer_sessions_min_length and the line v_active >= 60 in timer_end). The fields of TimerRow are the keys that timer_row_json sends: started_at, tz, status, paused_at, paused_seconds, cap_at. A change in a SQL file has to be run again in the Supabase SQL Editor by the owner (the agent cannot run SQL), and the maths and the tests change in the same packet. The checker does not read SQL files, so the SQL side is checked by hand.
+- If you forget: the screen shows a different number of seconds than the database saves, for example a session that shows 60 seconds and is not saved, or the other way round.
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = export const MIN_SESSION_SECONDS = 60`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = started_at: string`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = paused_at: string`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = paused_seconds: number`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = cap_at: string`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = const end = Math.min(toMicros(serverNowMs), cap)`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = Math.floor(Math.max(0, activeMicros) / 1000000)`
+- Check by hand: after any change compare supabase/timer_schema.sql with the maths. The 60 in timer_sessions_min_length and in timer_end, the function timer_cap_at, the counting lines in timer_end, and the keys in timer_row_json must still say what the maths says.
+
+### C27: The cut-offs are written in the maths and written again in the tests, on purpose
+- Tags: `AB:TIMER.MATHS`, `AB:TIMER.TESTS`
+- If you change: any number at the top of timerMaths.ts: the 60 second rule, the quality cut-offs (10, 30 and 90 minutes), GO BACK IN (under 45 minutes), the milestone minutes, the 10 second live step, the 3600 second ring loop
+- Then also: the same numbers are written again in the tests, so that the tests say what the owner decided. Change both, run npm test, and only change a number the owner has decided to change (PRO_TIMER_PLAN_DECISIONS.md). A cut-off or the 60 second rule is NOT a tiny change: it is also linked to the database (C26). The neon colours and the first ring colour are safe to tune alone and are not pinned.
+- If you forget: npm test fails, or this checker fails first.
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = export const SOLID_FROM_SECONDS = 600`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = export const DEEP_FROM_SECONDS = 1800`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = export const FLOW_FROM_SECONDS = 5400`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = export const GO_BACK_IN_LIMIT_SECONDS = 2700`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = export const MILESTONE_MINUTES = [15, 25, 45, 60, 90, 120, 150, 180] as const`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = export const MAX_LIVE_STEP_SECONDS = 10`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = export const RING_LOOP_SECONDS = 3600`
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerMaths.test.ts = expect(MIN_SESSION_SECONDS).toBe(60)`
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerMaths.test.ts = expect(SOLID_FROM_SECONDS).toBe(600)`
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerMaths.test.ts = expect(DEEP_FROM_SECONDS).toBe(1800)`
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerMaths.test.ts = expect(FLOW_FROM_SECONDS).toBe(5400)`
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerMaths.test.ts = expect(GO_BACK_IN_LIMIT_SECONDS).toBe(2700)`
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerMaths.test.ts = expect([...MILESTONE_MINUTES]).toEqual([15, 25, 45, 60, 90, 120, 150, 180])`
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerMaths.test.ts = expect(MAX_LIVE_STEP_SECONDS).toBe(10)`
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerMaths.test.ts = expect(RING_LOOP_SECONDS).toBe(3600)`
+
 ## Things to know (no check is possible)
 - The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).
 - Sign-ups are OFF in the Supabase dashboard. Users are created there by hand, with "Auto Confirm User" ticked.
