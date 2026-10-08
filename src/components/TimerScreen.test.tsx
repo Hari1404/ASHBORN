@@ -431,7 +431,7 @@ describe("the css of the screen", () => {
   })
 })
 describe("the css of the screen: the desktop layout", () => {
-  const HEADER = "@media (min-width: 1000px) and (min-height: 560px) {"
+  const HEADER = "@media (min-width: 1000px) and (min-height: 560px), (min-width: 600px) and (min-aspect-ratio: 5/4) {"
   const escape = (selector: string): string => selector.replace(/\./g, "\\.")
 
   // The text between the braces of the wide-screen rule, found by counting braces.
@@ -453,9 +453,21 @@ describe("the css of the screen: the desktop layout", () => {
   const wide = (selector: string): string => new RegExp("\\n\\s*" + escape(selector) + " \\{([^}]*)\\}").exec("\n" + wideRules())?.[1] ?? ""
   const phone = (selector: string): string => new RegExp("\\n" + escape(selector) + " \\{([^}]*)\\}").exec("\n" + timerCss)?.[1] ?? ""
 
-  it("has exactly one wide-screen rule: from 1000 px wide and 560 px high", () => {
+  it("has exactly one wide-screen rule: a laptop (1000 px wide and 560 px high) or any window at least 600 px wide and wider than 5 to 4", () => {
     expect(timerCss.split(HEADER).length - 1).toBe(1)
     expect(wideRules()).not.toBe("")
+    expect(HEADER).toContain("(min-width: 1000px) and (min-height: 560px)")
+    expect(HEADER).toContain("(min-width: 600px) and (min-aspect-ratio: 5/4)")
+  })
+
+  it("leaves room for the dial in the narrowest two-column window: at 600 px the dial column is not smaller than the smallest phone dial", () => {
+    const columns = /grid-template-columns:\s*minmax\(0, 1fr\)\s+(\d+)px/.exec(wide(".ab-timer"))?.[1]
+    const gap = Number(/column-gap:\s*clamp\((\d+)px/.exec(wide(".ab-timer"))?.[1])
+    const side = Number(/padding:\s*\d+px clamp\((\d+)px/.exec(wide(".ab-timer"))?.[1])
+    const floor = Number(/max\((\d+)px, calc\(100dvh/.exec(phone(".ab-timer-dial"))?.[1])
+    const narrowest = Number(/\(min-width: (\d+)px\) and \(min-aspect-ratio/.exec(HEADER)?.[1])
+    expect(floor).toBeGreaterThan(0)
+    expect(narrowest - Number(columns) - gap - 2 * side).toBeGreaterThanOrEqual(floor)
   })
 
   it("lies inside the screen's own tagged part of the css", () => {
@@ -515,14 +527,17 @@ describe("the css of the screen: the desktop layout", () => {
   })
 
   it("lets the digits grow with the dial, with the same share of the dial as on the phone", () => {
-    expect(wide(".ab-timer-readout")).toContain("container-type: inline-size;")
+    expect(phone(".ab-timer-readout")).toContain("container-type: inline-size;")
     const phoneBig = Number(/clamp\([^,]+,[^,]+,\s*([\d.]+)rem\)/.exec(phone(".ab-timer-big"))?.[1]) * 16
     const phoneSmall = Number(/clamp\([^,]+,[^,]+,\s*([\d.]+)rem\)/.exec(phone(".ab-timer-small"))?.[1]) * 16
-    const phoneDial = Number(/min\(\d+vw,\s*(\d+)px\)/.exec(phone(".ab-timer-dial"))?.[1])
+    const phoneDial = Number(/min\(\d+vw,\s*(\d+)px,/.exec(phone(".ab-timer-dial"))?.[1])
     const bigShare = Number(/font-size:\s*([\d.]+)cqw;/.exec(wide(".ab-timer-big"))?.[1])
     const smallShare = Number(/font-size:\s*([\d.]+)cqw;/.exec(wide(".ab-timer-small"))?.[1])
     expect(bigShare).toBeCloseTo((phoneBig / phoneDial) * 100, 5)
     expect(smallShare).toBeCloseTo((phoneSmall / phoneDial) * 100, 5)
+    // The phone digits are held to the same share, so that they also shrink with a dial that the window height made smaller.
+    expect(Number(/,\s*([\d.]+)cqw\)/.exec(phone(".ab-timer-big"))?.[1])).toBe(bigShare)
+    expect(Number(/,\s*([\d.]+)cqw\)/.exec(phone(".ab-timer-small"))?.[1])).toBe(smallShare)
   })
 
   it("never touches what keeps the ball clipped and the buttons tappable (overflow, stacking, pointer events)", () => {
@@ -538,6 +553,56 @@ describe("the css of the screen: the desktop layout", () => {
     expect(phone(".ab-timer-dial")).toContain("z-index: 1;")
     expect(phone(".ab-timer-actions")).toContain("z-index: 1;")
     expect(phone(".ab-timer-note")).toContain("z-index: 1;")
+  })
+})
+describe("the css of the screen: the phone fits the window", () => {
+  const block = (selector: string): string => new RegExp("\\n" + selector.replace(/[.[\]="]/g, "\\$&") + " \\{([^}]*)\\}").exec("\n" + timerCss)?.[1] ?? ""
+  const px = (text: string, pattern: RegExp): number => Number(pattern.exec(text)?.[1])
+  const reserve = (text: string): number => px(text, /--ab-timer-reserve:\s*(\d+)px;/)
+
+  // Everything that stands above and below the dial in the one-column screen, taken from the css itself: the padding, two gaps, the line (one text line) and the buttons box.
+  function stack(): number {
+    const screen = block(".ab-timer")
+    const padding = /padding:\s*(\d+)px \d+px (\d+)px;/.exec(screen)
+    const gap = px(screen, /\n\s*gap:\s*(\d+)px;/)
+    const line = px(block(".ab-timer-note"), /font-size:\s*(\d+)px;/) * Number(/min-height:\s*([\d.]+)em;/.exec(block(".ab-timer-note"))?.[1])
+    const buttons = px(block(".ab-timer-actions"), /min-height:\s*(\d+)px;/)
+    return Number(padding?.[1]) + Number(padding?.[2]) + 2 * gap + line + buttons
+  }
+
+  it("makes the dial as high as the window allows, but never smaller than 150 px and never bigger than before", () => {
+    expect(block(".ab-timer-dial")).toContain("width: min(84vw, 400px, max(150px, calc(100dvh - var(--ab-timer-reserve))));")
+    expect(block(".ab-timer-dial")).toContain("aspect-ratio: 1;")
+  })
+
+  it("reserves exactly the room the other things need: the reserve is the height of the stack, plus at most 6 px", () => {
+    expect(stack()).toBe(297)
+    expect(reserve(block(".ab-timer"))).toBeGreaterThanOrEqual(stack())
+    expect(reserve(block(".ab-timer"))).toBeLessThanOrEqual(stack() + 6)
+  })
+
+  it("reserves more when the connection has a problem: the second text line, the gap and the Try again button", () => {
+    const problem = block('.ab-timer[data-link="problem"]')
+    const retry = block(".ab-timer-retry")
+    const retryHeight = 2 * px(retry, /padding:\s*(\d+)px/) + 2 + px(retry, /font-size:\s*(\d+)px;/) * 1.5
+    const extra = px(block(".ab-timer-note"), /font-size:\s*(\d+)px;/) * 1.4 + px(block(".ab-timer"), /\n\s*gap:\s*(\d+)px;/) + retryHeight
+    expect(reserve(problem)).toBeGreaterThanOrEqual(reserve(block(".ab-timer")) + Math.floor(extra) - 1)
+    expect(reserve(problem)).toBeLessThanOrEqual(stack() + extra + 6)
+  })
+
+  it("keeps the problem rule in the screen's part of the css, before the wide-screen rule, and the wide rules never use the reserve", () => {
+    const at = timerCss.indexOf('.ab-timer[data-link="problem"] {')
+    expect(at).toBeGreaterThan(-1)
+    expect(at).toBeLessThan(timerCss.indexOf("@media (min-width: 1000px)"))
+    const start = timerCss.indexOf("@media (min-width: 1000px)")
+    const wideText = timerCss.slice(start, timerCss.indexOf("/* A" + "B:TIMER.SCREEN:END */"))
+    expect(wideText).not.toContain("--ab-timer-reserve")
+  })
+
+  it("holds the digits of the phone to a share of the dial, so that they shrink with a dial the window made smaller", () => {
+    expect(block(".ab-timer-readout")).toContain("container-type: inline-size;")
+    expect(block(".ab-timer-big")).toContain("font-size: min(clamp(2.4rem, 13vw, 4.25rem), 17cqw);")
+    expect(block(".ab-timer-small")).toContain("font-size: min(clamp(1.05rem, 4.6vw, 1.5rem), 6cqw);")
   })
 })
 // AB:TIMER.TESTS:END
