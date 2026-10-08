@@ -152,6 +152,51 @@
 .ab-timer-end {
   width: 100%;
 }
+
+/* The box of the line, the Try again button and the buttons (TimerScreen.tsx). On a phone it is not a box at all (display contents), so the phone screen is one column exactly as before. On a wide screen it is the right-hand side, see below and CONNECTIONS.md C39. */
+.ab-timer-side {
+  display: contents;
+}
+
+/* A wide screen (a laptop, a tablet held wide; a phone held sideways is too small and stays one column): the dial is a big circle on the left, and the line and the buttons stand on the right, in the middle of the screen's height. These rules must stay AFTER the phone rules above, because they replace some of them. They must not change overflow, z-index or pointer-events (CONNECTIONS.md C31). CONNECTIONS.md C39. */
+@media (min-width: 1000px) and (min-height: 560px) {
+  .ab-timer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-rows: minmax(0, 1fr);
+    align-items: center;
+    column-gap: clamp(32px, 5vw, 96px);
+    padding: 72px clamp(32px, 6vw, 112px) 48px;
+  }
+
+  .ab-timer-dial {
+    grid-column: 1;
+    justify-self: center;
+    width: min(100%, calc(100dvh - 168px), 780px);
+  }
+
+  /* The readout is a size container, so that the digits grow with the dial: 17 and 6 percent of its width, the same share as on a phone (68 and 24 of 400). */
+  .ab-timer-readout {
+    container-type: inline-size;
+  }
+
+  .ab-timer-big {
+    font-size: 17cqw;
+  }
+
+  .ab-timer-small {
+    font-size: 6cqw;
+  }
+
+  .ab-timer-side {
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+  }
+}
 /* AB:TIMER.SCREEN:END */
 
 /* AB:TIMER.BALL:START */

@@ -13,6 +13,7 @@ import "../timer.css"
 // Start and Pause / Resume are normal taps. End Session is the library Hold Button (src/components/HoldButton.tsx, never edited): hold it until it is full.
 // The ball sits in a box that is larger than the dial, and the ball is a share of that box (see CONNECTIONS.md C31).
 // The look of the clock digits (Space Grotesk, fixed width) is in timer.css (see CONNECTIONS.md C32).
+// On a phone the screen is one column: the dial, then the line, then the buttons. On a wide screen (a laptop) the dial is a big circle on the left and the line and the buttons stand on the right, inside the box ab-timer-side (see CONNECTIONS.md C39). The tags and the rest that come later go into that box too.
 
 function noticeText(notice: EndNotice): string {
   const head = notice.capped ? "Day ended at midnight. " : ""
@@ -46,45 +47,47 @@ export default function TimerScreen() {
           <p className="ab-timer-small">{formatClock(timer.dayTotal)}</p>
         </div>
       </div>
-      <p className="ab-timer-note" role="status">
-        {note}
-      </p>
-      {timer.link === "problem" ? (
-        <button className="ab-timer-retry" type="button" onClick={timer.retry}>
-          Try again
-        </button>
-      ) : null}
-      <div className="ab-timer-actions">
-        {timer.link === "loading" ? null : timer.status === "idle" ? (
-          <button className="ab-timer-pill" type="button" disabled={!ready} onClick={timer.start}>
-            Start
+      <div className="ab-timer-side">
+        <p className="ab-timer-note" role="status">
+          {note}
+        </p>
+        {timer.link === "problem" ? (
+          <button className="ab-timer-retry" type="button" onClick={timer.retry}>
+            Try again
           </button>
-        ) : (
-          <>
-            <button
-              className="ab-timer-pill"
-              type="button"
-              disabled={!ready}
-              onClick={timer.status === "running" ? timer.pause : timer.resume}
-            >
-              {timer.status === "running" ? "Pause" : "Resume"}
+        ) : null}
+        <div className="ab-timer-actions">
+          {timer.link === "loading" ? null : timer.status === "idle" ? (
+            <button className="ab-timer-pill" type="button" disabled={!ready} onClick={timer.start}>
+              Start
             </button>
-            <HoldButton
-              className="ab-timer-end"
-              size="lg"
-              holdTime={1500}
-              backgroundColor="#1c1c20"
-              fillColor="#ff2a55"
-              textColor="#f5f5f5"
-              fillTextColor="#ffffff"
-              doneLabel="Ended"
-              disabled={!ready}
-              onHold={timer.end}
-            >
-              Hold to end session
-            </HoldButton>
-          </>
-        )}
+          ) : (
+            <>
+              <button
+                className="ab-timer-pill"
+                type="button"
+                disabled={!ready}
+                onClick={timer.status === "running" ? timer.pause : timer.resume}
+              >
+                {timer.status === "running" ? "Pause" : "Resume"}
+              </button>
+              <HoldButton
+                className="ab-timer-end"
+                size="lg"
+                holdTime={1500}
+                backgroundColor="#1c1c20"
+                fillColor="#ff2a55"
+                textColor="#f5f5f5"
+                fillTextColor="#ffffff"
+                doneLabel="Ended"
+                disabled={!ready}
+                onHold={timer.end}
+              >
+                Hold to end session
+              </HoldButton>
+            </>
+          )}
+        </div>
       </div>
     </main>
   )

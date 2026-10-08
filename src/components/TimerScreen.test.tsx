@@ -257,6 +257,63 @@ describe("TimerScreen: the background", () => {
   })
 })
 
+describe("TimerScreen: the desktop layout (structure)", () => {
+  it("puts the line and the buttons into one box, the right-hand side, directly after the dial and directly inside the screen", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    const side = q(".ab-timer-side")
+    expect(side.parentElement?.classList.contains("ab-timer")).toBe(true)
+    expect(side.previousElementSibling).toBe(q(".ab-timer-dial"))
+    expect(side.nextElementSibling).toBeNull()
+  })
+
+  it("keeps the line, then the buttons, inside that box, in this order", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    const side = q(".ab-timer-side")
+    expect(q(".ab-timer-note").parentElement).toBe(side)
+    expect(q(".ab-timer-actions").parentElement).toBe(side)
+    expect(q(".ab-timer-note").compareDocumentPosition(q(".ab-timer-actions")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("keeps Pause and the Hold Button inside the buttons box inside that box", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    const actions = q(".ab-timer-actions")
+    expect(q(".ab-timer-pill").parentElement).toBe(actions)
+    expect(q(".ab-timer-end").closest(".ab-timer-actions")).toBe(actions)
+    expect(q(".ab-timer-end").closest(".ab-timer-side")).toBe(q(".ab-timer-side"))
+  })
+
+  it("puts the Try again button between the line and the buttons, inside that box", () => {
+    show({ link: "problem", problem: "Something went wrong." })
+    const side = q(".ab-timer-side")
+    expect(q(".ab-timer-retry").parentElement).toBe(side)
+    expect(q(".ab-timer-note").compareDocumentPosition(q(".ab-timer-retry")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(q(".ab-timer-retry").compareDocumentPosition(q(".ab-timer-actions")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("keeps the box and its two children while loading, so that the layout does not jump", () => {
+    show({ link: "loading" })
+    const side = q(".ab-timer-side")
+    expect(side.contains(q(".ab-timer-note"))).toBe(true)
+    expect(side.contains(q(".ab-timer-actions"))).toBe(true)
+  })
+
+  it("keeps the dial free of the line and the buttons: only the ball and the two clocks are in it", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    const dial = q(".ab-timer-dial")
+    expect(dial.contains(q("#ball-stub"))).toBe(true)
+    expect(dial.contains(q(".ab-timer-readout"))).toBe(true)
+    expect(dial.contains(q(".ab-timer-side"))).toBe(false)
+    expect(dial.contains(q(".ab-timer-note"))).toBe(false)
+    expect(dial.contains(q(".ab-timer-actions"))).toBe(false)
+  })
+
+  it("has the screen's children in the order background, dial, side", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    const kids = Array.from(q(".ab-timer").children)
+    expect(kids.map((k) => k.id || k.className)).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side"])
+  })
+})
+
 describe("TimerScreen: the buttons", () => {
   it("shows nothing to press while the first reading is loading", () => {
     show({ link: "loading" })
@@ -371,6 +428,116 @@ describe("the css of the screen", () => {
     expect(timerCss).toContain('.ab-timer[data-state="paused"] .ab-timer-ball {')
     expect(timerCss).toContain('.ab-timer[data-state="paused"] .ab-timer-big {')
     expect(timerCss).toContain('.ab-timer[data-link="loading"] .ab-timer-dial {')
+  })
+})
+describe("the css of the screen: the desktop layout", () => {
+  const HEADER = "@media (min-width: 1000px) and (min-height: 560px) {"
+  const escape = (selector: string): string => selector.replace(/\./g, "\\.")
+
+  // The text between the braces of the wide-screen rule, found by counting braces.
+  function wideRules(): string {
+    const start = timerCss.indexOf(HEADER)
+    if (start < 0) return ""
+    let depth = 0
+    for (let i = start + HEADER.length - 1; i < timerCss.length; i++) {
+      if (timerCss[i] === "{") depth++
+      else if (timerCss[i] === "}") {
+        depth--
+        if (depth === 0) return timerCss.slice(start + HEADER.length, i)
+      }
+    }
+    return ""
+  }
+
+  // A rule of the wide-screen block, and a rule of the phone (top level, at the start of a line).
+  const wide = (selector: string): string => new RegExp("\\n\\s*" + escape(selector) + " \\{([^}]*)\\}").exec("\n" + wideRules())?.[1] ?? ""
+  const phone = (selector: string): string => new RegExp("\\n" + escape(selector) + " \\{([^}]*)\\}").exec("\n" + timerCss)?.[1] ?? ""
+
+  it("has exactly one wide-screen rule: from 1000 px wide and 560 px high", () => {
+    expect(timerCss.split(HEADER).length - 1).toBe(1)
+    expect(wideRules()).not.toBe("")
+  })
+
+  it("lies inside the screen's own tagged part of the css", () => {
+    // The two marker lines are written in two pieces here, so that the tag checker does not take them for markers of this test file.
+    const marker = (edge: string): string => "/* A" + "B:TIMER.SCREEN:" + edge + " */"
+    const at = timerCss.indexOf(HEADER)
+    expect(timerCss.indexOf(marker("START"))).toBeGreaterThan(-1)
+    expect(timerCss.indexOf(marker("START"))).toBeLessThan(at)
+    expect(timerCss.indexOf(marker("END"))).toBeGreaterThan(at)
+  })
+
+  it("comes AFTER every phone rule it replaces, because it replaces them by being later", () => {
+    const at = timerCss.indexOf(HEADER)
+    for (const selector of [".ab-timer", ".ab-timer-dial", ".ab-timer-readout", ".ab-timer-big", ".ab-timer-small", ".ab-timer-side"]) {
+      const first = timerCss.indexOf("\n" + selector + " {")
+      expect(first, selector).toBeGreaterThan(-1)
+      expect(first, selector).toBeLessThan(at)
+    }
+  })
+
+  it("makes the screen two columns, with the dial in the first and the side in the second", () => {
+    const screen = wide(".ab-timer")
+    expect(screen).toContain("display: grid;")
+    expect(screen).toContain("grid-template-columns: minmax(0, 1fr) 340px;")
+    expect(wide(".ab-timer-dial")).toContain("grid-column: 1;")
+    expect(wide(".ab-timer-side")).toContain("grid-column: 2;")
+  })
+
+  it("makes the right-hand column at least as wide as the buttons, so that the buttons are never squeezed", () => {
+    const column = Number(/grid-template-columns:\s*minmax\(0, 1fr\)\s+(\d+)px/.exec(wide(".ab-timer"))?.[1])
+    const buttons = Number(/max-width:\s*(\d+)px/.exec(phone(".ab-timer-actions"))?.[1])
+    expect(buttons).toBeGreaterThan(0)
+    expect(column).toBeGreaterThanOrEqual(buttons)
+  })
+
+  it("centres the right-hand side as a column in the middle of the height", () => {
+    const side = wide(".ab-timer-side")
+    expect(side).toContain("display: flex;")
+    expect(side).toContain("flex-direction: column;")
+    expect(side).toContain("align-items: center;")
+    expect(side).toContain("justify-content: center;")
+    expect(wide(".ab-timer")).toContain("align-items: center;")
+  })
+
+  it("makes the dial a big circle that never grows taller than the screen allows", () => {
+    const dial = wide(".ab-timer-dial")
+    expect(dial).toContain("width: min(100%, calc(100dvh - 168px), 780px);")
+    expect(dial).toContain("justify-self: center;")
+    expect(phone(".ab-timer-dial")).toContain("aspect-ratio: 1;")
+  })
+
+  it("keeps the phone as it was: one column, and the box of the side is no box at all", () => {
+    const screen = phone(".ab-timer")
+    expect(screen).toContain("display: flex;")
+    expect(screen).toContain("flex-direction: column;")
+    expect(phone(".ab-timer-side")).toContain("display: contents;")
+  })
+
+  it("lets the digits grow with the dial, with the same share of the dial as on the phone", () => {
+    expect(wide(".ab-timer-readout")).toContain("container-type: inline-size;")
+    const phoneBig = Number(/clamp\([^,]+,[^,]+,\s*([\d.]+)rem\)/.exec(phone(".ab-timer-big"))?.[1]) * 16
+    const phoneSmall = Number(/clamp\([^,]+,[^,]+,\s*([\d.]+)rem\)/.exec(phone(".ab-timer-small"))?.[1]) * 16
+    const phoneDial = Number(/min\(\d+vw,\s*(\d+)px\)/.exec(phone(".ab-timer-dial"))?.[1])
+    const bigShare = Number(/font-size:\s*([\d.]+)cqw;/.exec(wide(".ab-timer-big"))?.[1])
+    const smallShare = Number(/font-size:\s*([\d.]+)cqw;/.exec(wide(".ab-timer-small"))?.[1])
+    expect(bigShare).toBeCloseTo((phoneBig / phoneDial) * 100, 5)
+    expect(smallShare).toBeCloseTo((phoneSmall / phoneDial) * 100, 5)
+  })
+
+  it("never touches what keeps the ball clipped and the buttons tappable (overflow, stacking, pointer events)", () => {
+    const all = wideRules()
+    for (const word of ["overflow", "z-index", "pointer-events", "position:", "isolation", "mix-blend-mode"]) {
+      expect(all, word).not.toContain(word)
+    }
+  })
+
+  it("leaves the clip, the stacking and the dim of the phone rules in place", () => {
+    expect(phone(".ab-timer")).toContain("overflow: hidden;")
+    expect(phone(".ab-timer")).toContain("isolation: isolate;")
+    expect(phone(".ab-timer-dial")).toContain("z-index: 1;")
+    expect(phone(".ab-timer-actions")).toContain("z-index: 1;")
+    expect(phone(".ab-timer-note")).toContain("z-index: 1;")
   })
 })
 // AB:TIMER.TESTS:END
