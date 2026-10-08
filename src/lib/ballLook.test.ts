@@ -1,9 +1,15 @@
+/// <reference types="node" />
+import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import {
   BALL_BLEND_MS,
   BALL_FADE_MS,
+  BALL_MOTIONS,
   BALL_PALETTES,
+  BALL_PRESETS,
+  BALL_SHAPES,
   BALL_WHITE,
+  ballFlavour,
   ballPaletteIndex,
   ballParticles,
   ballStep,
@@ -218,6 +224,163 @@ describe("how many grains of dust the ball draws", () => {
     expect(ballParticles(0)).toBe(15000)
     expect(ballParticles(1)).toBe(6000)
     expect(ballParticles(2)).toBe(3000)
+  })
+})
+// The names the library knows, read from the library file itself, so that a preset, a motion or a shape that the library adds is noticed here (see CONNECTIONS.md C36).
+const libraryText = readFileSync("src/components/CrystalizedBall.tsx", "utf8")
+
+function libraryNames(typeName: string): string[] {
+  const found = new RegExp("type " + typeName + " = ([^;]+);").exec(libraryText)
+  if (found === null) throw new Error("the library has no type " + typeName)
+  return [...found[1].matchAll(/'([A-Za-z]+)'/g)].map((m) => m[1])
+}
+
+// Two families of started_at texts. The first changes in the minutes and seconds (seedOf above). The second changes only in the last digits: the hardest case for a weak hash.
+function microSeedOf(n: number): string {
+  return "2026-10-08T07:00:00." + String(n).padStart(6, "0") + "+00:00"
+}
+
+const FAMILIES: readonly (readonly [string, (n: number) => string])[] = [
+  ["started_at texts that differ by minutes and seconds", seedOf],
+  ["started_at texts that differ only in the last digits", microSeedOf],
+]
+const DRAWN = 4000
+
+// The chi-square number of a table of counts: how far the counts are from what two traits that do not depend on each other would give. A bigger number is a bigger distance.
+function chiSquare(table: number[][]): number {
+  const rowSums = table.map((row) => row.reduce((a, b) => a + b, 0))
+  const colSums = table[0].map((_, c) => table.reduce((a, row) => a + row[c], 0))
+  const total = rowSums.reduce((a, b) => a + b, 0)
+  let sum = 0
+  for (let r = 0; r < table.length; r++) {
+    for (let c = 0; c < colSums.length; c++) {
+      const expected = (rowSums[r] * colSums[c]) / total
+      sum += (table[r][c] - expected) ** 2 / expected
+    }
+  }
+  return sum
+}
+
+function tableOf(pairs: [number, number][], rows: number, cols: number): number[][] {
+  const table = Array.from({ length: rows }, () => new Array<number>(cols).fill(0))
+  for (const [r, c] of pairs) table[r][c]++
+  return table
+}
+
+// The value that a chi-square number of a table with this many degrees of freedom stays below in 999 of 1000 cases when the traits are independent (p = 0.001). The seeds are fixed, so a test never fails by luck: it fails only when the draw is really lopsided or really tied together.
+const LIMIT_AT_999_OF_1000: Record<number, number> = { 1: 10.83, 3: 16.27, 5: 20.52, 7: 24.32, 15: 37.7, 21: 46.8, 35: 66.62 }
+
+describe("the flavour lists", () => {
+  it("are exactly the presets, dust motions and grain shapes of the library", () => {
+    expect([...BALL_PRESETS].sort()).toEqual(libraryNames("Preset").sort())
+    expect([...BALL_MOTIONS].sort()).toEqual(libraryNames("Motion").sort())
+    expect([...BALL_SHAPES].sort()).toEqual(libraryNames("ParticleShape").sort())
+  })
+
+  it("have no name twice", () => {
+    expect(new Set(BALL_PRESETS).size).toBe(BALL_PRESETS.length)
+    expect(new Set(BALL_MOTIONS).size).toBe(BALL_MOTIONS.length)
+    expect(new Set(BALL_SHAPES).size).toBe(BALL_SHAPES.length)
+  })
+
+  it("have a preset for every palette to be drawn with: more than one of each kind", () => {
+    expect(BALL_PRESETS.length).toBeGreaterThan(1)
+    expect(BALL_MOTIONS.length).toBeGreaterThan(1)
+    expect(BALL_SHAPES.length).toBeGreaterThan(1)
+  })
+})
+
+describe("the flavour of a session", () => {
+  it("is the same for the same seed, and made of names from the lists", () => {
+    for (let n = 0; n < 60; n++) {
+      const flavour = ballFlavour(seedOf(n))
+      expect(ballFlavour(seedOf(n))).toEqual(flavour)
+      expect(BALL_PRESETS).toContain(flavour.preset)
+      expect(BALL_MOTIONS).toContain(flavour.motion)
+      expect(BALL_SHAPES).toContain(flavour.particleShape)
+    }
+  })
+
+  it("gives an empty seed a valid flavour too", () => {
+    const flavour = ballFlavour("")
+    expect(BALL_PRESETS).toContain(flavour.preset)
+    expect(BALL_MOTIONS).toContain(flavour.motion)
+    expect(BALL_SHAPES).toContain(flavour.particleShape)
+  })
+
+  it("gives only the three settings of the library that the flavour is about", () => {
+    expect(Object.keys(ballFlavour(seedOf(1))).sort()).toEqual(["motion", "particleShape", "preset"])
+  })
+
+  for (const [family, make] of FAMILIES) {
+    describe("for " + family, () => {
+      const seeds = Array.from({ length: DRAWN }, (_, n) => make(n))
+      const flavours = seeds.map(ballFlavour)
+      const presets = flavours.map((f) => BALL_PRESETS.indexOf(f.preset))
+      const motions = flavours.map((f) => BALL_MOTIONS.indexOf(f.motion))
+      const shapes = flavours.map((f) => BALL_SHAPES.indexOf(f.particleShape))
+      const palettes = seeds.map(ballPaletteIndex)
+
+      it("uses every preset, every motion and every shape, none of them much less than the others", () => {
+        for (const [drawn, count] of [
+          [presets, BALL_PRESETS.length],
+          [motions, BALL_MOTIONS.length],
+          [shapes, BALL_SHAPES.length],
+        ] as const) {
+          const counts = new Array<number>(count).fill(0)
+          for (const d of drawn) counts[d]++
+          const fair = DRAWN / count
+          for (const c of counts) {
+            expect(c).toBeGreaterThan(fair * 0.8)
+            expect(c).toBeLessThan(fair * 1.2)
+          }
+          const chi = counts.reduce((sum, c) => sum + (c - fair) ** 2 / fair, 0)
+          expect(chi).toBeLessThan(LIMIT_AT_999_OF_1000[count - 1])
+        }
+      })
+
+      it("draws the preset, the motion and the shape independently of each other", () => {
+        const pairs: [string, number[], number, number[], number][] = [
+          ["preset and motion", presets, BALL_PRESETS.length, motions, BALL_MOTIONS.length],
+          ["preset and shape", presets, BALL_PRESETS.length, shapes, BALL_SHAPES.length],
+          ["motion and shape", motions, BALL_MOTIONS.length, shapes, BALL_SHAPES.length],
+        ]
+        for (const [name, a, aCount, b, bCount] of pairs) {
+          const chi = chiSquare(tableOf(a.map((v, i) => [v, b[i]]), aCount, bCount))
+          const limit = LIMIT_AT_999_OF_1000[(aCount - 1) * (bCount - 1)]
+          expect(chi, name).toBeLessThan(limit)
+        }
+      })
+
+      it("draws each of them independently of the palette, so a palette does not always come with the same look", () => {
+        const pairs: [string, number[], number][] = [
+          ["palette and preset", presets, BALL_PRESETS.length],
+          ["palette and motion", motions, BALL_MOTIONS.length],
+          ["palette and shape", shapes, BALL_SHAPES.length],
+        ]
+        for (const [name, traits, count] of pairs) {
+          const chi = chiSquare(tableOf(palettes.map((v, i) => [v, traits[i]]), BALL_PALETTES.length, count))
+          const limit = LIMIT_AT_999_OF_1000[(BALL_PALETTES.length - 1) * (count - 1)]
+          expect(chi, name).toBeLessThan(limit)
+        }
+      })
+
+      it("comes up in every one of the combinations of preset, motion and shape", () => {
+        const seen = new Set(flavours.map((f) => f.preset + "/" + f.motion + "/" + f.particleShape))
+        expect(seen.size).toBe(BALL_PRESETS.length * BALL_MOTIONS.length * BALL_SHAPES.length)
+      })
+    })
+  }
+
+  it("changes the preset for about 7 of 8 neighbouring sessions, so two sessions in a row mostly look different", () => {
+    let same = 0
+    const pairs = 2000
+    for (let n = 0; n < pairs; n++) {
+      if (ballFlavour(microSeedOf(n)).preset === ballFlavour(microSeedOf(n + 1)).preset) same++
+    }
+    const fair = pairs / BALL_PRESETS.length
+    expect(same).toBeGreaterThan(fair * 0.75)
+    expect(same).toBeLessThan(fair * 1.25)
   })
 })
 // AB:TIMER.TESTS:END

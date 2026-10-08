@@ -399,6 +399,7 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:TIMER.TESTS @ src/lib/useTimer.test.ts = expect(POLL_OFFLINE_MS).toBe(3000)`
 - Anchor: `AB:TIMER.TESTS @ src/lib/useTimer.test.ts = expect(TIME_BASE_JITTER_MS).toBe(1500)`
 
+
 ### C34: The colour steps of the ball are the quality names of the maths, and every palette has three colours
 - Tags: `AB:TIMER.BALL-LOOK`, `AB:TIMER.MATHS`, `AB:TIMER.TESTS`
 - If you change: the quality names or the function qualityOf in timerMaths.ts, the list STEPS in ballLook.ts, the number of colours of a palette, or the cut-offs of the quality (C27)
@@ -414,7 +415,7 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 
 ### C35: The ball needs WebGL 2 and is a library file, so it must never break the screen; its fade time is written in the code and in the css
 - Tags: `AB:TIMER.BALL`, `AB:TIMER.BALL-LOOK`, `AB:TIMER.TESTS`
-- If you change: canDrawBall or BallGuard in TimerBall.tsx, the library file CrystalizedBall.tsx (never edit it), the settings the ball is given (preset, color, size, particleCount, intro, interactive, paused), the dust grains in ballLook.ts, BALL_FADE_MS in ballLook.ts, or the fade time of .ab-timer-ball in timer.css
+- If you change: canDrawBall or BallGuard in TimerBall.tsx, the library file CrystalizedBall.tsx (never edit it), the settings the ball is given (preset, motion, particleShape, color, size, particleCount, intro, interactive, paused), the dust grains in ballLook.ts, BALL_FADE_MS in ballLook.ts, or the fade time of .ab-timer-ball in timer.css
 - Then also: the library ball draws with WebGL 2 (the graphics chip, through the browser). A browser that cannot do it gets no ball: canDrawBall asks for a WebGL 2 context first and gives it back, and BallGuard catches an error thrown while the ball is made, so the clocks and the buttons keep working. Both must stay. The settings of the ball are changed only by its props in TimerBall.tsx, never inside the library file (TAGGING_RULES.md, rule 6). A newer copy of the library file must be looked at on the laptop and on the phone before it is trusted: the tests use a stand-in, not the real ball. The number of dust grains follows the lite level (15000, 6000 and 3000 in ballLook.ts): the ball is the heaviest thing on the screen and the screen stays open for hours. The fade in the css (700 ms) and BALL_FADE_MS (700) are the same on purpose, because the code takes the ball away when the fade ends; a test compares them.
 - If you forget: a browser without WebGL 2 shows an error or a blank screen, the ball is cut off while it fades, or the phone gets hot.
 - Anchor: `AB:TIMER.BALL @ src/components/TimerBall.tsx = const gl = canvas.getContext("webgl2")`
@@ -426,6 +427,21 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:TIMER.TESTS @ src/lib/ballLook.test.ts = expect(BALL_FADE_MS).toBe(700)`
 - Anchor: `AB:TIMER.TESTS @ src/components/TimerBall.test.tsx = expect(fade).toBe(BALL_FADE_MS)`
 - Check by hand: on the phone open the page address #timer and start a session: the ball lights up, the clocks stay readable, and the phone does not get hot after 10 minutes. In a browser without WebGL 2 the clocks and the buttons still work.
+
+### C36: The look of a session is drawn from the seed, made only of names the library has, drawn independently, and kept until the ball is taken away
+- Tags: `AB:TIMER.BALL-LOOK`, `AB:TIMER.BALL`, `AB:TIMER.TESTS`
+- If you change: the lists BALL_PRESETS, BALL_MOTIONS or BALL_SHAPES in ballLook.ts, the way a trait is drawn (the function drawFor, the mixing in mixBits, the salts "preset", "motion" and "shape" in ballFlavour), the place where LitBall in TimerBall.tsx keeps the flavour, the effect in TimerBall that lights a new ball, or the library file CrystalizedBall.tsx (a newer copy)
+- Then also: a session draws a flavour (the library preset, the way the dust moves and the shape of a grain of dust) from the started_at text of the session, so a reload and a second device show the same ball. The names in the three lists are the names of the library: the types of the lists come from the library props, so a name the library no longer has stops compiling, and a test reads the library file and fails when the library has a preset, a motion or a shape that a list does not (and the other way round). The colour is never taken from the preset (the palette gives it) and the number of grains is never taken from it (the lite level gives it, C35). Each trait is drawn with its own salt and a final mixing of the bits. Without them the shape (two values) would only depend on the lowest bit of the seed text and would move together with the palette; the tests draw 4000 seeds of two kinds and check that every trait is spread evenly and that no two traits, and no trait and the palette, depend on each other. The flavour is drawn ONCE when a ball is made (useState in LitBall) and kept until the ball is taken away: when a session ends the seed becomes empty while the ball still fades for BALL_FADE_MS, and a flavour drawn again from an empty seed would change the look in the middle of the fade. TimerBall lights a new ball when a session starts and also when the seed changes while a session is shown (another device ended the session and started a new one between two readings), because the flavour is kept from the first draw. An empty seed does not light a new ball. A new preset can have a very different strength of glow: after the library gets a new preset, look at it with the colours of all palettes before it is trusted (the tests cannot see it).
+- If you forget: a preset that is not in the library draws the plain default look, a new library preset never comes up, the shape follows the palette so that some palettes always have round dust, or the look jumps in the middle of the fade when a session ends.
+- Anchor: `AB:TIMER.BALL-LOOK @ src/lib/ballLook.ts = type BallPreset = NonNullable<CrystalizedBallProps["preset"]>`
+- Anchor: `AB:TIMER.BALL-LOOK @ src/lib/ballLook.ts = return Math.floor((mixBits(seedToNumber(salt + ":" + seed)) / 4294967296) * count)`
+- Anchor: `AB:TIMER.BALL-LOOK @ src/lib/ballLook.ts = particleShape: BALL_SHAPES[drawFor(seed, "shape", BALL_SHAPES.length)],`
+- Anchor: `AB:TIMER.BALL @ src/components/TimerBall.tsx = const [flavour] = useState(() => ballFlavour(seed))`
+- Anchor: `AB:TIMER.BALL @ src/components/TimerBall.tsx = particleShape={flavour.particleShape}`
+- Anchor: `AB:TIMER.BALL @ src/components/TimerBall.tsx = if (!sameSession) setLit((n) => n + 1)`
+- Anchor: `AB:TIMER.TESTS @ src/lib/ballLook.test.ts = expect([...BALL_PRESETS].sort()).toEqual(libraryNames("Preset").sort())`
+- Anchor: `AB:TIMER.TESTS @ src/components/TimerBall.test.tsx = for (const props of duringFade) expect(flavourOf(props)).toEqual(first)`
+- Check by hand: start ten sessions in a row (or look at ten different seeds) on the laptop and on the phone: the clocks stay readable on top of every preset, none of the looks is much dimmer or much hotter than the others, and the look of a session does not change while the ball fades.
 
 ## Things to know (no check is possible)
 - The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).

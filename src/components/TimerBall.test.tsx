@@ -38,7 +38,7 @@ vi.mock("@/components/CrystalizedBall", async () => {
   }
 })
 
-import { BALL_BLEND_MS, BALL_FADE_MS, BALL_PALETTES, BALL_WHITE, ballPaletteIndex } from "@/lib/ballLook"
+import { BALL_BLEND_MS, BALL_FADE_MS, BALL_PALETTES, BALL_WHITE, ballFlavour, ballPaletteIndex } from "@/lib/ballLook"
 import { DEEP_FROM_SECONDS, SOLID_FROM_SECONDS } from "@/lib/timerMaths"
 import TimerBall from "./TimerBall"
 
@@ -158,10 +158,9 @@ describe("TimerBall: when it draws", () => {
 })
 
 describe("TimerBall: what it hands to the library ball", () => {
-  it("uses the plasma look at 66 percent of its box, with the ignite and the cursor wake on", () => {
+  it("draws the ball at 66 percent of its box, with the ignite and the cursor wake on", () => {
     show({ active: true })
     const props = lastProps()
-    expect(props.preset).toBe("plasma")
     expect(props.size).toBe(0.66)
     expect(props.intro).toBe(true)
     expect(props.interactive).toBe(true)
@@ -318,6 +317,103 @@ describe("TimerBall: lighting and fading", () => {
     wait(BALL_FADE_MS * 3)
     expect(has(".ab-timer-ball")).toBe(true)
     expect(box().hasAttribute("data-out")).toBe(false)
+    expect(state.mounts).toBe(1)
+  })
+})
+
+// The flavour: the preset, the way the dust moves and the shape of a grain, drawn from the seed (see CONNECTIONS.md C36).
+type Flavour = { preset: unknown; motion: unknown; particleShape: unknown }
+
+function flavourOf(props: Record<string, unknown>): Flavour {
+  return { preset: props.preset, motion: props.motion, particleShape: props.particleShape }
+}
+
+// A seed in the shape the database sends, whose flavour is different from the flavour of the seed given in all three traits.
+function seedWithOtherFlavour(than: string): string {
+  const old = ballFlavour(than)
+  for (let n = 1; n < 5000; n++) {
+    const seed = "2026-10-08T07:00:00." + String(n).padStart(6, "0") + "+00:00"
+    const f = ballFlavour(seed)
+    if (f.preset !== old.preset && f.motion !== old.motion && f.particleShape !== old.particleShape) return seed
+  }
+  throw new Error("no seed with another flavour")
+}
+
+const OTHER_SEED = seedWithOtherFlavour(SEED)
+
+describe("TimerBall: the flavour of the ball", () => {
+  it("hands the library the preset, the dust motion and the grain shape drawn from the seed", () => {
+    show({ active: true, seed: SEED })
+    expect(flavourOf(lastProps())).toEqual(ballFlavour(SEED))
+  })
+
+  it("draws the same flavour for the same session on a second device or after a reload", () => {
+    show({ active: true, seed: SEED })
+    const first = flavourOf(lastProps())
+    dispose()
+    show({ active: true, seed: SEED, seconds: DEEP_FROM_SECONDS + 5 })
+    expect(flavourOf(lastProps())).toEqual(first)
+  })
+
+  it("keeps the flavour through the colour steps and a pause", () => {
+    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
+    const first = flavourOf(lastProps())
+    show({ active: true, seconds: SOLID_FROM_SECONDS })
+    wait(BALL_BLEND_MS)
+    show({ active: true, seconds: DEEP_FROM_SECONDS, paused: true })
+    wait(BALL_BLEND_MS)
+    expect(flavourOf(lastProps())).toEqual(first)
+    expect(state.mounts).toBe(1)
+  })
+
+  it("keeps the flavour in every picture of the fade, although the seed is empty as soon as the session ends", () => {
+    show({ active: true, seed: SEED, seconds: 100 })
+    const first = flavourOf(lastProps())
+    const before = state.props.length
+    // This is what the screen does when a session ends: nothing runs, the seconds are 0 and the seed is gone.
+    show({ active: false, seed: "", seconds: 0 })
+    wait(BALL_FADE_MS - 100)
+    expect(has(".ab-timer-ball")).toBe(true)
+    const duringFade = state.props.slice(before)
+    expect(duringFade.length).toBeGreaterThan(0)
+    for (const props of duringFade) expect(flavourOf(props)).toEqual(first)
+    expect(ballFlavour("")).not.toEqual(first)
+  })
+
+  it("draws the flavour of the new seed for a new session, also when it starts while the old ball fades", () => {
+    show({ active: true, seed: SEED })
+    show({ active: false, seed: "" })
+    wait(300)
+    show({ active: true, seed: OTHER_SEED })
+    expect(flavourOf(lastProps())).toEqual(ballFlavour(OTHER_SEED))
+    expect(flavourOf(lastProps())).not.toEqual(ballFlavour(SEED))
+    expect(state.mounts).toBe(2)
+  })
+
+  it("lights a new ball with the new flavour when the seed changes while a session is shown, so every device shows the same ball for the same session", () => {
+    show({ active: true, seed: SEED, seconds: 100 })
+    expect(state.mounts).toBe(1)
+    show({ active: true, seed: OTHER_SEED, seconds: 5 })
+    expect(state.mounts).toBe(2)
+    expect(state.unmounts).toBe(1)
+    expect(flavourOf(lastProps())).toEqual(ballFlavour(OTHER_SEED))
+    expect(lastProps().color).toBe(BALL_WHITE)
+  })
+
+  it("does not light a new ball when the same seed is read again", () => {
+    show({ active: true, seed: SEED, seconds: 100 })
+    show({ active: true, seed: SEED, seconds: 101 })
+    show({ active: true, seed: SEED, seconds: 102, paused: true })
+    expect(state.mounts).toBe(1)
+  })
+
+  it("keeps the ball it has when the seed is empty for a moment while a session is still shown", () => {
+    show({ active: true, seed: SEED, seconds: 100 })
+    const first = flavourOf(lastProps())
+    show({ active: true, seed: "", seconds: 101 })
+    expect(state.mounts).toBe(1)
+    expect(flavourOf(lastProps())).toEqual(first)
+    show({ active: true, seed: SEED, seconds: 102 })
     expect(state.mounts).toBe(1)
   })
 })
