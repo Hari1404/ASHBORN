@@ -443,6 +443,44 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:TIMER.TESTS @ src/components/TimerBall.test.tsx = for (const props of duringFade) expect(flavourOf(props)).toEqual(first)`
 - Check by hand: start ten sessions in a row (or look at ten different seeds) on the laptop and on the phone: the clocks stay readable on top of every preset, none of the looks is much dimmer or much hotter than the others, and the look of a session does not change while the ball fades.
 
+### C37: The moving background is white blobs from the library with a tint layer over them, and the tint has the colour of the glowing ball
+- Tags: `AB:TIMER.BG`, `AB:TIMER.BG-LOOK`, `AB:TIMER.BALL-LOOK`, `AB:TIMER.TESTS`
+- If you change: the colour given to the library animation (BG_COLOUR, and cursorBallColor in TimerBackground.tsx), the tint layer (the class ab-timer-bg-tint and its mix-blend-mode in timer.css), the functions or the time the tint uses to get its colour (ballTargetColour, blendHex, BALL_BLEND_MS), or the colour steps and palettes of the ball (C34)
+- Then also: the library animation (Meta Balls) draws white blobs on black. It builds its whole drawing again (the graphics context and all balls) whenever its colour setting changes, so it is given white once and never another colour. The colour comes from a tint layer laid over it: the layer has the colour of the session and multiplies the white blobs (white times a colour is that colour, black stays black). This works only while (1) the library colour AND the cursor ball colour stay white (BG_COLOUR), (2) the tint layer comes after the library in TimerBackground.tsx, (3) the tint layer has mix-blend-mode multiply and covers the whole box, (4) the box is isolated (isolation isolate), so that the multiply meets only the blobs. The tint gets its colour from ballTargetColour and blendHex of ballLook.ts and moves on in BALL_BLEND_MS, exactly as the ball does (TimerBall.tsx), so the ball and the background have the same colour at every moment while a session runs or is paused; a test puts both side by side and compares them. It starts white, and the steps are the quality steps (C34): a new step or palette in ballLook.ts reaches the background by itself. While the background fades out its colour is held, the ball's is not (it fades for the same short time and nobody can see the difference). The animation settings and the number of balls (backgroundLook.ts) are safe to tune alone. So is the dimming (opacity) of the box in timer.css, but the white digits must stay easy to read over the brightest blob.
+- If you forget: the background builds its drawing again many times a second (it flickers and the phone gets hot), or it stays white or grey, or its colour is not the colour of the ball.
+- Anchor: `AB:TIMER.BG-LOOK @ src/lib/backgroundLook.ts = export const BG_COLOUR = "#ffffff"`
+- Anchor: `AB:TIMER.BG @ src/components/TimerBackground.tsx = color={BG_COLOUR}`
+- Anchor: `AB:TIMER.BG @ src/components/TimerBackground.tsx = cursorBallColor={BG_COLOUR}`
+- Anchor: `AB:TIMER.BG @ src/components/TimerBackground.tsx = const target = ballTargetColour(seconds, seed)`
+- Anchor: `AB:TIMER.BG @ src/components/TimerBackground.tsx = const t = Math.min(1, (now - startedAt) / BALL_BLEND_MS)`
+- Anchor: `AB:TIMER.BG @ src/components/TimerBackground.tsx = <Tint target={target} />`
+- Anchor: `AB:TIMER.BG @ src/timer.css = mix-blend-mode: multiply;`
+- Anchor: `AB:TIMER.BG @ src/timer.css = isolation: isolate;`
+- Anchor: `AB:TIMER.BALL-LOOK @ src/lib/ballLook.ts = export const BALL_BLEND_MS = 4000`
+- Anchor: `AB:TIMER.TESTS @ src/lib/backgroundLook.test.ts = expect(BG_COLOUR).toBe("#ffffff")`
+- Anchor: `AB:TIMER.TESTS @ src/components/TimerBackground.test.tsx = describe("TimerBackground: the same colour as the glowing ball", () => {`
+- Check by hand: start a session on the phone and on the laptop: the background starts white, and at 10, 30 and 90 minutes it moves to the same colour as the glowing ball. The background does not flicker when its colour moves.
+
+### C38: The background needs WebGL 2 and is a library file, so it must never break the screen; it sits at the very bottom of the screen, and its fade time is written in the code and in the css
+- Tags: `AB:TIMER.BG`, `AB:TIMER.BG-LOOK`, `AB:TIMER.SCREEN`, `AB:TIMER.TESTS`
+- If you change: canDrawBackground or BackgroundGuard in TimerBackground.tsx, the library file MetaBalls.tsx (never edit it), BG_FADE_MS or the balls per lite level in backgroundLook.ts, the fade time or the stacking rules of .ab-timer-bg, .ab-timer and .ab-timer-dial in timer.css, or the place of TimerBackground in TimerScreen.tsx
+- Then also: the library animation draws with WebGL 2 (the graphics chip, through the browser). A browser that cannot do it, a lite level 2 page (no balls) or an error thrown by the library gives no background: canDrawBackground asks for a WebGL 2 context first and gives it back, and BackgroundGuard catches an error thrown while the animation is made, so the clocks, the ball and the buttons keep working. Both must stay. The settings of the animation are changed only by its props in TimerBackground.tsx and the values in backgroundLook.ts, never inside the library file (TAGGING_RULES.md, rule 6). A newer copy of the library file must be looked at on the laptop and on the phone before it is trusted: the tests use a stand-in, not the real animation. The layers: TimerBackground is the FIRST thing inside the main element of TimerScreen.tsx; .ab-timer-bg is position absolute over the whole screen with z-index 0 and pointer-events none; .ab-timer is position relative with isolation isolate, so the background can never fall behind the page, never covers the menu (the menu sits beside the main element with its own z-index) and never catches a tap; .ab-timer-dial has z-index 1 and the line, the Try again button and the buttons have z-index 1 (C31), so everything is drawn over the background. The library measures its box when it is made and again only when the window is resized, so the box must have its real size when the session starts (the screen has it). The fade in the css (700 ms) and BG_FADE_MS (700) are the same on purpose, because the code takes the background away when the fade ends; a test compares them.
+- If you forget: a browser without WebGL 2 shows an error or a blank screen, the background covers the digits or the buttons, it catches taps, it is cut off while it fades, or the phone gets hot.
+- Anchor: `AB:TIMER.BG @ src/components/TimerBackground.tsx = const gl = canvas.getContext("webgl2")`
+- Anchor: `AB:TIMER.BG @ src/components/TimerBackground.tsx = class BackgroundGuard extends Component<{ children: ReactNode }, { failed: boolean }> {`
+- Anchor: `AB:TIMER.BG @ src/components/TimerBackground.tsx = <BackgroundGuard>`
+- Anchor: `src/components/TimerBackground.tsx = import MetaBalls from "@/components/MetaBalls"`
+- Anchor: `AB:TIMER.BG-LOOK @ src/lib/backgroundLook.ts = export const BG_FADE_MS = 700`
+- Anchor: `AB:TIMER.BG @ src/timer.css = transition: opacity 700ms ease;`
+- Anchor: `AB:TIMER.BG @ src/timer.css = pointer-events: none;`
+- Anchor: `AB:TIMER.BG @ src/timer.css = z-index: 0;`
+- Anchor: `AB:TIMER.SCREEN @ src/timer.css = isolation: isolate;`
+- Anchor: `AB:TIMER.SCREEN @ src/components/TimerScreen.tsx = <TimerBackground`
+- Anchor: `AB:TIMER.TESTS @ src/lib/backgroundLook.test.ts = expect(BG_FADE_MS).toBe(700)`
+- Anchor: `AB:TIMER.TESTS @ src/components/TimerBackground.test.tsx = expect(fade).toBe(BG_FADE_MS)`
+- Anchor: `AB:TIMER.TESTS @ src/components/TimerScreen.test.tsx = expect(stub.parentElement?.firstElementChild).toBe(stub)`
+- Check by hand: on the phone open the page address #timer and start a session: the background fades in, the clocks stay readable, the buttons react to a finger everywhere, and the phone does not get hot after 10 minutes. In a browser without WebGL 2 the clocks and the buttons still work. With ?lite=2 in the page address the screen stays plain black.
+
 ## Things to know (no check is possible)
 - The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).
 - Sign-ups are OFF in the Supabase dashboard. Users are created there by hand, with "Auto Confirm User" ticked.

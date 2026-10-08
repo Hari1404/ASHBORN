@@ -21,6 +21,18 @@ vi.mock("@/components/TimerBall", async () => {
   }
 })
 
+// The moving background is replaced by a stand-in too, in the same way (it is tested in TimerBackground.test.tsx).
+const background = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }))
+vi.mock("@/components/TimerBackground", async () => {
+  const { createElement: h } = await import("react")
+  return {
+    default: (props: Record<string, unknown>) => {
+      background.props.push(props)
+      return h("div", { id: "background-stub" })
+    },
+  }
+})
+
 import { formatClock, qualityOf } from "@/lib/timerMaths"
 import type { TimerView } from "@/lib/useTimer"
 import TimerScreen from "./TimerScreen"
@@ -83,6 +95,7 @@ function pointer(type: string): Event {
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   ball.props = []
+  background.props = []
   // The Hold Button watches its own size; jsdom has no ResizeObserver.
   vi.stubGlobal(
     "ResizeObserver",
@@ -210,6 +223,37 @@ describe("TimerScreen: the ball", () => {
     show({ status: "running", seconds: 100, ringSeed: SEED })
     expect(has("svg")).toBe(false)
     expect(has(".ab-timer-ring")).toBe(false)
+  })
+})
+
+describe("TimerScreen: the background", () => {
+  const lastBackground = (): Record<string, unknown> => {
+    const last = background.props.at(-1)
+    if (last === undefined) throw new Error("the background was not drawn")
+    return last
+  }
+
+  it("tells the background that no session is running when idle", () => {
+    show({ status: "idle", seconds: 0 })
+    expect(lastBackground().active).toBe(false)
+  })
+
+  it("hands the seconds and the seed of a running session to the background, and nothing else", () => {
+    show({ status: "running", seconds: 3725, ringSeed: SEED })
+    expect(lastBackground()).toEqual({ active: true, seconds: 3725, seed: SEED })
+  })
+
+  it("keeps the background lit while the session is paused", () => {
+    show({ status: "paused", seconds: 1800, ringSeed: SEED })
+    expect(lastBackground()).toEqual({ active: true, seconds: 1800, seed: SEED })
+  })
+
+  it("puts the background first inside the screen, before the dial, so that everything else is drawn over it", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    const stub = q("#background-stub")
+    expect(stub.parentElement?.classList.contains("ab-timer")).toBe(true)
+    expect(stub.parentElement?.firstElementChild).toBe(stub)
+    expect(stub.compareDocumentPosition(q(".ab-timer-dial")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
 

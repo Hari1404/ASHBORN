@@ -3,8 +3,10 @@
 @import "@fontsource-variable/space-grotesk";
 
 /* AB:TIMER.SCREEN:START */
-/* The screen: plain black for now. The menu button (menu.css) floats above it, so the top has room for it. */
+/* The screen: black, with the moving background (TimerBackground.tsx) behind everything while a session runs. The menu button (menu.css) floats above it, so the top has room for it. The screen is its own stacking box (position and isolation), so the background, which sits at the bottom of it, can never fall behind the page. */
 .ab-timer {
+  position: relative;
+  isolation: isolate;
   min-height: 100dvh;
   box-sizing: border-box;
   display: flex;
@@ -19,9 +21,10 @@
   font-family: "Space Grotesk Variable", system-ui, sans-serif;
 }
 
-/* The dial: a square box. The ball (TimerBall.tsx) sits behind the two clocks in the middle. */
+/* The dial: a square box. The ball (TimerBall.tsx) sits behind the two clocks in the middle. It is drawn above the background (z-index 1). */
 .ab-timer-dial {
   position: relative;
+  z-index: 1;
   width: min(84vw, 400px);
   aspect-ratio: 1;
 }
@@ -93,6 +96,7 @@
   line-height: 1.4;
   text-align: center;
   color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.85), 0 0 3px rgba(0, 0, 0, 0.7);
 }
 
 .ab-timer-retry {
@@ -171,3 +175,49 @@
   opacity: 0.4;
 }
 /* AB:TIMER.BALL:END */
+
+/* AB:TIMER.BG:START */
+/* The moving background (TimerBackground.tsx): it fills the whole screen, sits at the very bottom, is dimmed so that the white digits stay easy to read, and never catches a tap. It fades in when a session starts and out when it ends. The fade time is the same as BG_FADE_MS in backgroundLook.ts (CONNECTIONS.md C38). */
+.ab-timer-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  isolation: isolate;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.5;
+  transition: opacity 700ms ease;
+  animation: ab-timer-bg-in 700ms ease;
+}
+
+.ab-timer-bg canvas {
+  display: block;
+}
+
+.ab-timer-bg[data-out="yes"] {
+  opacity: 0;
+}
+
+.ab-timer[data-state="paused"] .ab-timer-bg {
+  opacity: 0.2;
+}
+
+/* The tint layer over the library's white blobs: white times a colour is that colour, black stays black (CONNECTIONS.md C37). The colour is set by TimerBackground.tsx on this layer. */
+.ab-timer-bg-tint {
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: multiply;
+}
+
+@keyframes ab-timer-bg-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ab-timer-bg {
+    animation: none;
+  }
+}
+/* AB:TIMER.BG:END */

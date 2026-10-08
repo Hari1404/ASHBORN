@@ -1,4 +1,5 @@
 import HoldButton from "@/components/HoldButton"
+import TimerBackground from "@/components/TimerBackground"
 import TimerBall from "@/components/TimerBall"
 import { formatClock, qualityOf } from "@/lib/timerMaths"
 import { useTimer, type EndNotice } from "@/lib/useTimer"
@@ -8,6 +9,7 @@ import "../timer.css"
 // The Pro Timer screen. It is shown at the page address #timer (SignedInStub.tsx chooses it, see CONNECTIONS.md C30).
 // Big clock: the seconds of the running session. Small clock under it: the total of the day, saved sessions plus the running one.
 // Behind the big clock sits the glowing ball (TimerBall.tsx). It lights when a session starts, changes colour as the session gets deeper, stops and dims when paused, and fades when the session ends.
+// Behind everything, over the whole screen, sits the moving background (TimerBackground.tsx, the Meta Balls animation). It is the first thing inside the main element, it has the same colour as the ball at every moment, and the screen is black without a session (see CONNECTIONS.md C37 and C38).
 // Start and Pause / Resume are normal taps. End Session is the library Hold Button (src/components/HoldButton.tsx, never edited): hold it until it is full.
 // The ball sits in a box that is larger than the dial, and the ball is a share of that box (see CONNECTIONS.md C31).
 // The look of the clock digits (Space Grotesk, fixed width) is in timer.css (see CONNECTIONS.md C32).
@@ -29,6 +31,7 @@ export default function TimerScreen() {
 
   return (
     <main className="ab-timer" data-state={timer.status} data-link={timer.link}>
+      <TimerBackground active={timer.status !== "idle"} seconds={timer.seconds} seed={timer.ringSeed} />
       <div className="ab-timer-dial">
         <TimerBall
           active={timer.status !== "idle"}
