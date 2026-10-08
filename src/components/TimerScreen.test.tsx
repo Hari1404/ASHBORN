@@ -9,7 +9,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const state = vi.hoisted(() => ({ view: null as unknown }))
 vi.mock("@/lib/useTimer", () => ({ useTimer: () => state.view }))
 
-import { RING_FIRST_COLOR, formatClock, qualityOf, ringColor, ringFill, ringLoop } from "@/lib/timerMaths"
+// The glowing ball is replaced by a stand-in that records what the screen hands to it (the ball itself is tested in TimerBall.test.tsx).
+const ball = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }))
+vi.mock("@/components/TimerBall", async () => {
+  const { createElement: h } = await import("react")
+  return {
+    default: (props: Record<string, unknown>) => {
+      ball.props.push(props)
+      return h("div", { id: "ball-stub" })
+    },
+  }
+})
+
+import { formatClock, qualityOf } from "@/lib/timerMaths"
 import type { TimerView } from "@/lib/useTimer"
 import TimerScreen from "./TimerScreen"
 
@@ -70,6 +82,7 @@ function pointer(type: string): Event {
 
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  ball.props = []
   // The Hold Button watches its own size; jsdom has no ResizeObserver.
   vi.stubGlobal(
     "ResizeObserver",
@@ -163,52 +176,40 @@ describe("TimerScreen: what it shows", () => {
   })
 })
 
-describe("TimerScreen: the ring", () => {
-  it("is drawn in a box of 100 with a radius of 45, starting at the top", () => {
-    show()
-    expect(q("svg.ab-timer-ring").getAttribute("viewBox")).toBe("0 0 100 100")
-    for (const selector of [".ab-timer-track", ".ab-timer-arc"]) {
-      expect(q(selector).getAttribute("r")).toBe("45")
-      expect(q(selector).getAttribute("cx")).toBe("50")
-      expect(q(selector).getAttribute("cy")).toBe("50")
-      expect(q(selector).getAttribute("transform")).toBe("rotate(-90 50 50)")
-    }
-    expect(q(".ab-timer-arc").getAttribute("pathLength")).toBe("1")
-  })
+describe("TimerScreen: the ball", () => {
+  const lastBall = (): Record<string, unknown> => {
+    const last = ball.props.at(-1)
+    if (last === undefined) throw new Error("the ball was not drawn")
+    return last
+  }
 
-  it("is empty when idle", () => {
+  it("tells the ball that no session is running when idle", () => {
     show({ status: "idle", seconds: 0 })
-    expect(q(".ab-timer-arc").getAttribute("opacity")).toBe("0")
-    expect(q(".ab-timer-arc").getAttribute("stroke-dasharray")).toBe("0 1")
+    expect(lastBall().active).toBe(false)
+    expect(lastBall().paused).toBe(false)
   })
 
-  it("is empty when idle, whatever the seconds say", () => {
-    show({ status: "idle", seconds: 1234, ringSeed: SEED })
-    expect(q(".ab-timer-arc").getAttribute("opacity")).toBe("0")
-    expect(q(".ab-timer-arc").getAttribute("stroke-dasharray")).toBe("0 1")
-  })
-
-  it("fills the first loop in white, and the track is a faint white", () => {
-    show({ status: "running", seconds: 1800, ringSeed: SEED })
-    expect(q(".ab-timer-arc").getAttribute("stroke-dasharray")).toBe(ringFill(1800) + " 1")
-    expect(q(".ab-timer-arc").getAttribute("opacity")).toBe("1")
-    expect(q(".ab-timer-arc").getAttribute("stroke")).toBe(RING_FIRST_COLOR)
-    expect(q(".ab-timer-track").getAttribute("stroke")).toBe("rgba(255, 255, 255, 0.14)")
-  })
-
-  it("starts the second loop in a neon colour on a track in the colour of the loop before", () => {
+  it("hands the seconds and the seed of a running session to the ball", () => {
     show({ status: "running", seconds: 3725, ringSeed: SEED })
-    expect(ringLoop(3725)).toBe(1)
-    expect(q(".ab-timer-arc").getAttribute("stroke-dasharray")).toBe(ringFill(3725) + " 1")
-    expect(q(".ab-timer-arc").getAttribute("stroke")).toBe(ringColor(1, SEED))
-    expect(q(".ab-timer-arc").getAttribute("stroke")).not.toBe(RING_FIRST_COLOR)
-    expect(q(".ab-timer-track").getAttribute("stroke")).toBe(ringColor(0, SEED))
+    expect(lastBall()).toEqual({ active: true, paused: false, seconds: 3725, seed: SEED })
   })
 
-  it("shows a paused session with its ring in place", () => {
+  it("tells the ball that the session is paused", () => {
     show({ status: "paused", seconds: 1800, ringSeed: SEED })
-    expect(q(".ab-timer-arc").getAttribute("stroke-dasharray")).toBe(ringFill(1800) + " 1")
-    expect(q(".ab-timer-arc").getAttribute("opacity")).toBe("1")
+    expect(lastBall()).toEqual({ active: true, paused: true, seconds: 1800, seed: SEED })
+  })
+
+  it("puts the ball inside the dial before the clocks, so that the digits are drawn over it", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    const stub = q("#ball-stub")
+    expect(stub.parentElement?.classList.contains("ab-timer-dial")).toBe(true)
+    expect(stub.compareDocumentPosition(q(".ab-timer-readout")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("has no ring any more", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    expect(has("svg")).toBe(false)
+    expect(has(".ab-timer-ring")).toBe(false)
   })
 })
 
@@ -300,12 +301,6 @@ describe("TimerScreen: the buttons", () => {
 })
 
 describe("the css of the screen", () => {
-  it("keeps the stroke width of the ring at 10 or less, so the ring (radius 45 in a box of 100) stays inside its box", () => {
-    const widths = [...timerCss.matchAll(/stroke-width:\s*([0-9.]+)/g)].map((m) => Number(m[1]))
-    expect(widths.length).toBeGreaterThan(0)
-    for (const width of widths) expect(45 + width / 2).toBeLessThanOrEqual(50)
-  })
-
   it("loads Space Grotesk, names the font as the package does, and uses a weight the font has", () => {
     expect(timerCss).toContain('@import "@fontsource-variable/space-grotesk";')
     const screenBlock = /\.ab-timer \{([^}]*)\}/.exec(timerCss)?.[1] ?? ""
@@ -329,7 +324,7 @@ describe("the css of the screen", () => {
   })
 
   it("reacts to the two attributes the screen sets", () => {
-    expect(timerCss).toContain('.ab-timer[data-state="paused"] .ab-timer-ring {')
+    expect(timerCss).toContain('.ab-timer[data-state="paused"] .ab-timer-ball {')
     expect(timerCss).toContain('.ab-timer[data-state="paused"] .ab-timer-big {')
     expect(timerCss).toContain('.ab-timer[data-link="loading"] .ab-timer-dial {')
   })

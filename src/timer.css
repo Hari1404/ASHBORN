@@ -13,35 +13,17 @@
   justify-content: center;
   gap: 24px;
   padding: 72px 20px 32px;
+  overflow: hidden;
   background: #000;
   color: #fff;
   font-family: "Space Grotesk Variable", system-ui, sans-serif;
 }
 
-/* The dial: a square box. The ring fills it and the two clocks sit in the middle. */
+/* The dial: a square box. The ball (TimerBall.tsx) sits behind the two clocks in the middle. */
 .ab-timer-dial {
   position: relative;
   width: min(84vw, 400px);
   aspect-ratio: 1;
-}
-
-/* The ring is drawn in a box of 100 by 100 with a radius of 45 (TimerScreen.tsx), so a stroke width of 10 or less stays inside the box (CONNECTIONS.md C31). */
-.ab-timer-ring {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  transition: opacity 400ms ease;
-}
-
-.ab-timer-track,
-.ab-timer-arc {
-  fill: none;
-  stroke-width: 6;
-}
-
-.ab-timer-arc {
-  stroke-linecap: round;
 }
 
 .ab-timer-readout {
@@ -61,6 +43,7 @@
   font-weight: 500;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 22px rgba(0, 0, 0, 0.75), 0 0 6px rgba(0, 0, 0, 0.6);
 }
 
 .ab-timer-small {
@@ -70,13 +53,10 @@
   line-height: 1;
   color: rgba(255, 255, 255, 0.6);
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 14px rgba(0, 0, 0, 0.75), 0 0 4px rgba(0, 0, 0, 0.6);
 }
 
-/* Paused: the digits blink slowly and the ring dims. Still loading: the whole dial is dim. */
-.ab-timer[data-state="paused"] .ab-timer-ring {
-  opacity: 0.3;
-}
-
+/* Paused: the digits blink slowly (the ball stands still and dims, see the ball rules below). Still loading: the whole dial is dim. */
 .ab-timer[data-state="paused"] .ab-timer-big {
   animation: ab-timer-blink 1.8s ease-in-out infinite;
 }
@@ -104,6 +84,8 @@
 
 /* The line under the dial: No connection, an error, or what happened to the session that was just ended. It keeps its height so that nothing jumps. */
 .ab-timer-note {
+  position: relative;
+  z-index: 1;
   margin: 0;
   min-height: 1.4em;
   max-width: 320px;
@@ -114,6 +96,8 @@
 }
 
 .ab-timer-retry {
+  position: relative;
+  z-index: 1;
   padding: 8px 18px;
   font: inherit;
   font-size: 15px;
@@ -127,6 +111,8 @@
 
 /* The buttons: Start, or Pause and Resume above the Hold Button. The box keeps its height while loading so that the dial does not move. */
 .ab-timer-actions {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -163,3 +149,25 @@
   width: 100%;
 }
 /* AB:TIMER.SCREEN:END */
+
+/* AB:TIMER.BALL:START */
+/* The box of the glowing ball (TimerBall.tsx). It is 136 percent of the dial, so the glow has room, and it sits behind the clocks. It never catches a tap. The fade time is the same as BALL_FADE_MS in ballLook.ts (CONNECTIONS.md C31 and C35). */
+.ab-timer-ball {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 136%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: opacity 700ms ease;
+}
+
+.ab-timer-ball[data-out="yes"] {
+  opacity: 0;
+}
+
+.ab-timer[data-state="paused"] .ab-timer-ball {
+  opacity: 0.4;
+}
+/* AB:TIMER.BALL:END */

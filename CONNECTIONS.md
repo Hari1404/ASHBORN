@@ -364,17 +364,16 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:TIMER.SCREEN @ src/timer.css = .ab-timer {`
 - Check by hand: after any change open the page address #timer on a laptop and on the phone. The timer is on a black screen, the menu button is in the top right corner and opens the panel, a tap on Overview shows the placeholder with the moving background again, and a tap on Pro Timer shows the timer.
 
-### C31: The ring is drawn in a box of 100 by 100, so its stroke width in the css must stay 10 or less
-- Tags: `AB:TIMER.SCREEN`
-- If you change: the box (viewBox) or the radius of the two ring circles in TimerScreen.tsx, the way the arc is drawn (pathLength and strokeDasharray), or the stroke-width of .ab-timer-track and .ab-timer-arc in timer.css
-- Then also: the ring is two circles with the radius 45 in a box of 100 by 100, so a stroke of up to 10 stays inside the box (45 plus half of 10 is 50). A thicker stroke is cut off at the edge of the box. The arc is drawn with pathLength 1 and the dash fill followed by 1, so fill is a number from 0 to 1 and the arc starts at the top (rotate -90). The stroke width itself is safe to tune up to 10 and is not pinned here; a test in TimerScreen.test.tsx reads timer.css and fails above 10.
-- If you forget: the ring is cut off at the edges, or the arc is the wrong length.
-- Anchor: `AB:TIMER.SCREEN @ src/components/TimerScreen.tsx = viewBox="0 0 100 100"`
-- Anchor: `AB:TIMER.SCREEN @ src/components/TimerScreen.tsx = <circle className="ab-timer-track" cx="50" cy="50" r="45" stroke={trackColor} transform="rotate(-90 50 50)" />`
-- Anchor: `AB:TIMER.SCREEN @ src/components/TimerScreen.tsx = pathLength={1}`
-- Anchor: `AB:TIMER.SCREEN @ src/components/TimerScreen.tsx = strokeDasharray={fill + " 1"}`
-- Anchor: `AB:TIMER.SCREEN @ src/timer.css = .ab-timer-track,`
-- Check by hand: look at the ring on the phone while a session runs: the whole circle is inside the screen with nothing cut off at the edges.
+### C31: The ball sits in a box larger than the dial, so the screen clips it, the ball never catches a tap and the buttons stay above it
+- Tags: `AB:TIMER.SCREEN`, `AB:TIMER.BALL`
+- If you change: the size of the box of the ball (.ab-timer-ball in timer.css), the part of that box the ball fills (size in TimerBall.tsx), the overflow of .ab-timer, the pointer-events of the ball box, the position and z-index of the line under the dial, the Try again button and the buttons, or the place of TimerBall in TimerScreen.tsx
+- Then also: the box of the ball is 136 percent of the dial, so the glow has room, and the ball fills 66 percent of the box (size 0.66), so the ball is about 90 percent of the dial. Because the box reaches past the dial, three things must stay. (1) .ab-timer clips what reaches past its edge (overflow hidden), otherwise a phone scrolls sideways. (2) The ball box has pointer-events none, otherwise it can catch taps meant for the buttons. (3) The line, the Try again button and the buttons have position relative and z-index 1, so the ball is drawn under them. The ball is the first thing inside .ab-timer-dial and the two clocks come after it, so the digits are drawn over the ball. The box size and the share of the ball are safe to tune alone (the ball only gets bigger or smaller) and are not pinned. Tests in TimerBall.test.tsx and TimerScreen.test.tsx read timer.css and fail when one of the three is removed.
+- If you forget: the phone scrolls sideways, the buttons stop reacting under the ball, or the digits are hidden behind it.
+- Anchor: `AB:TIMER.SCREEN @ src/timer.css = overflow: hidden;`
+- Anchor: `AB:TIMER.BALL @ src/timer.css = pointer-events: none;`
+- Anchor: `AB:TIMER.BALL @ src/components/TimerBall.tsx = <div className="ab-timer-ball" data-out={active ? undefined : "yes"} aria-hidden="true">`
+- Anchor: `AB:TIMER.SCREEN @ src/components/TimerScreen.tsx = <TimerBall`
+- Check by hand: look at the timer on the phone while a session runs: the ball is round and fully inside the screen, the page does not scroll sideways, and Pause and the Hold Button react to a finger at the lower edge of the ball.
 
 ### C32: The clock digits use Space Grotesk with fixed width digits, loaded from the font package
 - Tags: `AB:TIMER.SCREEN`
@@ -399,6 +398,34 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:TIMER.TESTS @ src/lib/useTimer.test.ts = expect(POLL_ONLINE_MS).toBe(30000)`
 - Anchor: `AB:TIMER.TESTS @ src/lib/useTimer.test.ts = expect(POLL_OFFLINE_MS).toBe(3000)`
 - Anchor: `AB:TIMER.TESTS @ src/lib/useTimer.test.ts = expect(TIME_BASE_JITTER_MS).toBe(1500)`
+
+### C34: The colour steps of the ball are the quality names of the maths, and every palette has three colours
+- Tags: `AB:TIMER.BALL-LOOK`, `AB:TIMER.MATHS`, `AB:TIMER.TESTS`
+- If you change: the quality names or the function qualityOf in timerMaths.ts, the list STEPS in ballLook.ts, the number of colours of a palette, or the cut-offs of the quality (C27)
+- Then also: the ball has no cut-offs of its own. ballStep asks qualityOf and turns the answer (meh, solid, deep, flow) into a step with the list STEPS, so the colour moves on at the same seconds as the quality of the session (10, 30 and 90 minutes today). If a quality is renamed or added, STEPS and the palettes change in the same step: a palette has three colours, the colour of solid, of deep and of flow, and white is the colour of meh. The colours of the palettes are safe to tune alone (a test checks that every colour is bright and vivid on black). The palette of a session is drawn from the started_at text of the session, so every device shows the same colours for the same session. The same palette can come up in two sessions in a row (the draw is by the start time, not by the last session): this is on purpose, because a draw that remembers the last session could not be the same on the phone and the laptop.
+- If you forget: the ball changes colour at another time than the quality changes, or a colour is missing.
+- Anchor: `src/lib/ballLook.ts = import { qualityOf, type Quality } from "@/lib/timerMaths"`
+- Anchor: `AB:TIMER.BALL-LOOK @ src/lib/ballLook.ts = const STEPS: readonly Quality[] = ["meh", "solid", "deep", "flow"]`
+- Anchor: `AB:TIMER.BALL-LOOK @ src/lib/ballLook.ts = return STEPS.indexOf(qualityOf(seconds)) as 0 | 1 | 2 | 3`
+- Anchor: `AB:TIMER.BALL-LOOK @ src/lib/ballLook.ts = return BALL_PALETTES[ballPaletteIndex(seed)][step - 1]`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = export type Quality = "meh" | "solid" | "deep" | "flow"`
+- Anchor: `AB:TIMER.TESTS @ src/lib/ballLook.test.ts = expect(ballStep(SOLID_FROM_SECONDS)).toBe(1)`
+- Check by hand: after a change of the qualities (names or number), look at the ball in a session of 5, 15, 45 and 100 minutes: each step has its own colour.
+
+### C35: The ball needs WebGL 2 and is a library file, so it must never break the screen; its fade time is written in the code and in the css
+- Tags: `AB:TIMER.BALL`, `AB:TIMER.BALL-LOOK`, `AB:TIMER.TESTS`
+- If you change: canDrawBall or BallGuard in TimerBall.tsx, the library file CrystalizedBall.tsx (never edit it), the settings the ball is given (preset, color, size, particleCount, intro, interactive, paused), the dust grains in ballLook.ts, BALL_FADE_MS in ballLook.ts, or the fade time of .ab-timer-ball in timer.css
+- Then also: the library ball draws with WebGL 2 (the graphics chip, through the browser). A browser that cannot do it gets no ball: canDrawBall asks for a WebGL 2 context first and gives it back, and BallGuard catches an error thrown while the ball is made, so the clocks and the buttons keep working. Both must stay. The settings of the ball are changed only by its props in TimerBall.tsx, never inside the library file (TAGGING_RULES.md, rule 6). A newer copy of the library file must be looked at on the laptop and on the phone before it is trusted: the tests use a stand-in, not the real ball. The number of dust grains follows the lite level (15000, 6000 and 3000 in ballLook.ts): the ball is the heaviest thing on the screen and the screen stays open for hours. The fade in the css (700 ms) and BALL_FADE_MS (700) are the same on purpose, because the code takes the ball away when the fade ends; a test compares them.
+- If you forget: a browser without WebGL 2 shows an error or a blank screen, the ball is cut off while it fades, or the phone gets hot.
+- Anchor: `AB:TIMER.BALL @ src/components/TimerBall.tsx = const gl = canvas.getContext("webgl2")`
+- Anchor: `AB:TIMER.BALL @ src/components/TimerBall.tsx = class BallGuard extends Component<{ children: ReactNode }, { failed: boolean }> {`
+- Anchor: `AB:TIMER.BALL @ src/components/TimerBall.tsx = <BallGuard>`
+- Anchor: `src/components/TimerBall.tsx = import CrystalizedBall from "@/components/CrystalizedBall"`
+- Anchor: `AB:TIMER.BALL-LOOK @ src/lib/ballLook.ts = export const BALL_FADE_MS = 700`
+- Anchor: `AB:TIMER.BALL @ src/timer.css = transition: opacity 700ms ease;`
+- Anchor: `AB:TIMER.TESTS @ src/lib/ballLook.test.ts = expect(BALL_FADE_MS).toBe(700)`
+- Anchor: `AB:TIMER.TESTS @ src/components/TimerBall.test.tsx = expect(fade).toBe(BALL_FADE_MS)`
+- Check by hand: on the phone open the page address #timer and start a session: the ball lights up, the clocks stay readable, and the phone does not get hot after 10 minutes. In a browser without WebGL 2 the clocks and the buttons still work.
 
 ## Things to know (no check is possible)
 - The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).
