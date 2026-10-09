@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { BG_COLOUR, BG_FADE_MS, BG_SETTINGS, bgBallCount } from "./backgroundLook"
+import { BG_COLOUR, BG_FADE_MS, BG_SETTINGS, bgDrawn } from "./backgroundLook"
 
 // AB:TIMER.TESTS:START
 
@@ -20,29 +20,23 @@ describe("the timing of the background", () => {
 
 describe("the settings of the animation", () => {
   it("are the ones the owner chose on the React Bits page", () => {
-    expect(BG_SETTINGS.speed).toBe(0.5)
-    expect(BG_SETTINGS.animationSize).toBe(27)
-    expect(BG_SETTINGS.hoverSmoothness).toBe(0.141)
-    expect(BG_SETTINGS.cursorBallSize).toBe(4)
-    expect(BG_SETTINGS.enableMouseInteraction).toBe(false)
+    expect(BG_SETTINGS.speed).toBe(2.9)
+    expect(BG_SETTINGS.tilt).toBe(13)
+    expect(BG_SETTINGS.intensity).toBe(2.8)
   })
 })
 
-describe("how many balls the background draws", () => {
-  it("is 21 for the full look, 10 for lite level 1 and none for lite level 2", () => {
-    expect(bgBallCount(0)).toBe(21)
-    expect(bgBallCount(1)).toBe(10)
-    expect(bgBallCount(2)).toBe(0)
+describe("where the background is drawn", () => {
+  it("is drawn for the full look and for lite level 1, and not at lite level 2", () => {
+    expect(bgDrawn(0)).toBe(true)
+    expect(bgDrawn(1)).toBe(true)
+    expect(bgDrawn(2)).toBe(false)
   })
 
-  it("never gives more balls to a lighter level, and always a whole number the library can take (at most 50)", () => {
-    for (const level of [0, 1, 2] as const) {
-      expect(Number.isInteger(bgBallCount(level))).toBe(true)
-      expect(bgBallCount(level)).toBeGreaterThanOrEqual(0)
-      expect(bgBallCount(level)).toBeLessThanOrEqual(50)
+  it("never draws at a lighter level what a heavier level does not draw", () => {
+    for (const level of [1, 2] as const) {
+      if (!bgDrawn((level - 1) as 0 | 1)) expect(bgDrawn(level)).toBe(false)
     }
-    expect(bgBallCount(1)).toBeLessThanOrEqual(bgBallCount(0))
-    expect(bgBallCount(2)).toBeLessThanOrEqual(bgBallCount(1))
   })
 })
 // AB:TIMER.TESTS:END

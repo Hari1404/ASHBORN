@@ -225,7 +225,7 @@
 /* AB:TIMER.BALL:END */
 
 /* AB:TIMER.BG:START */
-/* The moving background (TimerBackground.tsx): it fills the whole screen, sits at the very bottom, is dimmed so that the white digits stay easy to read, and never catches a tap. It fades in when a session starts and out when it ends. The fade time is the same as BG_FADE_MS in backgroundLook.ts (CONNECTIONS.md C38). */
+/* The moving background (TimerBackground.tsx): it fills the whole screen, sits at the very bottom, is dimmed so that the white digits stay easy to read, and never catches a tap. It has its own black, so that the tint layer below colours only the rays and not the clear parts of the animation (CONNECTIONS.md C37). It fades in when a session starts and out when it ends. The fade time is the same as BG_FADE_MS in backgroundLook.ts (CONNECTIONS.md C38). */
 .ab-timer-bg {
   position: absolute;
   inset: 0;
@@ -233,6 +233,7 @@
   isolation: isolate;
   overflow: hidden;
   pointer-events: none;
+  background: #000;
   opacity: 0.5;
   transition: opacity 700ms ease;
   animation: ab-timer-bg-in 700ms ease;
@@ -250,10 +251,11 @@
   opacity: 0.2;
 }
 
-/* The tint layer over the library's white blobs: white times a colour is that colour, black stays black (CONNECTIONS.md C37). The colour is set by TimerBackground.tsx on this layer. */
+/* The tint layer over the library's white rays: white times a colour is that colour, black stays black (CONNECTIONS.md C37). Its z-index is higher than the z-index of the library's own box (z-[3]), or the white rays would be drawn over it. The colour is set by TimerBackground.tsx on this layer. */
 .ab-timer-bg-tint {
   position: absolute;
   inset: 0;
+  z-index: 4;
   mix-blend-mode: multiply;
 }
 

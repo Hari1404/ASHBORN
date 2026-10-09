@@ -1,12 +1,12 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from "react"
-import MetaBalls from "@/components/MetaBalls"
-import { BG_COLOUR, BG_FADE_MS, BG_SETTINGS, bgBallCount } from "@/lib/backgroundLook"
+import SideRays from "@/components/SideRays"
+import { BG_COLOUR, BG_FADE_MS, BG_SETTINGS, bgDrawn } from "@/lib/backgroundLook"
 import { BALL_BLEND_MS, ballTargetColour, blendHex } from "@/lib/ballLook"
 import { LITE_LEVEL } from "@/lib/lite"
 
 // AB:TIMER.BG:START
 // The moving background of the Pro Timer screen. It is shown while a session runs or is paused, and it is plain black (nothing is drawn) when there is no session.
-// Library: src/components/MetaBalls.tsx (React Bits, never edited). It draws white blobs on black. This file lays a tint layer over it that multiplies the white with the colour of the session, so the blobs get that colour (see CONNECTIONS.md C37). The library is never given a colour: a new colour would make it build its whole drawing again, many times a second.
+// Library: src/components/SideRays.tsx (React Bits, never edited). It draws white rays on a clear background (the black behind it is the box of the background, see timer.css). This file lays a tint layer over it that multiplies the white with the colour of the session, so the rays get that colour (see CONNECTIONS.md C37). The library is never given a colour: a new colour would make it build its whole drawing again, many times a second.
 // The colour is the colour of the glowing ball at every moment: the same functions (ballTargetColour, blendHex) and the same time to move to the next colour (BALL_BLEND_MS) as TimerBall.tsx. It starts white and moves on at the quality steps of the session.
 // A new session lights a new background, like the ball: it is made again and starts white. When the session ends the background fades out for BG_FADE_MS and is then taken away. While it fades its colour stays where it was.
 // The background needs WebGL 2, like the ball. Without it, or when the library throws, or at lite level 2, nothing is drawn and the clocks still work (see CONNECTIONS.md C38).
@@ -23,7 +23,7 @@ function canDrawBackground(): boolean {
   }
 }
 
-// A person who asked their device for less motion gets the blobs standing still. Read once, when the screen is made.
+// A person who asked their device for less motion gets the rays standing still. Read once, when the screen is made.
 function wantsStillness(): boolean {
   try {
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -74,16 +74,12 @@ function Tint({ target }: { target: string }) {
 function LitBackground({ target, still }: { target: string; still: boolean }) {
   return (
     <>
-      <MetaBalls
-        color={BG_COLOUR}
-        cursorBallColor={BG_COLOUR}
+      <SideRays
+        rayColor1={BG_COLOUR}
+        rayColor2={BG_COLOUR}
         speed={still ? 0 : BG_SETTINGS.speed}
-        animationSize={BG_SETTINGS.animationSize}
-        hoverSmoothness={BG_SETTINGS.hoverSmoothness}
-        cursorBallSize={BG_SETTINGS.cursorBallSize}
-        enableMouseInteraction={BG_SETTINGS.enableMouseInteraction}
-        ballCount={bgBallCount(LITE_LEVEL)}
-        enableTransparency={false}
+        tilt={BG_SETTINGS.tilt}
+        intensity={BG_SETTINGS.intensity}
       />
       <Tint target={target} />
     </>
@@ -99,7 +95,7 @@ export default function TimerBackground({
   seconds: number
   seed: string
 }) {
-  const [drawable] = useState(() => canDrawBackground() && bgBallCount(LITE_LEVEL) > 0)
+  const [drawable] = useState(() => canDrawBackground() && bgDrawn(LITE_LEVEL))
   const [still] = useState(wantsStillness)
   const [shown, setShown] = useState(active)
   const [lit, setLit] = useState(active ? 1 : 0)

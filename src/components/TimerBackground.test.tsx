@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // The library files and the lite level are replaced by stand-ins: this file only tests what TimerBackground decides and what it hands to the library.
-// A real Meta Balls needs WebGL 2, which the test browser (jsdom) does not have; the test that the real animation draws is the look in a real browser (see the owner's look at the end of the packet).
+// A real Side Rays needs WebGL 2, which the test browser (jsdom) does not have; the test that the real animation draws is the look in a real browser (see the owner's look at the end of the packet).
 const state = vi.hoisted(() => ({
   lite: 0 as 0 | 1 | 2,
   props: [] as Record<string, unknown>[],
@@ -22,7 +22,7 @@ vi.mock("@/lib/lite", () => ({
   },
 }))
 
-vi.mock("@/components/MetaBalls", async () => {
+vi.mock("@/components/SideRays", async () => {
   const { createElement: h, useEffect } = await import("react")
   return {
     default: (props: Record<string, unknown>) => {
@@ -34,7 +34,7 @@ vi.mock("@/components/MetaBalls", async () => {
           state.unmounts++
         }
       }, [])
-      return h("div", { id: "metaballs-stub" })
+      return h("div", { id: "siderays-stub" })
     },
   }
 })
@@ -183,14 +183,14 @@ describe("TimerBackground: when it draws", () => {
     show({ active: true })
     expect(box().getAttribute("aria-hidden")).toBe("true")
     expect(box().hasAttribute("data-out")).toBe(false)
-    expect(has("#metaballs-stub")).toBe(true)
+    expect(has("#siderays-stub")).toBe(true)
     expect(has(".ab-timer-bg-tint")).toBe(true)
     expect(state.mounts).toBe(1)
   })
 
   it("puts the tint layer after the animation, so that it is drawn over it", () => {
     show({ active: true })
-    const stub = container?.querySelector("#metaballs-stub") ?? null
+    const stub = container?.querySelector("#siderays-stub") ?? null
     const tint = container?.querySelector(".ab-timer-bg-tint") ?? null
     expect(stub).not.toBeNull()
     expect(tint).not.toBeNull()
@@ -227,38 +227,36 @@ describe("TimerBackground: when it draws", () => {
 })
 
 describe("TimerBackground: what it hands to the library", () => {
-  it("uses the settings the owner chose, with a plain opaque black behind the blobs", () => {
+  it("uses the settings the owner chose (speed, tilt, intensity) and leaves every other setting of the library at its own default", () => {
     show({ active: true })
     const props = lastProps()
     expect(props.speed).toBe(BG_SETTINGS.speed)
-    expect(props.animationSize).toBe(27)
-    expect(props.hoverSmoothness).toBe(0.141)
-    expect(props.cursorBallSize).toBe(4)
-    expect(props.enableMouseInteraction).toBe(false)
-    expect(props.enableTransparency).toBe(false)
+    expect(props.tilt).toBe(13)
+    expect(props.intensity).toBe(2.8)
+    expect(Object.keys(props).sort()).toEqual(["intensity", "rayColor1", "rayColor2", "speed", "tilt"])
   })
 
-  it("gives the library white for the balls and for the cursor ball, so that the tint layer can colour them", () => {
+  it("gives the library white for both of its ray colours, so that the tint layer can colour them", () => {
     show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
-    expect(lastProps().color).toBe("#ffffff")
-    expect(lastProps().cursorBallColor).toBe("#ffffff")
+    expect(lastProps().rayColor1).toBe("#ffffff")
+    expect(lastProps().rayColor2).toBe("#ffffff")
   })
 
-  it("draws 21 balls on the laptop and 10 on a phone (lite level 0 and 1)", () => {
+  it("draws the rays on the laptop and on a phone (lite level 0 and 1)", () => {
     show({ active: true })
-    expect(lastProps().ballCount).toBe(21)
+    expect(has("#siderays-stub")).toBe(true)
     dispose()
     state.lite = 1
     show({ active: true })
-    expect(lastProps().ballCount).toBe(10)
+    expect(has("#siderays-stub")).toBe(true)
   })
 
-  it("lets the blobs move at the chosen speed", () => {
+  it("lets the rays move at the chosen speed", () => {
     show({ active: true })
-    expect(lastProps().speed).toBe(0.5)
+    expect(lastProps().speed).toBe(2.9)
   })
 
-  it("lets the blobs stand still for a person who asked their device for less motion", () => {
+  it("lets the rays stand still for a person who asked their device for less motion", () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("prefers-reduced-motion"), media: query }))
     show({ active: true })
     expect(lastProps().speed).toBe(0)
@@ -450,7 +448,7 @@ describe("TimerBackground: when the library breaks", () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {})
     state.broken = true
     show({ active: true })
-    expect(has("#metaballs-stub")).toBe(false)
+    expect(has("#siderays-stub")).toBe(false)
     expect(has(".ab-timer-bg-tint")).toBe(false)
     expect(has("#after")).toBe(true)
     quiet.mockRestore()
@@ -535,11 +533,23 @@ describe("the css of the background", () => {
     expect(quiet).toContain("animation: none;")
   })
 
-  it("has a tint layer that multiplies the white blobs with its colour, over the whole box", () => {
+  it("has a tint layer that multiplies the white rays with its colour, over the whole box", () => {
     const tint = block(".ab-timer-bg-tint")
     expect(tint).toContain("mix-blend-mode: multiply;")
     expect(tint).toContain("position: absolute;")
     expect(tint).toContain("inset: 0;")
+  })
+
+  it("has a plain black behind the rays, so that the tint layer colours only the rays and not the empty parts of the canvas", () => {
+    expect(block(".ab-timer-bg")).toContain("background: #000;")
+  })
+
+  it("draws the tint layer above the library's own box, which has a z-index of its own", () => {
+    const library = readFileSync("src/components/SideRays.tsx", "utf8")
+    const libraryZ = Number(/z-\[(\d+)\]/.exec(library)?.[1])
+    const tintZ = Number(/z-index:\s*(\d+);/.exec(block(".ab-timer-bg-tint"))?.[1])
+    expect(libraryZ).toBeGreaterThan(0)
+    expect(tintZ).toBeGreaterThan(libraryZ)
   })
 
   it("lets the canvas of the library fill its place without a gap under it", () => {
@@ -561,7 +571,7 @@ describe("the css of the background", () => {
     }
   })
 
-  it("gives the line under the dial a dark shadow, so that it can be read over a bright blob", () => {
+  it("gives the line under the dial a dark shadow, so that it can be read over a bright ray", () => {
     expect(block(".ab-timer-note")).toContain("text-shadow:")
   })
 })
