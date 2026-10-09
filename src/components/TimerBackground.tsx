@@ -1,6 +1,6 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from "react"
 import SideRays from "@/components/SideRays"
-import { BG_COLOUR, BG_FADE_MS, BG_SETTINGS, bgDrawn } from "@/lib/backgroundLook"
+import { BG_COLOUR, BG_FADE_MS, BG_SETTINGS, bgDrawn, bgLight } from "@/lib/backgroundLook"
 import { BALL_BLEND_MS, ballTargetColour, blendHex } from "@/lib/ballLook"
 import { LITE_LEVEL } from "@/lib/lite"
 
@@ -71,7 +71,7 @@ function Tint({ target }: { target: string }) {
 }
 
 // One lit background. The screen makes it again for every new session, so its colour always starts at the colour of the first moment.
-function LitBackground({ target, still }: { target: string; still: boolean }) {
+function LitBackground({ target, light, still }: { target: string; light: number; still: boolean }) {
   return (
     <>
       <SideRays
@@ -82,6 +82,8 @@ function LitBackground({ target, still }: { target: string; still: boolean }) {
         intensity={BG_SETTINGS.intensity}
       />
       <Tint target={target} />
+      {/* The black layer that makes the light grow with the session: thick at the start, thinner and thinner, gone when the light is full (bgLight in backgroundLook.ts, CONNECTIONS.md C37). Its opacity is set here and never on the library animation. */}
+      <div className="ab-timer-bg-dim" style={{ opacity: 1 - light }} />
     </>
   )
 }
@@ -107,6 +109,11 @@ export default function TimerBackground({
   const [held, setHeld] = useState(target)
   if (active && held !== target) setHeld(target)
 
+  // The light of the rays (bgLight in backgroundLook.ts, CONNECTIONS.md C37) follows the seconds of the session. Like the colour, the light of the last moment is kept while the background fades out: the seconds are 0 then, and without this the black layer would jump to its thickest in the middle of the fade.
+  const light = bgLight(seconds)
+  const [heldLight, setHeldLight] = useState(light)
+  if (active && heldLight !== light) setHeldLight(light)
+
   // A new background is lit when a session starts, and also when the seed changes while a session is shown (another device ended the session and started a new one between two readings): the same rule as the glowing ball, so the two always start together.
   useEffect(() => {
     if (active) {
@@ -126,7 +133,7 @@ export default function TimerBackground({
   return (
     <div className="ab-timer-bg" data-out={active ? undefined : "yes"} aria-hidden="true">
       <BackgroundGuard>
-        <LitBackground key={lit} target={active ? target : held} still={still} />
+        <LitBackground key={lit} target={active ? target : held} light={active ? light : heldLight} still={still} />
       </BackgroundGuard>
     </div>
   )

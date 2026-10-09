@@ -259,6 +259,15 @@
   mix-blend-mode: multiply;
 }
 
+/* The black layer that makes the light of the rays grow with the session (CONNECTIONS.md C37). It lies over the tint layer and over the whole box, plain black, and TimerBackground.tsx sets its opacity to 1 minus the light of the session (bgLight in backgroundLook.ts): mostly black at the start, gone when the light is full. Its z-index must stay higher than the tint's (4). */
+.ab-timer-bg-dim {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: #000;
+  pointer-events: none;
+}
+
 @keyframes ab-timer-bg-in {
   from {
     opacity: 0;
