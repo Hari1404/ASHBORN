@@ -349,6 +349,14 @@
   display: block;
 }
 
+/* The box of the library animation: TimerBackground.tsx gives it BG_RENDER_SCALE of the screen as its width and height and the stretch that brings it back to the whole screen (transform: scale). The library draws one pixel for every pixel of its box, so a half-size box draws a quarter of the pixels, and the browser stretches the soft rays over the screen. It starts in the top left corner and stretches from there (CONNECTIONS.md C38). */
+.ab-timer-bg-rays {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
 .ab-timer-bg[data-out="yes"] {
   opacity: 0;
 }

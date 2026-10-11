@@ -5,6 +5,7 @@ import {
   BG_FADE_MS,
   BG_LIGHT_FULL_AT_SECONDS,
   BG_LIGHT_START,
+  BG_RENDER_SCALE,
   BG_SETTINGS,
   bgDrawn,
   bgLight,
@@ -33,6 +34,18 @@ describe("the settings of the animation", () => {
     expect(BG_SETTINGS.speed).toBe(2.9)
     expect(BG_SETTINGS.tilt).toBe(13)
     expect(BG_SETTINGS.intensity).toBe(2.8)
+  })
+})
+
+describe("the size the rays are drawn at", () => {
+  it("is a share of the screen between a quarter and the whole (smaller would show blocks, larger saves nothing)", () => {
+    expect(BG_RENDER_SCALE).toBeGreaterThanOrEqual(0.25)
+    expect(BG_RENDER_SCALE).toBeLessThanOrEqual(1)
+  })
+
+  it("draws fewer pixels than the screen has: the rays are drawn at half size", () => {
+    expect(BG_RENDER_SCALE).toBe(0.5)
+    expect(BG_RENDER_SCALE * BG_RENDER_SCALE).toBe(0.25)
   })
 })
 

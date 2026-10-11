@@ -20,6 +20,9 @@ export const BG_SETTINGS = {
   intensity: 2.8,
 } as const
 
+// The rays are drawn on a canvas that is this share of the screen's width and of its height (0.5 = half and half, so a quarter of the pixels), and the browser stretches the picture back over the whole screen (TimerBackground.tsx and timer.css, CONNECTIONS.md C38). The rays are soft, so the stretched picture looks the same, and the graphics chip runs the animation once for every pixel it draws, so this is the biggest saving of the screen. 1 = the old way, full size. The tests keep it between 0.25 and 1.
+export const BG_RENDER_SCALE = 0.5
+
 // How bright the rays are when a session starts, as a share of the full light (1 = the full light, which is the look of BG_SETTINGS with the dimming of .ab-timer-bg in timer.css). The light grows from here up to 1 while the session goes on.
 export const BG_LIGHT_START = 0.3
 // After this many seconds of the session the light is full. It is the time of the last colour step (the flow step of timerMaths.ts), so the rays reach full light when the colour reaches its last step.

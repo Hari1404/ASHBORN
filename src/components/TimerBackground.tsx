@@ -1,6 +1,6 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from "react"
 import SideRays from "@/components/SideRays"
-import { BG_COLOUR, BG_FADE_MS, BG_SETTINGS, bgDrawn, bgLight } from "@/lib/backgroundLook"
+import { BG_COLOUR, BG_FADE_MS, BG_RENDER_SCALE, BG_SETTINGS, bgDrawn, bgLight } from "@/lib/backgroundLook"
 import { BALL_BLEND_MS, ballTargetColour, blendHex } from "@/lib/ballLook"
 import { LITE_LEVEL } from "@/lib/lite"
 
@@ -74,13 +74,19 @@ function Tint({ target }: { target: string }) {
 function LitBackground({ target, light, still }: { target: string; light: number; still: boolean }) {
   return (
     <>
-      <SideRays
-        rayColor1={BG_COLOUR}
-        rayColor2={BG_COLOUR}
-        speed={still ? 0 : BG_SETTINGS.speed}
-        tilt={BG_SETTINGS.tilt}
-        intensity={BG_SETTINGS.intensity}
-      />
+      {/* The animation lives in a box that is only BG_RENDER_SCALE of the screen in width and height, and the css stretches the box back over the whole screen (ab-timer-bg-rays, CONNECTIONS.md C38). The library reads the size of its box, so it draws a quarter of the pixels. */}
+      <div
+        className="ab-timer-bg-rays"
+        style={{ width: (BG_RENDER_SCALE * 100).toFixed(2) + "%", height: (BG_RENDER_SCALE * 100).toFixed(2) + "%", transform: "scale(" + 1 / BG_RENDER_SCALE + ")" }}
+      >
+        <SideRays
+          rayColor1={BG_COLOUR}
+          rayColor2={BG_COLOUR}
+          speed={still ? 0 : BG_SETTINGS.speed}
+          tilt={BG_SETTINGS.tilt}
+          intensity={BG_SETTINGS.intensity}
+        />
+      </div>
       <Tint target={target} />
       {/* The black layer that makes the light grow with the session: thick at the start, thinner and thinner, gone when the light is full (bgLight in backgroundLook.ts, CONNECTIONS.md C37). Its opacity is set here and never on the library animation. */}
       <div className="ab-timer-bg-dim" style={{ opacity: 1 - light }} />

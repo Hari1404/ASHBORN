@@ -50,7 +50,7 @@ vi.mock("@/components/CrystalizedBall", async () => {
   }
 })
 
-import { BG_FADE_MS, BG_SETTINGS } from "@/lib/backgroundLook"
+import { BG_FADE_MS, BG_RENDER_SCALE, BG_SETTINGS } from "@/lib/backgroundLook"
 import { BALL_BLEND_MS, BALL_FADE_MS, BALL_PALETTES, BALL_WHITE, ballPaletteIndex } from "@/lib/ballLook"
 import { DEEP_FROM_SECONDS, FLOW_FROM_SECONDS, SOLID_FROM_SECONDS } from "@/lib/timerMaths"
 import TimerBackground from "./TimerBackground"
@@ -249,6 +249,22 @@ describe("TimerBackground: what it hands to the library", () => {
     state.lite = 1
     show({ active: true })
     expect(has("#siderays-stub")).toBe(true)
+  })
+
+  it("puts the animation in a box that is only BG_RENDER_SCALE of the screen, stretched back over the whole screen, so that it draws fewer pixels", () => {
+    show({ active: true })
+    const rays = container?.querySelector<HTMLElement>(".ab-timer-bg-rays") ?? null
+    expect(rays).not.toBeNull()
+    expect(rays?.parentElement?.classList.contains("ab-timer-bg")).toBe(true)
+    expect(rays?.querySelector("#siderays-stub")).not.toBeNull()
+    expect(parseFloat(rays?.style.width ?? "")).toBeCloseTo(BG_RENDER_SCALE * 100, 5)
+    expect(parseFloat(rays?.style.height ?? "")).toBeCloseTo(BG_RENDER_SCALE * 100, 5)
+    expect(rays?.style.width.endsWith("%")).toBe(true)
+    expect(rays?.style.height.endsWith("%")).toBe(true)
+    const stretch = Number(/^scale\(([0-9.]+)\)$/.exec(rays?.style.transform ?? "")?.[1])
+    expect(stretch).toBeCloseTo(1 / BG_RENDER_SCALE, 5)
+    // The box shrunk by the scale and then stretched by 1 / scale covers the screen exactly.
+    expect((BG_RENDER_SCALE * 100 * stretch) / 100).toBeCloseTo(1, 5)
   })
 
   it("lets the rays move at the chosen speed", () => {
@@ -550,6 +566,14 @@ describe("the css of the background", () => {
     const tintZ = Number(/z-index:\s*(\d+);/.exec(block(".ab-timer-bg-tint"))?.[1])
     expect(libraryZ).toBeGreaterThan(0)
     expect(tintZ).toBeGreaterThan(libraryZ)
+  })
+
+  it("has a box for the library animation that starts in the top left corner and stretches from there, so the stretched picture covers the screen", () => {
+    const rays = block(".ab-timer-bg-rays")
+    expect(rays).toContain("position: absolute;")
+    expect(rays).toContain("top: 0;")
+    expect(rays).toContain("left: 0;")
+    expect(rays).toContain("transform-origin: 0 0;")
   })
 
   it("lets the canvas of the library fill its place without a gap under it", () => {
