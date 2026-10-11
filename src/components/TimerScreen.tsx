@@ -1,4 +1,5 @@
 import HoldButton from "@/components/HoldButton"
+import StopAlert from "@/components/StopAlert"
 import TimerBackground from "@/components/TimerBackground"
 import TimerBall from "@/components/TimerBall"
 import { formatClock, qualityOf } from "@/lib/timerMaths"
@@ -10,7 +11,7 @@ import "../timer.css"
 // Big clock: the seconds of the running session. Small clock under it: the total of the day, saved sessions plus the running one.
 // Behind the big clock sits the glowing ball (TimerBall.tsx). It lights when a session starts, changes colour as the session gets deeper, stops and dims when paused, and fades when the session ends.
 // Behind everything, over the whole screen, sits the moving background (TimerBackground.tsx, the Side Rays animation). It is the first thing inside the main element, it has the same colour as the ball at every moment, and the screen is black without a session (see CONNECTIONS.md C37 and C38).
-// Start and Pause / Resume are normal taps. End Session is the library Hold Button (src/components/HoldButton.tsx, never edited): hold it until it is full.
+// Start and Pause / Resume are normal taps. End Session is the library Hold Button (src/components/HoldButton.tsx, never edited): hold it until it is full. It does not end the session: it opens the stop alert (StopAlert.tsx, the last thing inside the main element), which pauses the session and offers I'M DONE and GO BACK IN (see CONNECTIONS.md C43).
 // The ball sits in a box that is larger than the dial, and the ball is a share of that box (see CONNECTIONS.md C31).
 // The look of the clock digits (Space Grotesk, fixed width) is in timer.css (see CONNECTIONS.md C32).
 // On a phone the screen is one column: the dial, then the line, then the buttons. On a wide screen (a laptop) the dial is a big circle on the left and the line and the buttons stand on the right, inside the box ab-timer-side (see CONNECTIONS.md C39). The tags and the rest that come later go into that box too.
@@ -47,7 +48,7 @@ export default function TimerScreen() {
           <p className="ab-timer-small">{formatClock(timer.dayTotal)}</p>
         </div>
       </div>
-      <div className="ab-timer-side">
+      <div className="ab-timer-side" inert={timer.stopAlert !== null}>
         <p className="ab-timer-note" role="status">
           {note}
         </p>
@@ -79,9 +80,9 @@ export default function TimerScreen() {
                 fillColor="#ff2a55"
                 textColor="#f5f5f5"
                 fillTextColor="#ffffff"
-                doneLabel="Ended"
+                doneLabel="Stopped"
                 disabled={!ready}
-                onHold={timer.end}
+                onHold={timer.stop}
               >
                 Hold to end session
               </HoldButton>
@@ -89,6 +90,16 @@ export default function TimerScreen() {
           )}
         </div>
       </div>
+      {timer.stopAlert === null ? null : (
+        <StopAlert
+          line={timer.stopAlert.line}
+          canGoBack={timer.stopAlert.canGoBack}
+          disabled={!ready}
+          note={note}
+          onDone={timer.end}
+          onGoBack={timer.goBack}
+        />
+      )}
     </main>
   )
 }

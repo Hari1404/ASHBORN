@@ -20,7 +20,9 @@ vi.mock("@/lib/timerApi", async (importOriginal) => {
 })
 
 import { TimerError } from "@/lib/timerApi"
-import { activeSeconds, type TimerRow } from "@/lib/timerMaths"
+import { fillSlots } from "@/lib/lineMarkup"
+import { STOP_ALERT_BANKS, bankIdFor } from "@/lib/stopAlertLines"
+import { activeSeconds, canGoBackIn, type TimerRow } from "@/lib/timerMaths"
 import { POLL_OFFLINE_MS, POLL_ONLINE_MS, problemText, useTimer, type TimerView } from "./useTimer"
 
 // AB:TIMER.TESTS:START
@@ -819,6 +821,231 @@ describe("useTimer: the clock", () => {
     act(() => root?.unmount())
     root = null
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+// The lines a stop alert may show for a session of this length: the lines of its bank with the numbers filled in.
+function linesFor(seconds: number): string[] {
+  return STOP_ALERT_BANKS[bankIdFor(seconds)].map((line) => fillSlots(line, seconds))
+}
+
+describe("useTimer: the stop alert", () => {
+  it("Stop on a running session pauses it and opens the alert with a line for the seconds it stopped at; it does not end the session", async () => {
+    server.row = runningRow(125)
+    await mount()
+    expect(view.stopAlert).toBeNull()
+    await press(view.stop)
+    expect(api.timerPause).toHaveBeenCalledTimes(1)
+    expect(api.timerEnd).not.toHaveBeenCalled()
+    expect(view.status).toBe("paused")
+    expect(view.seconds).toBe(125)
+    expect(view.stopAlert).not.toBeNull()
+    expect(linesFor(125)).toContain(view.stopAlert?.line)
+    expect(view.stopAlert?.line).not.toMatch(/[{}]/)
+  })
+
+  it("picks the line from the bank of the seconds the session stopped at, for every length", async () => {
+    for (const seconds of [30, 100, 400, 700, 1300, 1900, 2800, 5500]) {
+      server.row = runningRow(seconds)
+      await mount()
+      await press(view.stop)
+      expect(linesFor(seconds)).toContain(view.stopAlert?.line)
+      act(() => root?.unmount())
+      container?.remove()
+      server.row = null
+      renders = 0
+    }
+  })
+
+  it("offers GO BACK IN only for a session shorter than 45 minutes (the same rule as canGoBackIn)", async () => {
+    for (const seconds of [100, 2699, 2700, 3000]) {
+      server.row = runningRow(seconds)
+      await mount()
+      await press(view.stop)
+      expect(view.stopAlert?.canGoBack).toBe(canGoBackIn(seconds))
+      act(() => root?.unmount())
+      container?.remove()
+      server.row = null
+    }
+    expect(canGoBackIn(2699)).toBe(true)
+    expect(canGoBackIn(2700)).toBe(false)
+  })
+
+  it("the time spent on the alert is never counted: I'M DONE saves the seconds of the moment it stopped", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await settle(40_000)
+    expect(view.stopAlert).not.toBeNull()
+    expect(view.seconds).toBe(125)
+    await press(view.end)
+    expect(api.timerEnd).toHaveBeenCalledTimes(1)
+    expect(view.stopAlert).toBeNull()
+    expect(view.status).toBe("idle")
+    expect(view.notice).toEqual({ saved: true, capped: false, seconds: 125 })
+  })
+
+  it("I'M DONE under 60 seconds is not saved, and the notice says so", async () => {
+    server.row = runningRow(30)
+    await mount()
+    await press(view.stop)
+    await press(view.end)
+    expect(view.notice).toEqual({ saved: false, capped: false, seconds: null })
+    expect(view.stopAlert).toBeNull()
+  })
+
+  it("GO BACK IN resumes the session from where it stopped: the time on the alert is not counted", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await settle(20_000)
+    await press(view.goBack)
+    expect(api.timerResume).toHaveBeenCalledTimes(1)
+    expect(view.stopAlert).toBeNull()
+    expect(view.status).toBe("running")
+    expect(view.seconds).toBe(125)
+    await settle(5000)
+    expect(view.seconds).toBe(130)
+  })
+
+  it("a session that was already paused: Stop opens the alert without a call, and GO BACK IN leaves it paused as it was", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.pause)
+    api.timerPause.mockClear()
+    await press(view.stop)
+    expect(api.timerPause).not.toHaveBeenCalled()
+    expect(view.stopAlert).not.toBeNull()
+    expect(linesFor(125)).toContain(view.stopAlert?.line)
+    await press(view.goBack)
+    expect(api.timerResume).not.toHaveBeenCalled()
+    expect(view.stopAlert).toBeNull()
+    expect(view.status).toBe("paused")
+    expect(view.seconds).toBe(125)
+  })
+
+  it("I'M DONE ends a session that was paused before the alert, with its frozen seconds", async () => {
+    server.row = runningRow(300)
+    await mount()
+    await press(view.pause)
+    await settle(60_000)
+    await press(view.stop)
+    await press(view.end)
+    expect(view.notice).toEqual({ saved: true, capped: false, seconds: 300 })
+  })
+
+  it("keeps the alert through the reading that comes every 30 seconds", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    const line = view.stopAlert?.line
+    await settle(POLL_ONLINE_MS + 1000)
+    expect(api.timerState.mock.calls.length).toBeGreaterThan(2)
+    expect(view.stopAlert?.line).toBe(line)
+  })
+
+  it("no line comes twice before all lines of the bank were shown (the queue lives on between alerts)", async () => {
+    server.row = runningRow(125)
+    await mount()
+    const size = STOP_ALERT_BANKS[bankIdFor(125)].length
+    const shown: string[] = []
+    for (let i = 0; i < size; i++) {
+      await press(view.stop)
+      shown.push(view.stopAlert?.line ?? "")
+      await press(view.goBack)
+    }
+    expect(new Set(shown).size).toBe(size)
+  })
+
+  it("a button pressed twice in a row sends one pause", async () => {
+    server.row = runningRow(125)
+    await mount()
+    const pending = hold("timerPause")
+    await act(async () => {
+      view.stop()
+      view.stop()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(api.timerPause).toHaveBeenCalledTimes(1)
+    server.row = { ...runningRow(125), status: "paused", paused_at: iso(serverNow()) }
+    await release(() => pending.answer({ serverNowMs: serverNow(), row: server.row }))
+    expect(view.stopAlert).not.toBeNull()
+  })
+
+  it("a Stop that finds the session paused on another device reads again and opens no alert", async () => {
+    server.row = runningRow(125)
+    await mount()
+    server.row = { ...runningRow(125), status: "paused", paused_at: iso(serverNow()) }
+    await press(view.stop)
+    expect(view.stopAlert).toBeNull()
+    expect(view.status).toBe("paused")
+    expect(view.problem).toBe("")
+  })
+
+  it("without a connection Stop does nothing", async () => {
+    server.row = runningRow(125)
+    await mount()
+    server.down = new TimerError("NO_CONNECTION")
+    await settle(POLL_ONLINE_MS)
+    expect(view.link).toBe("offline")
+    api.timerPause.mockClear()
+    await press(view.stop)
+    expect(api.timerPause).not.toHaveBeenCalled()
+    expect(view.stopAlert).toBeNull()
+  })
+
+  it("a failed pause shows the problem text and opens no alert", async () => {
+    server.row = runningRow(125)
+    await mount()
+    api.timerPause.mockImplementationOnce(async () => {
+      throw new TimerError("UNKNOWN")
+    })
+    await press(view.stop)
+    expect(view.stopAlert).toBeNull()
+    expect(view.link).toBe("problem")
+  })
+
+  it("the alert closes when the session was ended on another device", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    server.row = null
+    await settle(POLL_ONLINE_MS + 1000)
+    expect(view.status).toBe("idle")
+    expect(view.stopAlert).toBeNull()
+  })
+
+  it("the alert closes when the session was resumed on another device, and does not come back when it is paused again", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    server.row = { ...runningRow(125), status: "running", paused_at: null }
+    await settle(POLL_ONLINE_MS + 1000)
+    expect(view.status).toBe("running")
+    expect(view.stopAlert).toBeNull()
+    await press(view.pause)
+    expect(view.status).toBe("paused")
+    expect(view.stopAlert).toBeNull()
+  })
+
+  it("midnight while the alert is open: the session is ended once, the notice says the day ended, and the alert is gone", async () => {
+    server.row = runningRow(100, { cap_at: iso(T0 + 20_000) })
+    await mount()
+    await press(view.stop)
+    expect(view.stopAlert).not.toBeNull()
+    await settle(25_000)
+    expect(api.timerEnd).toHaveBeenCalledTimes(1)
+    expect(view.status).toBe("idle")
+    expect(view.stopAlert).toBeNull()
+    expect(view.notice).toEqual({ saved: true, capped: true, seconds: 100 })
+  })
+
+  it("GO BACK IN does nothing when there is no alert", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.goBack)
+    expect(api.timerResume).not.toHaveBeenCalled()
+    expect(view.status).toBe("running")
   })
 })
 

@@ -33,6 +33,14 @@ vi.mock("@/components/TimerBackground", async () => {
   }
 })
 
+// BlurText (the library text that shows the line of the stop alert) watches its box with an IntersectionObserver, which jsdom does not have. A stand-in shows the text it is given, so the tests can read it.
+vi.mock("@/components/BlurText", async () => {
+  const { createElement: h } = await import("react")
+  return {
+    default: (props: { text?: string; className?: string }) => h("p", { className: props.className, "data-blur-stub": "yes" }, props.text),
+  }
+})
+
 import { formatClock, qualityOf } from "@/lib/timerMaths"
 import type { TimerView } from "@/lib/useTimer"
 import TimerScreen from "./TimerScreen"
@@ -54,10 +62,13 @@ function makeView(over: Partial<TimerView> = {}): TimerView {
     dayTotal: 0,
     ringSeed: "",
     notice: null,
+    stopAlert: null,
     start: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
+    stop: vi.fn(),
     end: vi.fn(),
+    goBack: vi.fn(),
     retry: vi.fn(),
     ...over,
   }
@@ -368,18 +379,19 @@ describe("TimerScreen: the buttons", () => {
     expect(q(".ab-timer-end").hasAttribute("disabled")).toBe(false)
   })
 
-  it("the Hold Button ends the session only after it was held for 1.5 seconds", async () => {
+  it("the Hold Button stops the session (opens the stop alert) only after it was held for 1.5 seconds, and never ends it by itself", async () => {
     const view = show({ status: "running", seconds: 100 })
     const hold = q(".ab-timer-end")
     await act(async () => {
       hold.dispatchEvent(pointer("pointerdown"))
       await vi.advanceTimersByTimeAsync(1400)
     })
-    expect(view.end).not.toHaveBeenCalled()
+    expect(view.stop).not.toHaveBeenCalled()
     await act(async () => {
       await vi.advanceTimersByTimeAsync(300)
     })
-    expect(view.end).toHaveBeenCalledTimes(1)
+    expect(view.stop).toHaveBeenCalledTimes(1)
+    expect(view.end).not.toHaveBeenCalled()
   })
 
   it("a short tap or a hold that is let go early does not end the session", async () => {
@@ -397,7 +409,70 @@ describe("TimerScreen: the buttons", () => {
       hold.dispatchEvent(pointer("pointerup"))
       await vi.advanceTimersByTimeAsync(3000)
     })
+    expect(view.stop).not.toHaveBeenCalled()
     expect(view.end).not.toHaveBeenCalled()
+  })
+})
+
+describe("TimerScreen: the stop alert", () => {
+  const ALERT = { line: "Ten minutes. [glow:Solid.] Stay.", canGoBack: true }
+
+  it("shows no alert when the hook has none, and the screen keeps its three children", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    expect(has(".ab-alert")).toBe(false)
+    expect(q(".ab-timer-side").hasAttribute("inert")).toBe(false)
+  })
+
+  it("shows the alert as the LAST child of the screen, after the side, with the line without its marks", () => {
+    show({ status: "paused", seconds: 600, ringSeed: SEED, stopAlert: ALERT })
+    const kids = Array.from(q(".ab-timer").children)
+    expect(kids.map((k) => k.id || k.className)).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side", "ab-alert"])
+    expect(q(".ab-alert-line").textContent).toBe("Ten minutes. Solid. Stay.")
+  })
+
+  it("switches off the buttons under the alert (inert), so that nothing behind it can be pressed or reached with the keyboard", () => {
+    show({ status: "paused", seconds: 600, ringSeed: SEED, stopAlert: ALERT })
+    expect(q(".ab-timer-side").hasAttribute("inert")).toBe(true)
+  })
+
+  it("I'M DONE ends the session and GO BACK IN lets it go on", () => {
+    const view = show({ status: "paused", seconds: 600, ringSeed: SEED, stopAlert: ALERT })
+    const [done, back] = Array.from(container?.querySelectorAll<HTMLButtonElement>(".ab-alert button") ?? [])
+    expect(done.textContent).toBe("I'M DONE")
+    expect(back.textContent).toBe("GO BACK IN")
+    act(() => done.click())
+    expect(view.end).toHaveBeenCalledTimes(1)
+    expect(view.goBack).not.toHaveBeenCalled()
+    act(() => back.click())
+    expect(view.goBack).toHaveBeenCalledTimes(1)
+    expect(view.end).toHaveBeenCalledTimes(1)
+  })
+
+  it("offers only I'M DONE when GO BACK IN is not allowed (45 minutes and more)", () => {
+    show({ status: "paused", seconds: 3000, ringSeed: SEED, stopAlert: { line: "Fifty minutes.", canGoBack: false } })
+    expect(q(".ab-alert-done").textContent).toBe("I'M DONE")
+    expect(has(".ab-alert-back")).toBe(false)
+  })
+
+  it("switches both buttons off without a connection, and says why in the alert", () => {
+    show({ link: "offline", status: "paused", seconds: 600, ringSeed: SEED, stopAlert: ALERT })
+    expect(q(".ab-alert-done").hasAttribute("disabled")).toBe(true)
+    expect(q(".ab-alert-back").hasAttribute("disabled")).toBe(true)
+    expect(q(".ab-alert-note").textContent).toBe("No connection. Waiting to reconnect.")
+  })
+
+  it("switches both buttons off while a call is working", () => {
+    show({ busy: true, status: "paused", seconds: 600, ringSeed: SEED, stopAlert: ALERT })
+    expect(q(".ab-alert-done").hasAttribute("disabled")).toBe(true)
+    expect(q(".ab-alert-back").hasAttribute("disabled")).toBe(true)
+  })
+
+  it("closes when the hook takes the alert away", () => {
+    show({ status: "paused", seconds: 600, ringSeed: SEED, stopAlert: ALERT })
+    expect(has(".ab-alert")).toBe(true)
+    show({ status: "running", seconds: 601, ringSeed: SEED, stopAlert: null })
+    expect(has(".ab-alert")).toBe(false)
+    expect(q(".ab-timer-side").hasAttribute("inert")).toBe(false)
   })
 })
 

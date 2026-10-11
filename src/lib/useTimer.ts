@@ -10,8 +10,10 @@ import {
   timerState,
   type TimerErrorKind,
 } from "@/lib/timerApi"
+import { pickStopLine, type LineQueues } from "@/lib/stopAlertLines"
 import {
   activeSeconds,
+  canGoBackIn,
   dayHasEnded,
   dayTotalSeconds,
   estimateServerNowMs,
@@ -23,7 +25,8 @@ import {
 // The live state of the Pro Timer screen. The database is the only truth: every few seconds and every time the page comes back, the state is read again.
 // The seconds are never counted by ticks. They are worked out from the stored times and the server time estimate (timerMaths.ts), so a sleeping phone loses nothing.
 // Rules: a button that finds the state changed on another device reads the state again (CONFLICTS); without a connection every button is off; a session still running at local midnight is ended by the database at 12:00.
-// What is tied to the database and the screen: see CONNECTIONS.md C28, C29 and C30. The names used by the screen are in TimerView.
+// The stop alert: Hold to end session does NOT end the session. stop pauses it (so the minutes of the line stay true while the alert is on the screen), picks one line for the seconds it stopped at, and opens the alert. end (I'M DONE) then ends it, goBack (GO BACK IN) resumes it. The time spent on the alert is never counted, because the session is paused. See CONNECTIONS.md C43.
+// What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30 and C43. The names used by the screen are in TimerView.
 
 export const POLL_ONLINE_MS = 30000
 export const POLL_OFFLINE_MS = 3000
@@ -47,7 +50,14 @@ export type TimerStatus = "idle" | "running" | "paused"
 export type EndNotice = { saved: boolean; capped: boolean; seconds: number | null }
 
 type Reading = { row: TimerRow | null; time: TimeBase; savedSeconds: number; day: string }
-type Action = "start" | "pause" | "resume" | "end"
+type Action = "start" | "pause" | "resume" | "end" | "stop" | "goback"
+
+// The stop alert as the hook keeps it. resume is true when the alert itself paused the session, so that GO BACK IN has to resume it; when the session was already paused before the hold, GO BACK IN leaves it paused as it was.
+// startedAt and pausedAt name the one pause the alert was opened for (see alertMatches).
+type AlertState = { line: string; seconds: number; canGoBack: boolean; resume: boolean; startedAt: string; pausedAt: string }
+
+// The stop alert as the screen sees it: the line (its slots filled, its [effect:words] marks still in it) and whether GO BACK IN is offered (only for a session shorter than 45 minutes).
+export type StopAlertView = { line: string; canGoBack: boolean }
 
 export type TimerView = {
   link: TimerLink
@@ -58,10 +68,13 @@ export type TimerView = {
   dayTotal: number
   ringSeed: string
   notice: EndNotice | null
+  stopAlert: StopAlertView | null
   start: () => void
   pause: () => void
   resume: () => void
+  stop: () => void
   end: () => void
+  goBack: () => void
   retry: () => void
 }
 
@@ -80,6 +93,11 @@ export function problemText(kind: TimerErrorKind): string {
   }
 }
 
+// The alert belongs to ONE pause of ONE session. It is open only while the session is still paused at that same moment: when the session was ended or resumed on another device, or at midnight, or paused again later, it does not match any more and the screen shows no alert. Derived while drawing, so there is no state to clean up.
+function alertMatches(alert: AlertState | null, row: TimerRow | null): alert is AlertState {
+  return alert !== null && row !== null && row.status === "paused" && row.started_at === alert.startedAt && row.paused_at === alert.pausedAt
+}
+
 function dayOrFallback(ms: number, zone: string, fallback: string): string {
   try {
     return localDay(ms, zone)
@@ -94,6 +112,7 @@ export function useTimer(): TimerView {
   const [problem, setProblem] = useState("")
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<EndNotice | null>(null)
+  const [alert, setAlert] = useState<AlertState | null>(null)
   const [now, setNow] = useState(() => Date.now())
 
   const readingRef = useRef<Reading | null>(null)
@@ -103,11 +122,19 @@ export function useTimer(): TimerView {
   const lastAttemptRef = useRef(0)
   const aliveRef = useRef(true)
   const rolloverRef = useRef("")
+  const alertRef = useRef<AlertState | null>(null)
+  // The shuffled queues of the stop alert lines: no line comes twice before all lines of its bank were shown. They live as long as the screen does.
+  const queuesRef = useRef<LineQueues>({})
 
   const showLink = useCallback((next: TimerLink, text = "") => {
     linkRef.current = next
     setLink(next)
     setProblem(text)
+  }, [])
+
+  const showAlert = useCallback((next: AlertState | null) => {
+    alertRef.current = next
+    setAlert(next)
   }, [])
 
   const adopt = useCallback((next: Reading) => {
@@ -165,6 +192,47 @@ export function useTimer(): TimerView {
           const added = reply.saved && reply.seconds !== null ? reply.seconds : 0
           adopt({ row: null, time, savedSeconds: (before?.savedSeconds ?? 0) + added, day: before?.day ?? "" })
           setNotice({ saved: reply.saved, capped: reply.capped, seconds: reply.seconds })
+          showAlert(null)
+        } else if (kind === "stop") {
+          // Hold to end session: pause (unless it is paused already), then open the alert for the seconds the session stopped at.
+          const row = before?.row ?? null
+          if (before === null || row === null) return
+          let stopped = row
+          let serverMs = estimateServerNowMs(before.time.serverMs, before.time.localMs, Date.now())
+          const pausedHere = row.status === "running"
+          if (pausedHere) {
+            const reply = await timerPause()
+            if (!aliveRef.current) return
+            const time = { serverMs: reply.serverNowMs, localMs: (sentAt + Date.now()) / 2 }
+            adopt({ row: reply.row, time, savedSeconds: before.savedSeconds, day: before.day })
+            stopped = reply.row
+            serverMs = reply.serverNowMs
+          }
+          const seconds = activeSeconds(stopped, serverMs)
+          const picked = pickStopLine(seconds, queuesRef.current)
+          queuesRef.current = picked.queues
+          showAlert({
+            line: picked.line,
+            seconds,
+            canGoBack: canGoBackIn(seconds),
+            resume: pausedHere,
+            startedAt: stopped.started_at,
+            pausedAt: stopped.paused_at ?? "",
+          })
+        } else if (kind === "goback") {
+          // GO BACK IN: the session goes on from where it stopped. If the alert paused it, it is resumed; if it was paused before, it stays paused.
+          const open = alertRef.current
+          if (!alertMatches(open, before?.row ?? null)) {
+            showAlert(null)
+            return
+          }
+          if (open.resume) {
+            const reply = await timerResume()
+            if (!aliveRef.current) return
+            const time = { serverMs: reply.serverNowMs, localMs: (sentAt + Date.now()) / 2 }
+            adopt({ row: reply.row, time, savedSeconds: before?.savedSeconds ?? 0, day: before?.day ?? "" })
+          }
+          showAlert(null)
         } else {
           const reply =
             kind === "start" ? await timerStart(deviceTimeZone()) : kind === "pause" ? await timerPause() : await timerResume()
@@ -183,7 +251,7 @@ export function useTimer(): TimerView {
         if (aliveRef.current) setBusy(false)
       }
     },
-    [adopt, fail, refresh],
+    [adopt, fail, refresh, showAlert],
   )
 
   // Reading again: at the start, every 30 seconds (every 3 seconds while there is no connection), when the page comes back, and when the connection comes back.
@@ -260,10 +328,13 @@ export function useTimer(): TimerView {
     dayTotal: dayTotalSeconds(reading?.savedSeconds ?? 0, row === null ? null : seconds),
     ringSeed: row === null ? "" : row.started_at,
     notice,
+    stopAlert: alertMatches(alert, row) ? { line: alert.line, canGoBack: alert.canGoBack } : null,
     start: () => void act("start"),
     pause: () => void act("pause"),
     resume: () => void act("resume"),
+    stop: () => void act("stop"),
     end: () => void act("end"),
+    goBack: () => void act("goback"),
     retry: () => void refresh(),
   }
 }

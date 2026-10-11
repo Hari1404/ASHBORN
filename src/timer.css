@@ -224,6 +224,112 @@
 }
 /* AB:TIMER.BALL:END */
 
+/* AB:TIMER.STOP-ALERT:START */
+/* The stop alert (StopAlert.tsx): a dark layer over the whole timer screen with the line and the two buttons in the middle. It is the last child of .ab-timer (position relative, so inset 0 is the whole screen) and its z-index (2) is higher than the dial and the buttons (1, see C31), so it covers them. The menu button floats above it (menu.css, z-index 40). It must stay plain: no blur behind it (a blur over the moving background made the phone laggy, C25). It scrolls by itself when a very low window is too small for the card, and the card is centred with margin auto so that its top is never cut off. This part sits BEFORE the part of the moving background on purpose: a test of the background reads the last reduced-motion rule of this file and expects it to be the background's own. CONNECTIONS.md C43. */
+.ab-alert {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  display: flex;
+  padding: 72px 20px 32px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.82);
+  animation: ab-alert-in 250ms ease;
+}
+
+.ab-alert-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  width: 100%;
+  max-width: 560px;
+  margin: auto;
+  outline: none;
+}
+
+/* The line: the library text (BlurText) is a flex row that wraps, so it is centred with justify-content. */
+.ab-alert-line {
+  margin: 0;
+  justify-content: center;
+  text-align: center;
+  font-size: clamp(1.45rem, 5.6vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.28;
+  text-wrap: balance;
+  color: #fff;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.9), 0 0 3px rgba(0, 0, 0, 0.8);
+}
+
+.ab-alert-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.ab-alert-done,
+.ab-alert-back {
+  width: 100%;
+  height: 58px;
+  padding: 0 28px;
+  font: inherit;
+  font-size: 19px;
+  font-weight: 700;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ab-alert-done {
+  color: #000;
+  background: #fff;
+  border: 0;
+}
+
+.ab-alert-back {
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.ab-alert-done:disabled,
+.ab-alert-back:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ab-alert-done:active:enabled,
+.ab-alert-back:active:enabled {
+  transform: scale(0.98);
+}
+
+/* The line for No connection and problems, as under the dial. It keeps its height so that nothing jumps. */
+.ab-alert-note {
+  min-height: 1.4em;
+  margin: 0;
+  max-width: 320px;
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+@keyframes ab-alert-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ab-alert {
+    animation: none;
+  }
+}
+/* AB:TIMER.STOP-ALERT:END */
+
 /* AB:TIMER.BG:START */
 /* The moving background (TimerBackground.tsx): it fills the whole screen, sits at the very bottom, is dimmed so that the white digits stay easy to read, and never catches a tap. It has its own black, so that the tint layer below colours only the rays and not the clear parts of the animation (CONNECTIONS.md C37). It fades in when a session starts and out when it ends. The fade time is the same as BG_FADE_MS in backgroundLook.ts (CONNECTIONS.md C38). */
 .ab-timer-bg {
