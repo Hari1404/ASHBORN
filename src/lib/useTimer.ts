@@ -26,7 +26,8 @@ import {
 // The seconds are never counted by ticks. They are worked out from the stored times and the server time estimate (timerMaths.ts), so a sleeping phone loses nothing.
 // Rules: a button that finds the state changed on another device reads the state again (CONFLICTS); without a connection every button is off; a session still running at local midnight is ended by the database at 12:00.
 // The stop alert: Hold to end session does NOT end the session. stop pauses it (so the minutes of the line stay true while the alert is on the screen), picks one line for the seconds it stopped at, and opens the alert. end (I'M DONE) then ends it, goBack (GO BACK IN) resumes it. The time spent on the alert is never counted, because the session is paused. See CONNECTIONS.md C43.
-// The comeback message: when GO BACK IN really resumes the session, goBack also picks one comeback line for the seconds the session stopped at (pickComebackLine) and keeps it as long as that session runs. It is never made when the session stays paused (the lines say the clock is running). The screen shows it for a few seconds (Comeback.tsx) and then calls clearComeback. See CONNECTIONS.md C48.
+// GO BACK IN does NOT resume the session: it closes the alert and the session stays paused as it is. The person presses Resume when he is ready (Packet 06E). goBack only remembers that the next Resume of THIS pause is a comeback (pendingRef: the seconds it stopped at, the session and the pause).
+// The comeback message: when that Resume really runs the session again, resume picks one comeback line for the seconds the session stopped at (pickComebackLine) and keeps it as long as that session runs. A Resume that is not the one after GO BACK IN (or after any other pause) gets none. The screen shows it for a few seconds (Comeback.tsx) and then calls clearComeback. See CONNECTIONS.md C48.
 // What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43, C45 and C48. The names used by the screen are in TimerView.
 
 export const POLL_ONLINE_MS = 30000
@@ -53,9 +54,11 @@ export type EndNotice = { saved: boolean; capped: boolean; seconds: number | nul
 type Reading = { row: TimerRow | null; time: TimeBase; savedSeconds: number; day: string }
 type Action = "start" | "pause" | "resume" | "end" | "stop" | "goback"
 
-// The stop alert as the hook keeps it. resume is true when the alert itself paused the session, so that GO BACK IN has to resume it; when the session was already paused before the hold, GO BACK IN leaves it paused as it was.
-// startedAt and pausedAt name the one pause the alert was opened for (see alertMatches).
-type AlertState = { line: string; seconds: number; canGoBack: boolean; resume: boolean; startedAt: string; pausedAt: string }
+// The stop alert as the hook keeps it. startedAt and pausedAt name the one pause the alert was opened for (see alertMatches).
+type AlertState = { line: string; seconds: number; canGoBack: boolean; startedAt: string; pausedAt: string }
+
+// What GO BACK IN leaves behind: the next Resume of this one pause (this session, this pause) is a comeback, for the seconds the session stopped at (see pendingMatches).
+type PendingComeback = { seconds: number; startedAt: string; pausedAt: string }
 
 // The stop alert as the screen sees it: the line (its slots filled, its [effect:words] marks still in it) and whether GO BACK IN is offered (only for a session shorter than 45 minutes).
 export type StopAlertView = { line: string; canGoBack: boolean }
@@ -112,6 +115,11 @@ function comebackMatches(comeback: ComebackState | null, row: TimerRow | null): 
   return comeback !== null && row !== null && row.status === "running" && row.started_at === comeback.startedAt
 }
 
+// The pending comeback belongs to ONE pause of ONE session, like the alert. It counts only while the session is still paused at that same moment: when the session was resumed or ended on another device, or paused again later, it does not match any more.
+function pendingMatches(pending: PendingComeback | null, row: TimerRow | null): pending is PendingComeback {
+  return pending !== null && row !== null && row.status === "paused" && row.started_at === pending.startedAt && row.paused_at === pending.pausedAt
+}
+
 function dayOrFallback(ms: number, zone: string, fallback: string): string {
   try {
     return localDay(ms, zone)
@@ -139,6 +147,7 @@ export function useTimer(): TimerView {
   const rolloverRef = useRef("")
   const alertRef = useRef<AlertState | null>(null)
   const comebackRef = useRef<ComebackState | null>(null)
+  const pendingRef = useRef<PendingComeback | null>(null)
   // The shuffled queues of the stop alert lines: no line comes twice before all lines of its bank were shown. They live as long as the screen does.
   const queuesRef = useRef<LineQueues>({})
   // The same for the comeback lines (their own queues, one per bank).
@@ -172,6 +181,8 @@ export function useTimer(): TimerView {
       setNow(t)
       // The comeback message is forgotten for good as soon as the session it belongs to is not running any more.
       if (comebackRef.current !== null && !comebackMatches(comebackRef.current, next.row)) showComeback(null)
+      // The same for the pending comeback (GO BACK IN was pressed, Resume not yet): it is forgotten when the pause it belongs to is over.
+      if (pendingRef.current !== null && !pendingMatches(pendingRef.current, next.row)) pendingRef.current = null
     },
     [showComeback],
   )
@@ -248,41 +259,41 @@ export function useTimer(): TimerView {
           const seconds = activeSeconds(stopped, serverMs)
           const picked = pickStopLine(seconds, queuesRef.current)
           queuesRef.current = picked.queues
+          // A new hold starts over: nothing is left behind from an earlier GO BACK IN.
+          pendingRef.current = null
           showAlert({
             line: picked.line,
             seconds,
             canGoBack: canGoBackIn(seconds),
-            resume: pausedHere,
             startedAt: stopped.started_at,
             pausedAt: stopped.paused_at ?? "",
           })
         } else if (kind === "goback") {
-          // GO BACK IN: the session goes on from where it stopped. If the alert paused it, it is resumed; if it was paused before, it stays paused.
+          // GO BACK IN: the alert closes and the session STAYS PAUSED, as it is. Nothing is sent to the database. The next Resume of this pause is the comeback (see resume below).
           const open = alertRef.current
           if (!alertMatches(open, before?.row ?? null)) {
             showAlert(null)
             return
           }
-          if (open.resume) {
-            const reply = await timerResume()
-            if (!aliveRef.current) return
-            const time = { serverMs: reply.serverNowMs, localMs: (sentAt + Date.now()) / 2 }
-            adopt({ row: reply.row, time, savedSeconds: before?.savedSeconds ?? 0, day: before?.day ?? "" })
-            // The session runs again, so the comeback line is true. (A session that stays paused gets none: the lines say the clock is running.)
-            const picked = pickComebackLine(open.seconds, comebackQueuesRef.current)
-            if (picked !== null) {
-              comebackQueuesRef.current = picked.queues
-              showComeback({ line: picked.line, startedAt: open.startedAt })
-            }
-          }
+          pendingRef.current = { seconds: open.seconds, startedAt: open.startedAt, pausedAt: open.pausedAt }
           showAlert(null)
         } else {
+          // Read before adopt: adopting the running row forgets the pending comeback.
+          const pending = kind === "resume" && pendingMatches(pendingRef.current, before?.row ?? null) ? pendingRef.current : null
           const reply =
             kind === "start" ? await timerStart(deviceTimeZone()) : kind === "pause" ? await timerPause() : await timerResume()
           if (!aliveRef.current) return
           const time = { serverMs: reply.serverNowMs, localMs: (sentAt + Date.now()) / 2 }
           adopt({ row: reply.row, time, savedSeconds: before?.savedSeconds ?? 0, day: before?.day ?? "" })
           if (kind === "start") setNotice(null)
+          if (pending !== null) {
+            // The session runs again after GO BACK IN, so the comeback line is true now.
+            const picked = pickComebackLine(pending.seconds, comebackQueuesRef.current)
+            if (picked !== null) {
+              comebackQueuesRef.current = picked.queues
+              showComeback({ line: picked.line, startedAt: pending.startedAt })
+            }
+          }
         }
         void refresh()
       } catch (error) {

@@ -896,14 +896,21 @@ describe("useTimer: the stop alert", () => {
     expect(view.stopAlert).toBeNull()
   })
 
-  it("GO BACK IN resumes the session from where it stopped: the time on the alert is not counted", async () => {
+  it("GO BACK IN closes the alert and leaves the session paused (no call to the database); Resume then goes on from where it stopped, and the time on the alert is not counted", async () => {
     server.row = runningRow(125)
     await mount()
     await press(view.stop)
     await settle(20_000)
     await press(view.goBack)
-    expect(api.timerResume).toHaveBeenCalledTimes(1)
+    expect(api.timerResume).not.toHaveBeenCalled()
     expect(view.stopAlert).toBeNull()
+    expect(view.status).toBe("paused")
+    expect(view.seconds).toBe(125)
+    await settle(5000)
+    expect(view.status).toBe("paused")
+    expect(view.seconds).toBe(125)
+    await press(view.resume)
+    expect(api.timerResume).toHaveBeenCalledTimes(1)
     expect(view.status).toBe("running")
     expect(view.seconds).toBe(125)
     await settle(5000)
@@ -1147,14 +1154,18 @@ describe("useTimer: the comeback message", () => {
     expect(view.comeback).toBeNull()
   })
 
-  it("GO BACK IN on a session that the alert paused shows one comeback line for the seconds it stopped at, and the session runs again", async () => {
+  it("GO BACK IN gives no message yet and the session stays paused; the Resume that follows shows one comeback line for the seconds it stopped at, and the session runs", async () => {
     server.row = runningRow(125)
     await mount()
     await press(view.stop)
     await settle(20_000)
     await press(view.goBack)
-    expect(view.status).toBe("running")
+    expect(view.status).toBe("paused")
     expect(view.stopAlert).toBeNull()
+    expect(view.comeback).toBeNull()
+    expect(api.timerResume).not.toHaveBeenCalled()
+    await press(view.resume)
+    expect(view.status).toBe("running")
     expect(comebackLinesFor(125)).toContain(view.comeback?.line)
     expect(view.comeback?.line).not.toMatch(/[{}]/)
   })
@@ -1165,6 +1176,7 @@ describe("useTimer: the comeback message", () => {
       await mount()
       await press(view.stop)
       await press(view.goBack)
+      await press(view.resume)
       expect(comebackLinesFor(seconds)).toContain(view.comeback?.line)
       act(() => root?.unmount())
       container?.remove()
@@ -1178,11 +1190,13 @@ describe("useTimer: the comeback message", () => {
     await press(view.stop)
     await settle(300_000)
     await press(view.goBack)
+    await settle(300_000)
+    await press(view.resume)
     expect(comebackLinesFor(125)).toContain(view.comeback?.line)
     expect(view.seconds).toBe(125)
   })
 
-  it("a session that was already paused before the hold stays paused after GO BACK IN and gets NO comeback message (its lines say the clock is running)", async () => {
+  it("a session that was already paused before the hold also gets the comeback message, when it is resumed after GO BACK IN", async () => {
     server.row = runningRow(125)
     await mount()
     await press(view.pause)
@@ -1190,6 +1204,32 @@ describe("useTimer: the comeback message", () => {
     await press(view.goBack)
     expect(api.timerResume).not.toHaveBeenCalled()
     expect(view.status).toBe("paused")
+    expect(view.comeback).toBeNull()
+    await press(view.resume)
+    expect(view.status).toBe("running")
+    expect(comebackLinesFor(125)).toContain(view.comeback?.line)
+  })
+
+  it("a plain Pause and Resume, with no hold and no GO BACK IN, gives no comeback message", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.pause)
+    await press(view.resume)
+    expect(view.status).toBe("running")
+    expect(view.comeback).toBeNull()
+  })
+
+  it("only the first Resume after GO BACK IN gets the message: a later Pause and Resume gets none", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await press(view.goBack)
+    await press(view.resume)
+    expect(view.comeback).not.toBeNull()
+    await press(view.clearComeback)
+    await press(view.pause)
+    await press(view.resume)
+    expect(view.status).toBe("running")
     expect(view.comeback).toBeNull()
   })
 
@@ -1205,10 +1245,11 @@ describe("useTimer: the comeback message", () => {
     server.row = runningRow(125)
     await mount()
     await press(view.stop)
+    await press(view.goBack)
     api.timerResume.mockImplementationOnce(async () => {
       throw new TimerError("UNKNOWN")
     })
-    await press(view.goBack)
+    await press(view.resume)
     expect(view.link).toBe("problem")
     expect(view.comeback).toBeNull()
   })
@@ -1218,6 +1259,7 @@ describe("useTimer: the comeback message", () => {
     await mount()
     await press(view.stop)
     await press(view.goBack)
+    await press(view.resume)
     const line = view.comeback?.line
     await settle(POLL_ONLINE_MS + 1000)
     expect(api.timerState.mock.calls.length).toBeGreaterThan(2)
@@ -1230,6 +1272,7 @@ describe("useTimer: the comeback message", () => {
     const first = view.clearComeback
     await press(view.stop)
     await press(view.goBack)
+    await press(view.resume)
     expect(view.comeback).not.toBeNull()
     await settle(5000)
     expect(view.clearComeback).toBe(first)
@@ -1245,6 +1288,7 @@ describe("useTimer: the comeback message", () => {
     await mount()
     await press(view.stop)
     await press(view.goBack)
+    await press(view.resume)
     expect(view.comeback).not.toBeNull()
     await press(view.pause)
     expect(view.comeback).toBeNull()
@@ -1253,16 +1297,33 @@ describe("useTimer: the comeback message", () => {
     expect(view.comeback).toBeNull()
   })
 
-  it("is gone when Hold to end session is used again, and the new alert has no comeback behind it", async () => {
+  it("Hold to end session used again after GO BACK IN starts over: the new alert has no comeback behind it, and its own GO BACK IN and Resume give one line", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await press(view.goBack)
+    await press(view.resume)
+    expect(view.comeback).not.toBeNull()
+    await press(view.stop)
+    expect(view.stopAlert).not.toBeNull()
+    expect(view.comeback).toBeNull()
+    await press(view.goBack)
+    expect(view.status).toBe("paused")
+    expect(view.comeback).toBeNull()
+    await press(view.resume)
+    expect(view.status).toBe("running")
+    expect(comebackLinesFor(125)).toContain(view.comeback?.line)
+  })
+
+  it("Hold to end session used again BEFORE Resume replaces what GO BACK IN left behind: still only one comeback line, for the Resume after the last GO BACK IN", async () => {
     server.row = runningRow(125)
     await mount()
     await press(view.stop)
     await press(view.goBack)
     await press(view.stop)
     expect(view.stopAlert).not.toBeNull()
-    expect(view.comeback).toBeNull()
     await press(view.goBack)
-    expect(view.status).toBe("running")
+    await press(view.resume)
     expect(comebackLinesFor(125)).toContain(view.comeback?.line)
   })
 
@@ -1271,6 +1332,7 @@ describe("useTimer: the comeback message", () => {
     await mount()
     await press(view.stop)
     await press(view.goBack)
+    await press(view.resume)
     expect(view.comeback).not.toBeNull()
     server.row = null
     await settle(POLL_ONLINE_MS + 1000)
@@ -1286,9 +1348,40 @@ describe("useTimer: the comeback message", () => {
     await mount()
     await press(view.stop)
     await press(view.goBack)
+    await press(view.resume)
     server.row = { ...runningRow(125), status: "paused", paused_at: iso(serverNow()) }
     await settle(POLL_ONLINE_MS + 1000)
     expect(view.status).toBe("paused")
+    expect(view.comeback).toBeNull()
+  })
+
+  it("what GO BACK IN left behind is forgotten when the session is resumed on another device: a later Pause and Resume here gets no message", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await press(view.goBack)
+    server.row = runningRow(125)
+    await settle(POLL_ONLINE_MS + 1000)
+    expect(view.status).toBe("running")
+    expect(view.comeback).toBeNull()
+    await press(view.pause)
+    await press(view.resume)
+    expect(view.status).toBe("running")
+    expect(view.comeback).toBeNull()
+  })
+
+  it("what GO BACK IN left behind is forgotten when the session is ended on another device: the next session gets no message from it", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await press(view.goBack)
+    server.row = null
+    await settle(POLL_ONLINE_MS + 1000)
+    expect(view.status).toBe("idle")
+    await press(view.start)
+    await press(view.pause)
+    await press(view.resume)
+    expect(view.status).toBe("running")
     expect(view.comeback).toBeNull()
   })
 
@@ -1300,6 +1393,7 @@ describe("useTimer: the comeback message", () => {
     for (let i = 0; i < size; i++) {
       await press(view.stop)
       await press(view.goBack)
+      await press(view.resume)
       shown.push(view.comeback?.line ?? "")
     }
     expect(new Set(shown).size).toBe(size)
