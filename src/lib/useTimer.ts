@@ -26,7 +26,7 @@ import {
 // The seconds are never counted by ticks. They are worked out from the stored times and the server time estimate (timerMaths.ts), so a sleeping phone loses nothing.
 // Rules: a button that finds the state changed on another device reads the state again (CONFLICTS); without a connection every button is off; a session still running at local midnight is ended by the database at 12:00.
 // The stop alert: Hold to end session does NOT end the session. stop pauses it (so the minutes of the line stay true while the alert is on the screen), picks one line for the seconds it stopped at, and opens the alert. end (I'M DONE) then ends it, goBack (GO BACK IN) resumes it. The time spent on the alert is never counted, because the session is paused. See CONNECTIONS.md C43.
-// What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30 and C43. The names used by the screen are in TimerView.
+// What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43 and C45. The names used by the screen are in TimerView.
 
 export const POLL_ONLINE_MS = 30000
 export const POLL_OFFLINE_MS = 3000
@@ -156,17 +156,23 @@ export function useTimer(): TimerView {
   )
 
   // Reads the state and the day total from the database and shows them.
+  // Both are asked for AT ONCE, not one after the other (that was two waits in a row). The day total needs the day, and the day is only known for sure when the state has answered (the time zone of a running session counts, see C26): so it is asked for the day of THIS device right now, and when the state then says the day is another one (a session started in another time zone, or a device clock that is off) the day total is asked again for the right day and the first answer is thrown away. See CONNECTIONS.md C45.
   const refresh = useCallback(async () => {
     const ticket = ++ticketRef.current
     lastAttemptRef.current = Date.now()
     try {
       const zone = deviceTimeZone()
+      const guess = dayOrFallback(Date.now(), zone, "")
       const sentAt = Date.now()
-      const state = await timerState()
+      const stateAsk = timerState()
+      const dayAsk = guess === "" ? null : timerDayTotal(guess)
+      // If the state fails, nobody waits for this answer any more: the error of the day total must not be left unhandled.
+      dayAsk?.catch(() => {})
+      const state = await stateAsk
       const receivedAt = Date.now()
       if (!aliveRef.current || ticket !== ticketRef.current) return
       const day = localDay(state.serverNowMs, state.row?.tz ?? zone)
-      const saved = await timerDayTotal(day)
+      const saved = dayAsk !== null && day === guess ? await dayAsk : await timerDayTotal(day)
       if (!aliveRef.current || ticket !== ticketRef.current) return
       adopt({ row: state.row, time: { serverMs: state.serverNowMs, localMs: (sentAt + receivedAt) / 2 }, savedSeconds: saved, day })
       showLink("online")

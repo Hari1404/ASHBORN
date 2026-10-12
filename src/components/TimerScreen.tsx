@@ -14,6 +14,7 @@ import "../timer.css"
 // Start and Pause / Resume are normal taps. End Session is the library Hold Button (src/components/HoldButton.tsx, never edited): hold it until it is full. It does not end the session: it opens the stop alert (StopAlert.tsx, the last thing inside the main element), which pauses the session and offers I'M DONE and GO BACK IN (see CONNECTIONS.md C43).
 // The ball sits in a box that is larger than the dial, and the ball is a share of that box (see CONNECTIONS.md C31).
 // The look of the clock digits (Space Grotesk, fixed width) is in timer.css (see CONNECTIONS.md C32).
+// While the first reading is on its way (the link is loading) the screen does not show zeros that would jump to the real numbers: the two clocks are invisible, and where the buttons will be there is a faint blank pill (ab-timer-wait) that is not a button. When the reading is there, the clocks and the buttons fade in together (timer.css, CONNECTIONS.md C46).
 // On a phone the screen is one column: the dial, then the line, then the buttons. On a wide screen (a laptop) the dial is a big circle on the left and the line and the buttons stand on the right, inside the box ab-timer-side (see CONNECTIONS.md C39). The tags and the rest that come later go into that box too.
 
 function noticeText(notice: EndNotice): string {
@@ -58,7 +59,9 @@ export default function TimerScreen() {
           </button>
         ) : null}
         <div className="ab-timer-actions">
-          {timer.link === "loading" ? null : timer.status === "idle" ? (
+          {timer.link === "loading" ? (
+            <div className="ab-timer-wait" aria-hidden="true" />
+          ) : timer.status === "idle" ? (
             <button className="ab-timer-pill" type="button" disabled={!ready} onClick={timer.start}>
               Start
             </button>

@@ -61,13 +61,24 @@
   text-shadow: 0 0 14px rgba(0, 0, 0, 0.75), 0 0 4px rgba(0, 0, 0, 0.6);
 }
 
-/* Paused: the digits blink slowly (the ball stands still and dims, see the ball rules below). Still loading: the whole dial is dim. */
+/* Paused: the digits blink slowly (the ball stands still and dims, see the ball rules below). */
 .ab-timer[data-state="paused"] .ab-timer-big {
   animation: ab-timer-blink 1.8s ease-in-out infinite;
 }
 
-.ab-timer[data-link="loading"] .ab-timer-dial {
-  opacity: 0.45;
+/* Still loading (the first reading of the database is on its way): the two clocks are invisible, so there are no zeros that jump to the real numbers. When the reading is there, the rule below stops matching and the clocks and the buttons fade in (ab-timer-reveal for the clocks and ab-timer-reveal-actions for the buttons, 300 ms; CONNECTIONS.md C46). The fade is an animation that starts when the loading ends and does not start again when the buttons change. */
+.ab-timer[data-link="loading"] .ab-timer-readout {
+  opacity: 0;
+}
+
+.ab-timer:not([data-link="loading"]) .ab-timer-readout {
+  animation: ab-timer-reveal 300ms ease;
+}
+
+@keyframes ab-timer-reveal {
+  from {
+    opacity: 0;
+  }
 }
 
 /* Connection problem: the line has two lines and the Try again button is there, so the dial leaves more room (C40). */
@@ -133,6 +144,22 @@
   min-height: 124px;
 }
 
+/* The blank pill that stands where the buttons will be while the first reading is on its way: the size of the Start pill, faint, breathing slowly. It is not a button and has no text, so a running session never shows a wrong label for a moment. CONNECTIONS.md C46. */
+.ab-timer-wait {
+  width: 100%;
+  height: 58px;
+  border-radius: 999px;
+  background: #fff;
+  opacity: 0.18;
+  animation: ab-timer-wait 1.4s ease-in-out infinite;
+}
+
+@keyframes ab-timer-wait {
+  50% {
+    opacity: 0.3;
+  }
+}
+
 .ab-timer-pill {
   width: 100%;
   height: 58px;
@@ -158,6 +185,26 @@
 
 .ab-timer-end {
   width: 100%;
+}
+
+/* The buttons fade in when the first reading is there (see the clocks above and CONNECTIONS.md C46). They start at the brightness of the blank pill (ab-timer-wait) that was there while loading, so the pill grows into the real button instead of blinking. */
+.ab-timer:not([data-link="loading"]) .ab-timer-actions {
+  animation: ab-timer-reveal-actions 300ms ease;
+}
+
+@keyframes ab-timer-reveal-actions {
+  from {
+    opacity: 0.18;
+  }
+}
+
+/* A person who asked their device for less motion gets no fades and no breathing. This rule is written AFTER the rules it switches off (same weight, the later one wins). */
+@media (prefers-reduced-motion: reduce) {
+  .ab-timer:not([data-link="loading"]) .ab-timer-readout,
+  .ab-timer:not([data-link="loading"]) .ab-timer-actions,
+  .ab-timer-wait {
+    animation: none;
+  }
 }
 
 /* The box of the line, the Try again button and the buttons (TimerScreen.tsx). On a phone it is not a box at all (display contents), so the phone screen is one column exactly as before. On a wide screen it is the right-hand side, see below and CONNECTIONS.md C39. */

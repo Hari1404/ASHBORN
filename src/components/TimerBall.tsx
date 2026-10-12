@@ -2,6 +2,7 @@ import { Component, useEffect, useRef, useState, type ReactNode } from "react"
 import CrystalizedBall from "@/components/CrystalizedBall"
 import { BALL_BLEND_MS, BALL_FADE_MS, ballFlavour, ballParticles, ballTargetColour, blendHex } from "@/lib/ballLook"
 import { LITE_LEVEL } from "@/lib/lite"
+import { canDrawWebgl2 } from "@/lib/timerWarmup"
 
 // AB:TIMER.BALL:START
 // The glowing ball behind the big clock of the Pro Timer screen. It is shown while a session runs or is paused.
@@ -10,19 +11,7 @@ import { LITE_LEVEL } from "@/lib/lite"
 // The colour moves to its next step slowly (BALL_BLEND_MS) instead of jumping. The steps and palettes are in src/lib/ballLook.ts. The seed is the started_at text of the session (the screen calls it ringSeed).
 // Every session has its own flavour (the library preset, the way the dust moves, the shape of a grain), drawn from the same seed as the palette and kept until the ball is taken away: it does not change while the ball fades, when the seed is gone (see CONNECTIONS.md C36).
 // The box of the ball is 136 percent of the dial and the ball is 66 percent of that box, so the ball is about 90 percent of the dial (see CONNECTIONS.md C31).
-// Whether this browser can draw the ball: it needs WebGL 2.
-function canDrawBall(): boolean {
-  try {
-    const canvas = document.createElement("canvas")
-    const gl = canvas.getContext("webgl2")
-    if (gl === null || gl === undefined) return false
-    gl.getExtension("WEBGL_lose_context")?.loseContext()
-    return true
-  } catch {
-    return false
-  }
-}
-
+// Whether this browser can draw the ball (it needs WebGL 2) is asked by canDrawWebgl2 (src/lib/timerWarmup.ts), once for the whole page, and only when a session is shown: opening the screen does not ask the browser anything (see CONNECTIONS.md C35 and C44).
 // If the library ball throws, the ball is left out and the rest of the screen stays.
 class BallGuard extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
@@ -86,7 +75,6 @@ export default function TimerBall({
   seconds: number
   seed: string
 }) {
-  const [drawable] = useState(canDrawBall)
   const [shown, setShown] = useState(active)
   const [lit, setLit] = useState(active ? 1 : 0)
   const wasActive = useRef(active)
@@ -107,7 +95,7 @@ export default function TimerBall({
     return () => window.clearTimeout(timer)
   }, [active, seed])
 
-  if (!drawable || !shown) return null
+  if (!shown || !canDrawWebgl2()) return null
   return (
     <div className="ab-timer-ball" data-out={active ? undefined : "yes"} aria-hidden="true">
       <BallGuard>

@@ -615,13 +615,15 @@ describe("useTimer: leaving the screen", () => {
         }),
     )
     await mount()
+    // The day total is asked for together with the state (see "both reads at once"), so there is exactly one call before the screen is closed, and none after it.
+    expect(api.timerDayTotal).toHaveBeenCalledTimes(1)
     act(() => root?.unmount())
     root = null
     await act(async () => {
       late()
       await vi.advanceTimersByTimeAsync(0)
     })
-    expect(api.timerDayTotal).not.toHaveBeenCalled()
+    expect(api.timerDayTotal).toHaveBeenCalledTimes(1)
   })
 })
 describe("useTimer: answers that come too late", () => {
@@ -1046,6 +1048,85 @@ describe("useTimer: the stop alert", () => {
     await press(view.goBack)
     expect(api.timerResume).not.toHaveBeenCalled()
     expect(view.status).toBe("running")
+  })
+})
+
+describe("useTimer: both reads at once", () => {
+  it("asks for the day total before the state has answered, so that the two waits are not in a row", async () => {
+    const state = hold("timerState")
+    await mount()
+    expect(api.timerState).toHaveBeenCalledTimes(1)
+    expect(api.timerDayTotal).toHaveBeenCalledTimes(1)
+    expect(view.link).toBe("loading")
+    await release(() => state.answer({ serverNowMs: serverNow(), row: null }))
+    expect(view.link).toBe("online")
+    expect(api.timerDayTotal).toHaveBeenCalledTimes(1)
+  })
+
+  it("asks for the state first and the day total second, so that the time of the server is not delayed", async () => {
+    await mount()
+    const stateOrder = api.timerState.mock.invocationCallOrder[0]
+    const dayOrder = api.timerDayTotal.mock.invocationCallOrder[0]
+    expect(stateOrder).toBeLessThan(dayOrder)
+  })
+
+  it("asks once per reading when the day of the device is the day of the server (the usual case)", async () => {
+    server.saved["2026-10-07"] = 4200
+    await mount()
+    expect(api.timerDayTotal).toHaveBeenCalledTimes(1)
+    expect(api.timerDayTotal).toHaveBeenCalledWith("2026-10-07")
+    expect(view.dayTotal).toBe(4200)
+    await press(view.retry)
+    expect(api.timerDayTotal).toHaveBeenCalledTimes(2)
+  })
+
+  it("asks again for the right day when the running session has another time zone, and uses only the right answer", async () => {
+    // 20:00 UTC is 01:30 on 8 October in Asia/Kolkata (the zone of this device) but still 16:00 on 7 October in New York.
+    vi.setSystemTime(Date.parse("2026-10-07T20:00:00Z"))
+    server.row = runningRow(100, { tz: "America/New_York", cap_at: "2026-10-08T04:00:00+00:00" })
+    server.saved["2026-10-08"] = 999_999
+    server.saved["2026-10-07"] = 2000
+    await mount()
+    expect(api.timerDayTotal.mock.calls.map((c) => c[0])).toEqual(["2026-10-08", "2026-10-07"])
+    expect(view.dayTotal).toBe(2100)
+  })
+
+  it("asks again for the right day when the clock of the device is a day ahead of the server", async () => {
+    server.offsetMs = -86_400_000
+    server.saved["2026-10-07"] = 3000
+    server.saved["2026-10-06"] = 1500
+    await mount()
+    expect(api.timerDayTotal.mock.calls.map((c) => c[0])).toEqual(["2026-10-07", "2026-10-06"])
+    expect(view.dayTotal).toBe(1500)
+  })
+
+  it("a failed state shows the failure, and the day total that fails with it leaves no unhandled error", async () => {
+    server.down = new TimerError("NO_CONNECTION")
+    await mount()
+    expect(view.link).toBe("offline")
+    expect(api.timerDayTotal).toHaveBeenCalledTimes(1)
+  })
+
+  it("a state that answers while the day total fails shows the failure, as it did when they were asked one after the other", async () => {
+    api.timerDayTotal.mockImplementationOnce(async () => {
+      throw new TimerError("NO_CONNECTION")
+    })
+    await mount()
+    expect(view.link).toBe("offline")
+    server.down = null
+    await settle(POLL_OFFLINE_MS)
+    expect(view.link).toBe("online")
+  })
+
+  it("a day total that answers after a newer reading was made does not overwrite it", async () => {
+    await mount()
+    const old = hold("timerDayTotal")
+    await press(view.retry)
+    server.saved["2026-10-07"] = 2000
+    await press(view.retry)
+    expect(view.dayTotal).toBe(2000)
+    await release(() => old.answer(5))
+    expect(view.dayTotal).toBe(2000)
   })
 })
 

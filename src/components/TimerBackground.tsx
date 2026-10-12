@@ -3,6 +3,7 @@ import SideRays from "@/components/SideRays"
 import { BG_COLOUR, BG_FADE_MS, BG_RENDER_SCALE, BG_SETTINGS, bgDrawn, bgLight } from "@/lib/backgroundLook"
 import { BALL_BLEND_MS, ballTargetColour, blendHex } from "@/lib/ballLook"
 import { LITE_LEVEL } from "@/lib/lite"
+import { canDrawWebgl2 } from "@/lib/timerWarmup"
 
 // AB:TIMER.BG:START
 // The moving background of the Pro Timer screen. It is shown while a session runs or is paused, and it is plain black (nothing is drawn) when there is no session.
@@ -10,19 +11,7 @@ import { LITE_LEVEL } from "@/lib/lite"
 // The colour is the colour of the glowing ball at every moment: the same functions (ballTargetColour, blendHex) and the same time to move to the next colour (BALL_BLEND_MS) as TimerBall.tsx. It starts white and moves on at the quality steps of the session.
 // A new session lights a new background, like the ball: it is made again and starts white. When the session ends the background fades out for BG_FADE_MS and is then taken away. While it fades its colour stays where it was.
 // The background needs WebGL 2, like the ball. Without it, or when the library throws, or at lite level 2, nothing is drawn and the clocks still work (see CONNECTIONS.md C38).
-// Whether this browser can draw the background: it needs WebGL 2.
-function canDrawBackground(): boolean {
-  try {
-    const canvas = document.createElement("canvas")
-    const gl = canvas.getContext("webgl2")
-    if (gl === null || gl === undefined) return false
-    gl.getExtension("WEBGL_lose_context")?.loseContext()
-    return true
-  } catch {
-    return false
-  }
-}
-
+// Whether this browser can draw it (WebGL 2) is asked by canDrawWebgl2 (src/lib/timerWarmup.ts), once for the whole page and shared with the ball, and only when a session is shown: opening the screen does not ask the browser anything (see CONNECTIONS.md C38 and C44).
 // A person who asked their device for less motion gets the rays standing still. Read once, when the screen is made.
 function wantsStillness(): boolean {
   try {
@@ -103,7 +92,6 @@ export default function TimerBackground({
   seconds: number
   seed: string
 }) {
-  const [drawable] = useState(() => canDrawBackground() && bgDrawn(LITE_LEVEL))
   const [still] = useState(wantsStillness)
   const [shown, setShown] = useState(active)
   const [lit, setLit] = useState(active ? 1 : 0)
@@ -135,7 +123,7 @@ export default function TimerBackground({
     return () => window.clearTimeout(timer)
   }, [active, seed])
 
-  if (!drawable || !shown) return null
+  if (!shown || !bgDrawn(LITE_LEVEL) || !canDrawWebgl2()) return null
   return (
     <div className="ab-timer-bg" data-out={active ? undefined : "yes"} aria-hidden="true">
       <BackgroundGuard>

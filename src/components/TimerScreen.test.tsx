@@ -331,6 +331,41 @@ describe("TimerScreen: the buttons", () => {
     expect(has("button")).toBe(false)
   })
 
+  it("shows a faint blank pill where the buttons will be while loading: no text, hidden from screen readers, not a button", () => {
+    show({ link: "loading" })
+    const wait = q(".ab-timer-actions .ab-timer-wait")
+    expect(wait.textContent).toBe("")
+    expect(wait.getAttribute("aria-hidden")).toBe("true")
+    expect(wait.tagName).toBe("DIV")
+    expect(has(".ab-timer-pill")).toBe(false)
+    expect(has(".ab-timer-end")).toBe(false)
+  })
+
+  it("never shows a Start label while loading, so that a running session does not show a wrong button for a moment", () => {
+    show({ link: "loading", status: "running", seconds: 100 })
+    expect(q(".ab-timer-actions").textContent).toBe("")
+  })
+
+  it("takes the blank pill away when the reading is there, for the idle button, and for the running ones", () => {
+    show({ link: "loading" })
+    expect(has(".ab-timer-wait")).toBe(true)
+    show({ link: "online", status: "idle" })
+    expect(has(".ab-timer-wait")).toBe(false)
+    expect(q(".ab-timer-pill").textContent).toBe("Start")
+    show({ link: "loading" })
+    show({ link: "online", status: "running", seconds: 50 })
+    expect(has(".ab-timer-wait")).toBe(false)
+    expect(q(".ab-timer-pill").textContent).toBe("Pause")
+    expect(has(".ab-timer-end")).toBe(true)
+  })
+
+  it("keeps the blank pill out of the screen when there is no connection or a problem, where the buttons are the real ones", () => {
+    show({ link: "offline", status: "idle" })
+    expect(has(".ab-timer-wait")).toBe(false)
+    show({ link: "problem", problem: "Something went wrong.", status: "idle" })
+    expect(has(".ab-timer-wait")).toBe(false)
+  })
+
   it("idle: one Start button, and it starts", () => {
     const view = show({ status: "idle" })
     expect(q(".ab-timer-pill").textContent).toBe("Start")
@@ -502,7 +537,62 @@ describe("the css of the screen", () => {
   it("reacts to the two attributes the screen sets", () => {
     expect(timerCss).toContain('.ab-timer[data-state="paused"] .ab-timer-ball {')
     expect(timerCss).toContain('.ab-timer[data-state="paused"] .ab-timer-big {')
-    expect(timerCss).toContain('.ab-timer[data-link="loading"] .ab-timer-dial {')
+    expect(timerCss).toContain('.ab-timer[data-link="loading"] .ab-timer-readout {')
+  })
+})
+
+describe("the css of the screen: the look while loading", () => {
+  const block = (selector: string): string => {
+    const start = timerCss.indexOf("\n" + selector + " {")
+    if (start < 0) return ""
+    return timerCss.slice(start, timerCss.indexOf("}", start))
+  }
+  const READOUT_LOADING = '.ab-timer[data-link="loading"] .ab-timer-readout'
+  const READOUT_REVEAL = '.ab-timer:not([data-link="loading"]) .ab-timer-readout'
+  const ACTIONS_REVEAL = '.ab-timer:not([data-link="loading"]) .ab-timer-actions'
+
+  it("keeps the two clocks invisible while the first reading is on its way, and no longer dims the whole dial", () => {
+    expect(block(READOUT_LOADING)).toContain("opacity: 0;")
+    expect(timerCss).not.toContain('.ab-timer[data-link="loading"] .ab-timer-dial')
+  })
+
+  it("fades the clocks and the buttons in with an animation that starts when the loading ends", () => {
+    expect(block(READOUT_REVEAL)).toMatch(/animation:\s*ab-timer-reveal\s+300ms/)
+    expect(block(ACTIONS_REVEAL)).toMatch(/animation:\s*ab-timer-reveal-actions\s+300ms/)
+    expect(timerCss).toContain("@keyframes ab-timer-reveal {")
+    expect(timerCss).toContain("@keyframes ab-timer-reveal-actions {")
+  })
+
+  it("starts the buttons at the brightness of the blank pill, so that the pill grows into the button", () => {
+    const keyframes = /@keyframes ab-timer-reveal-actions \{([\s\S]*?)\n\}/.exec(timerCss)?.[1] ?? ""
+    const from = Number(/opacity:\s*([0-9.]+);/.exec(keyframes)?.[1])
+    const wait = Number(/opacity:\s*([0-9.]+);/.exec(block(".ab-timer-wait"))?.[1])
+    expect(from).toBeGreaterThan(0)
+    expect(from).toBe(wait)
+  })
+
+  it("gives the blank pill the size of the Start pill, so that nothing jumps when the button comes", () => {
+    const wait = block(".ab-timer-wait")
+    const pill = block(".ab-timer-pill")
+    expect(wait).toContain("height: 58px;")
+    expect(pill).toContain("height: 58px;")
+    expect(wait).toContain("width: 100%;")
+    expect(wait).toContain("border-radius: 999px;")
+    expect(wait).not.toContain("cursor:")
+  })
+
+  it("lets a person who wants less motion have no fades and no breathing, and the switch-off comes after the rules it switches off", () => {
+    const at = timerCss.indexOf("@media (prefers-reduced-motion: reduce) {\n  " + READOUT_REVEAL)
+    expect(at).toBeGreaterThan(-1)
+    const off = timerCss.slice(at, timerCss.indexOf("\n}\n", at))
+    expect(off).toContain(READOUT_REVEAL)
+    expect(off).toContain(ACTIONS_REVEAL)
+    expect(off).toContain(".ab-timer-wait")
+    expect(off).toContain("animation: none;")
+    for (const rule of [READOUT_REVEAL + " {", ACTIONS_REVEAL + " {", "\n.ab-timer-wait {"]) {
+      expect(timerCss.indexOf(rule)).toBeGreaterThan(-1)
+      expect(timerCss.indexOf(rule)).toBeLessThan(at)
+    }
   })
 })
 describe("the css of the screen: the desktop layout", () => {

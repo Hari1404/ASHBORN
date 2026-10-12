@@ -53,6 +53,7 @@ vi.mock("@/components/CrystalizedBall", async () => {
 import { BG_FADE_MS, BG_RENDER_SCALE, BG_SETTINGS } from "@/lib/backgroundLook"
 import { BALL_BLEND_MS, BALL_FADE_MS, BALL_PALETTES, BALL_WHITE, ballPaletteIndex } from "@/lib/ballLook"
 import { DEEP_FROM_SECONDS, FLOW_FROM_SECONDS, SOLID_FROM_SECONDS } from "@/lib/timerMaths"
+import { forgetWarmup } from "@/lib/timerWarmup"
 import TimerBackground from "./TimerBackground"
 import TimerBall from "./TimerBall"
 
@@ -130,6 +131,11 @@ function tintHex(): string {
   return "#" + [rgb[1], rgb[2], rgb[3]].map((v) => Number(v).toString(16).padStart(2, "0")).join("")
 }
 
+// How many times the page asked the browser for a context of any kind (the test context of the WebGL 2 check is the only reason to).
+function contextAsks(): number {
+  return vi.mocked(HTMLCanvasElement.prototype.getContext).mock.calls.length
+}
+
 function lastProps(): Record<string, unknown> {
   const last = state.props.at(-1)
   if (last === undefined) throw new Error("the animation was never drawn")
@@ -156,6 +162,8 @@ beforeEach(() => {
   state.broken = false
   canvasMode = "webgl2"
   loseContext = vi.fn()
+  // The answer of the WebGL 2 check is kept for the whole page (timerWarmup.ts), so every test starts without it.
+  forgetWarmup()
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((type: string) => {
     if (type !== "webgl2") return null
     if (canvasMode === "throws") throw new Error("no context")
@@ -215,6 +223,26 @@ describe("TimerBackground: when it draws", () => {
   it("gives its test context back to the browser", () => {
     show({ active: true })
     expect(loseContext).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not ask the browser for anything while there is no session, so that opening the screen costs nothing", () => {
+    show({ active: false })
+    wait(5000)
+    expect(contextAsks()).toBe(0)
+  })
+
+  it("shares the WebGL 2 check with the glowing ball: both together ask the browser once", () => {
+    showBoth({ active: true })
+    expect(has(".ab-timer-bg")).toBe(true)
+    expect(has(".ab-timer-ball")).toBe(true)
+    expect(contextAsks()).toBe(1)
+    expect(loseContext).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not ask the browser at lite level 2, where nothing is drawn", () => {
+    state.lite = 2
+    show({ active: true })
+    expect(contextAsks()).toBe(0)
   })
 
   it("draws nothing at lite level 2, where the screen stays plain black", () => {

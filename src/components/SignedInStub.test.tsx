@@ -14,6 +14,13 @@ vi.mock("@/components/AppMenu", async () => {
   const { createElement: h } = await import("react")
   return { default: () => h("nav", { id: "menu-stub" }) }
 })
+// The warm-up of the Pro Timer is replaced by a recorder: its own tests are in src/lib/timerWarmup.test.ts.
+const warm = vi.hoisted(() => ({ calls: [] as boolean[] }))
+vi.mock("@/lib/timerWarmup", () => ({
+  warmTimerScreen: (withDatabase: boolean) => {
+    warm.calls.push(withDatabase)
+  },
+}))
 vi.mock("@/components/TimerScreen", async () => {
   const { createElement: h } = await import("react")
   return { default: () => h("main", { id: "timer-stub" }) }
@@ -39,6 +46,7 @@ function has(selector: string): boolean {
 
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  warm.calls = []
 })
 
 afterEach(() => {
@@ -87,6 +95,31 @@ describe("SignedInStub: which screen is shown", () => {
     })
     expect(has("#timer-stub")).toBe(false)
     expect(container?.querySelector(".ab-stub-title")?.textContent).toBe("Guide")
+  })
+})
+
+describe("SignedInStub: the warm-up of the Pro Timer", () => {
+  it.each(["#overview", "#calendar", "#guide", ""])("starts the warm-up once, with the database, when the page is opened at %j", (hash) => {
+    open(hash)
+    expect(warm.calls).toEqual([true])
+  })
+
+  it("starts the warm-up once, without the database, when the page is opened straight on the Pro Timer", () => {
+    open("#timer")
+    expect(warm.calls).toEqual([false])
+  })
+
+  it("does not start it again when the menu changes the screen", () => {
+    open("#overview")
+    act(() => {
+      window.location.hash = "#timer"
+      window.dispatchEvent(new Event("hashchange"))
+    })
+    act(() => {
+      window.location.hash = "#guide"
+      window.dispatchEvent(new Event("hashchange"))
+    })
+    expect(warm.calls).toEqual([true])
   })
 })
 // AB:TIMER.TESTS:END

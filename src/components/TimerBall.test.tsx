@@ -40,6 +40,7 @@ vi.mock("@/components/CrystalizedBall", async () => {
 
 import { BALL_BLEND_MS, BALL_FADE_MS, BALL_PALETTES, BALL_WHITE, ballFlavour, ballPaletteIndex } from "@/lib/ballLook"
 import { DEEP_FROM_SECONDS, SOLID_FROM_SECONDS } from "@/lib/timerMaths"
+import { forgetWarmup } from "@/lib/timerWarmup"
 import TimerBall from "./TimerBall"
 
 // AB:TIMER.TESTS:START
@@ -87,6 +88,11 @@ function box(): HTMLElement {
   return found
 }
 
+// How many times the page asked the browser for a context of any kind (the test context of the WebGL 2 check is the only reason to).
+function contextAsks(): number {
+  return vi.mocked(HTMLCanvasElement.prototype.getContext).mock.calls.length
+}
+
 function lastProps(): Record<string, unknown> {
   const last = state.props.at(-1)
   if (last === undefined) throw new Error("the ball was never drawn")
@@ -106,6 +112,8 @@ beforeEach(() => {
   state.broken = false
   canvasMode = "webgl2"
   loseContext = vi.fn()
+  // The answer of the WebGL 2 check is kept for the whole page (timerWarmup.ts), so every test starts without it.
+  forgetWarmup()
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((type: string) => {
     if (type !== "webgl2") return null
     if (canvasMode === "throws") throw new Error("no context")
@@ -154,6 +162,30 @@ describe("TimerBall: when it draws", () => {
   it("gives its test context back to the browser", () => {
     show({ active: true })
     expect(loseContext).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not ask the browser for anything while there is no session, so that opening the screen costs nothing", () => {
+    show({ active: false })
+    wait(5000)
+    expect(contextAsks()).toBe(0)
+  })
+
+  it("asks the browser once for the whole page: a second session, and a second ball, do not ask again", () => {
+    show({ active: true })
+    expect(contextAsks()).toBe(1)
+    show({ active: false })
+    wait(BALL_FADE_MS)
+    show({ active: true })
+    expect(contextAsks()).toBe(1)
+    expect(loseContext).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not ask the browser again when the answer was no", () => {
+    canvasMode = "none"
+    show({ active: true })
+    show({ active: false })
+    show({ active: true })
+    expect(contextAsks()).toBe(1)
   })
 })
 
