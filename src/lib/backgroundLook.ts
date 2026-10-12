@@ -12,6 +12,8 @@ import { FLOW_FROM_SECONDS } from "@/lib/timerMaths"
 export const BG_COLOUR = "#ffffff"
 // How long the background takes to fade out when the session ends, in milliseconds. The css fades for the same time (see CONNECTIONS.md C38).
 export const BG_FADE_MS = 700
+// How long after a session lights the background the library animation is made, in milliseconds. It is shorter than BALL_MOUNT_DELAY_MS (src/lib/ballLook.ts): the background is made first because it is cheap to draw, and the heavy glowing ball is made after it, so the work of the two never lands in the same moment (see CONNECTIONS.md C47). The box of the background (its black and its fade in) appears when the animation is made, so the fade in starts then.
+export const BG_MOUNT_DELAY_MS = 300
 
 // The settings of the animation, as chosen by the owner on the React Bits page (speed 2.9, tilt 13, intensity 2.8). Every other setting of the library keeps its own default.
 export const BG_SETTINGS = {

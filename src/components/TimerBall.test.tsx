@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   mounts: 0,
   unmounts: 0,
   broken: false,
+  delay: 0,
 }))
 
 vi.mock("@/lib/lite", () => ({
@@ -21,10 +22,21 @@ vi.mock("@/lib/lite", () => ({
   },
 }))
 
+// The wait before the library ball is made (BALL_MOUNT_DELAY_MS) is 0 in every test but the ones of the describe "the wait before the library ball is made", which use the real wait.
+vi.mock("@/lib/ballLook", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/ballLook")>()
+  return {
+    ...actual,
+    get BALL_MOUNT_DELAY_MS() {
+      return state.delay
+    },
+  }
+})
+
 vi.mock("@/components/CrystalizedBall", async () => {
   const { createElement: h, useEffect } = await import("react")
   return {
-    default: (props: Record<string, unknown>) => {
+    default: function BallStandIn(props: Record<string, unknown>) {
       state.props.push(props)
       if (state.broken) throw new Error("the ball broke")
       useEffect(() => {
@@ -42,6 +54,9 @@ import { BALL_BLEND_MS, BALL_FADE_MS, BALL_PALETTES, BALL_WHITE, ballFlavour, ba
 import { DEEP_FROM_SECONDS, SOLID_FROM_SECONDS } from "@/lib/timerMaths"
 import { forgetWarmup } from "@/lib/timerWarmup"
 import TimerBall from "./TimerBall"
+
+// The real wait of the ball, read from the file itself (the mock above hands out 0).
+const REAL_DELAY = (await vi.importActual<typeof import("@/lib/ballLook")>("@/lib/ballLook")).BALL_MOUNT_DELAY_MS
 
 // AB:TIMER.TESTS:START
 const timerCss = readFileSync("src/timer.css", "utf8")
@@ -110,6 +125,7 @@ beforeEach(() => {
   state.mounts = 0
   state.unmounts = 0
   state.broken = false
+  state.delay = 0
   canvasMode = "webgl2"
   loseContext = vi.fn()
   // The answer of the WebGL 2 check is kept for the whole page (timerWarmup.ts), so every test starts without it.
@@ -447,6 +463,118 @@ describe("TimerBall: the flavour of the ball", () => {
     expect(flavourOf(lastProps())).toEqual(first)
     show({ active: true, seed: SEED, seconds: 102 })
     expect(state.mounts).toBe(1)
+  })
+})
+
+describe("TimerBall: the wait before the library ball is made", () => {
+  beforeEach(() => {
+    state.delay = REAL_DELAY
+  })
+
+  it("is 600 ms (written here again on purpose, see CONNECTIONS.md C33 and C47)", () => {
+    expect(REAL_DELAY).toBe(600)
+  })
+
+  it("makes no library ball in the moment of the press of Start, and asks the browser nothing then", () => {
+    show({ active: true })
+    expect(has(".ab-timer-ball")).toBe(false)
+    expect(state.props).toHaveLength(0)
+    expect(state.mounts).toBe(0)
+    expect(contextAsks()).toBe(0)
+    expect(has("#after")).toBe(true)
+  })
+
+  it("makes the ball when the wait is over, and not a moment before", () => {
+    show({ active: true })
+    wait(REAL_DELAY - 1)
+    expect(has("#ball-stub")).toBe(false)
+    wait(1)
+    expect(has("#ball-stub")).toBe(true)
+    expect(state.mounts).toBe(1)
+    expect(contextAsks()).toBe(1)
+  })
+
+  it("makes the ball with the right colour at once, also for a page opened in the middle of a session", () => {
+    show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
+    wait(REAL_DELAY)
+    expect(lastProps().color).toBe(PALETTE[1])
+    expect(state.mounts).toBe(1)
+  })
+
+  it("never makes the ball for a session that ends during the wait", () => {
+    show({ active: true })
+    wait(REAL_DELAY - 100)
+    show({ active: false })
+    // The old wait would have run out 100 ms from now, and the box of a fading ball is still there for BALL_FADE_MS: the clock is moved in two steps so that a ball made in that time would be seen.
+    wait(200)
+    expect(has(".ab-timer-ball")).toBe(false)
+    expect(state.mounts).toBe(0)
+    wait(REAL_DELAY)
+    expect(has(".ab-timer-ball")).toBe(false)
+    wait(BALL_FADE_MS * 3)
+    expect(has(".ab-timer-ball")).toBe(false)
+    expect(state.mounts).toBe(0)
+    expect(contextAsks()).toBe(0)
+  })
+
+  it("counts the wait again for every new session", () => {
+    show({ active: true })
+    wait(REAL_DELAY)
+    show({ active: false })
+    wait(BALL_FADE_MS)
+    expect(has(".ab-timer-ball")).toBe(false)
+    show({ active: true })
+    expect(has(".ab-timer-ball")).toBe(false)
+    wait(REAL_DELAY - 1)
+    expect(has(".ab-timer-ball")).toBe(false)
+    wait(1)
+    expect(has("#ball-stub")).toBe(true)
+    expect(state.mounts).toBe(2)
+  })
+
+  it("takes the old ball away at once when a new session starts during its fade, and makes the new ball after the wait", () => {
+    show({ active: true })
+    wait(REAL_DELAY)
+    show({ active: false })
+    wait(100)
+    show({ active: true })
+    expect(state.unmounts).toBe(1)
+    expect(has("#ball-stub")).toBe(false)
+    wait(REAL_DELAY)
+    expect(state.mounts).toBe(2)
+    expect(container?.querySelectorAll("#ball-stub")).toHaveLength(1)
+  })
+
+  it("does not wait again, and does not make the ball again, for a colour step, a pause or a resume of the same session", () => {
+    show({ active: true, seconds: 0 })
+    wait(REAL_DELAY)
+    show({ active: true, seconds: SOLID_FROM_SECONDS })
+    show({ active: true, paused: true, seconds: SOLID_FROM_SECONDS + 1 })
+    show({ active: true, paused: false, seconds: SOLID_FROM_SECONDS + 2 })
+    expect(state.mounts).toBe(1)
+    expect(state.unmounts).toBe(0)
+    expect(has("#ball-stub")).toBe(true)
+  })
+
+  it("makes the new ball after the wait when another device started a new session (the seed changes)", () => {
+    show({ active: true, seed: SEED })
+    wait(REAL_DELAY)
+    show({ active: true, seed: OTHER_SEED })
+    expect(has("#ball-stub")).toBe(false)
+    wait(REAL_DELAY)
+    expect(has("#ball-stub")).toBe(true)
+    expect(flavourOf(lastProps())).toEqual(ballFlavour(OTHER_SEED))
+    expect(state.mounts).toBe(2)
+  })
+
+  it("asks the browser for WebGL 2 once the wait is over, and draws nothing when the answer is no", () => {
+    canvasMode = "none"
+    show({ active: true })
+    expect(contextAsks()).toBe(0)
+    wait(REAL_DELAY)
+    expect(contextAsks()).toBe(1)
+    expect(has(".ab-timer-ball")).toBe(false)
+    expect(has("#after")).toBe(true)
   })
 })
 

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { deviceTimeZone, timerDayTotal, timerState } from "@/lib/timerApi"
 import { localDay } from "@/lib/timerMaths"
 
@@ -30,6 +31,17 @@ export function canDrawWebgl2(): boolean {
     webgl2 = false
   }
   return webgl2
+}
+
+// True when the library animation of the light with this number (lit) may be made now: ms milliseconds after the light was lit, and only while the session is still on. A new light (a new session) starts the wait again. A session that ends during the wait never makes the animation. A wait of 0 or less means at once. The ball and the moving background use different waits, so the work of making them (compiling their programs for the graphics chip) never lands in the same moment as the press of Start, or in the same moment as each other (CONNECTIONS.md C47).
+export function useMountDelay(lit: number, active: boolean, ms: number): boolean {
+  const [readyFor, setReadyFor] = useState(0)
+  useEffect(() => {
+    if (ms <= 0 || !active || lit === 0 || readyFor === lit) return undefined
+    const timer = window.setTimeout(() => setReadyFor(lit), ms)
+    return () => window.clearTimeout(timer)
+  }, [lit, active, ms, readyFor])
+  return ms <= 0 || (lit !== 0 && readyFor === lit)
 }
 
 // Makes the page forget what the warm-up did. Only the tests use it.

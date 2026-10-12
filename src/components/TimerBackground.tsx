@@ -1,9 +1,9 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from "react"
 import SideRays from "@/components/SideRays"
-import { BG_COLOUR, BG_FADE_MS, BG_RENDER_SCALE, BG_SETTINGS, bgDrawn, bgLight } from "@/lib/backgroundLook"
+import { BG_COLOUR, BG_FADE_MS, BG_MOUNT_DELAY_MS, BG_RENDER_SCALE, BG_SETTINGS, bgDrawn, bgLight } from "@/lib/backgroundLook"
 import { BALL_BLEND_MS, ballTargetColour, blendHex } from "@/lib/ballLook"
 import { LITE_LEVEL } from "@/lib/lite"
-import { canDrawWebgl2 } from "@/lib/timerWarmup"
+import { canDrawWebgl2, useMountDelay } from "@/lib/timerWarmup"
 
 // AB:TIMER.BG:START
 // The moving background of the Pro Timer screen. It is shown while a session runs or is paused, and it is plain black (nothing is drawn) when there is no session.
@@ -12,6 +12,7 @@ import { canDrawWebgl2 } from "@/lib/timerWarmup"
 // A new session lights a new background, like the ball: it is made again and starts white. When the session ends the background fades out for BG_FADE_MS and is then taken away. While it fades its colour stays where it was.
 // The background needs WebGL 2, like the ball. Without it, or when the library throws, or at lite level 2, nothing is drawn and the clocks still work (see CONNECTIONS.md C38).
 // Whether this browser can draw it (WebGL 2) is asked by canDrawWebgl2 (src/lib/timerWarmup.ts), once for the whole page and shared with the ball, and only when a session is shown: opening the screen does not ask the browser anything (see CONNECTIONS.md C38 and C44).
+// The background is not made in the same moment as the press of Start, and not in the same moment as the ball: its box and the library animation are made BG_MOUNT_DELAY_MS after the session lights it (useMountDelay in src/lib/timerWarmup.ts), before the glowing ball (BALL_MOUNT_DELAY_MS in src/lib/ballLook.ts), because the ball is the heavy one and is made last. The box has the fade in, so the fade in starts when the box is made. A session that ends during the wait never makes the background (see CONNECTIONS.md C47).
 // A person who asked their device for less motion gets the rays standing still. Read once, when the screen is made.
 function wantsStillness(): boolean {
   try {
@@ -123,7 +124,8 @@ export default function TimerBackground({
     return () => window.clearTimeout(timer)
   }, [active, seed])
 
-  if (!shown || !bgDrawn(LITE_LEVEL) || !canDrawWebgl2()) return null
+  const ready = useMountDelay(lit, active, BG_MOUNT_DELAY_MS)
+  if (!shown || !ready || !bgDrawn(LITE_LEVEL) || !canDrawWebgl2()) return null
   return (
     <div className="ab-timer-bg" data-out={active ? undefined : "yes"} aria-hidden="true">
       <BackgroundGuard>

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 /// <reference types="node" />
 import { readFileSync } from "node:fs"
+import { act, createElement } from "react"
+import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // The real timerApi is replaced, so no test ever calls the network.
@@ -15,7 +17,7 @@ vi.mock("@/lib/timerApi", async (importOriginal) => {
 })
 
 import { formatClock } from "@/lib/timerMaths"
-import { WARM_FALLBACK_MS, WARM_FONT, WARM_FONT_TEXT, WARM_IDLE_TIMEOUT_MS, canDrawWebgl2, forgetWarmup, warmTimerScreen } from "./timerWarmup"
+import { WARM_FALLBACK_MS, WARM_FONT, WARM_FONT_TEXT, WARM_IDLE_TIMEOUT_MS, canDrawWebgl2, forgetWarmup, useMountDelay, warmTimerScreen } from "./timerWarmup"
 
 // AB:TIMER.TESTS:START
 // The css, the page and the database client are read as plain text from the project root, where npm test runs.
@@ -218,6 +220,102 @@ describe("warmTimerScreen: nothing can break the screen", () => {
     canvasMode = "throws"
     warmTimerScreen(false)
     expect(() => vi.advanceTimersByTime(WARM_FALLBACK_MS)).not.toThrow()
+  })
+})
+
+describe("useMountDelay: the wait before a library animation is made", () => {
+  type Probe = { lit: number; active: boolean; ms: number }
+  let root: Root | null = null
+  let holder: HTMLElement | null = null
+
+  // The answer of the hook is written into the page, so the test reads it from there.
+  function Reader(props: Probe) {
+    return createElement("p", { "data-ready": String(useMountDelay(props.lit, props.active, props.ms)) })
+  }
+
+  function isReady(): boolean {
+    return holder?.querySelector("p")?.getAttribute("data-ready") === "true"
+  }
+
+  function put(props: Probe): void {
+    if (holder === null) {
+      ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+      holder = document.createElement("div")
+      root = createRoot(holder)
+    }
+    act(() => root?.render(createElement(Reader, props)))
+  }
+
+  function pass(ms: number): void {
+    act(() => {
+      vi.advanceTimersByTime(ms)
+    })
+  }
+
+  afterEach(() => {
+    act(() => root?.unmount())
+    root = null
+    holder = null
+  })
+
+  it("is ready at once when the wait is 0, and for a negative wait", () => {
+    put({ lit: 1, active: true, ms: 0 })
+    expect(isReady()).toBe(true)
+    put({ lit: 1, active: true, ms: -5 })
+    expect(isReady()).toBe(true)
+  })
+
+  it("is not ready before the wait is over, and is ready when it is over", () => {
+    put({ lit: 1, active: true, ms: 300 })
+    expect(isReady()).toBe(false)
+    pass(299)
+    expect(isReady()).toBe(false)
+    pass(1)
+    expect(isReady()).toBe(true)
+  })
+
+  it("is never ready for light number 0 (no session has been lit)", () => {
+    put({ lit: 0, active: true, ms: 300 })
+    pass(5000)
+    expect(isReady()).toBe(false)
+  })
+
+  it("starts the wait again when a new light is lit", () => {
+    put({ lit: 1, active: true, ms: 300 })
+    pass(300)
+    expect(isReady()).toBe(true)
+    put({ lit: 2, active: true, ms: 300 })
+    expect(isReady()).toBe(false)
+    pass(299)
+    expect(isReady()).toBe(false)
+    pass(1)
+    expect(isReady()).toBe(true)
+  })
+
+  it("is never ready when the session ends during the wait, also when the wait runs out later", () => {
+    put({ lit: 1, active: true, ms: 300 })
+    pass(200)
+    put({ lit: 1, active: false, ms: 300 })
+    pass(5000)
+    expect(isReady()).toBe(false)
+  })
+
+  it("stays ready when the session ends after the wait, so that the fade out can be seen", () => {
+    put({ lit: 1, active: true, ms: 300 })
+    pass(300)
+    put({ lit: 1, active: false, ms: 300 })
+    expect(isReady()).toBe(true)
+    pass(5000)
+    expect(isReady()).toBe(true)
+  })
+
+  it("leaves no timer behind when the screen goes away during the wait", () => {
+    put({ lit: 1, active: true, ms: 300 })
+    expect(vi.getTimerCount()).toBe(1)
+    act(() => root?.unmount())
+    expect(vi.getTimerCount()).toBe(0)
+    root = null
+    holder = null
   })
 })
 

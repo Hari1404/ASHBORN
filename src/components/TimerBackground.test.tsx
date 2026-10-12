@@ -14,6 +14,8 @@ const state = vi.hoisted(() => ({
   mounts: 0,
   unmounts: 0,
   broken: false,
+  ballDelay: 0,
+  bgDelay: 0,
 }))
 
 vi.mock("@/lib/lite", () => ({
@@ -22,10 +24,31 @@ vi.mock("@/lib/lite", () => ({
   },
 }))
 
+// The waits before the library animations are made (BG_MOUNT_DELAY_MS and BALL_MOUNT_DELAY_MS) are 0 in every test but the ones of the describe "the wait before the library animation is made", which use the real waits.
+vi.mock("@/lib/backgroundLook", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/backgroundLook")>()
+  return {
+    ...actual,
+    get BG_MOUNT_DELAY_MS() {
+      return state.bgDelay
+    },
+  }
+})
+
+vi.mock("@/lib/ballLook", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/ballLook")>()
+  return {
+    ...actual,
+    get BALL_MOUNT_DELAY_MS() {
+      return state.ballDelay
+    },
+  }
+})
+
 vi.mock("@/components/SideRays", async () => {
   const { createElement: h, useEffect } = await import("react")
   return {
-    default: (props: Record<string, unknown>) => {
+    default: function RaysStandIn(props: Record<string, unknown>) {
       state.props.push(props)
       if (state.broken) throw new Error("the animation broke")
       useEffect(() => {
@@ -56,6 +79,10 @@ import { DEEP_FROM_SECONDS, FLOW_FROM_SECONDS, SOLID_FROM_SECONDS } from "@/lib/
 import { forgetWarmup } from "@/lib/timerWarmup"
 import TimerBackground from "./TimerBackground"
 import TimerBall from "./TimerBall"
+
+// The real waits, read from the files themselves (the mocks above hand out 0).
+const REAL_BG_DELAY = (await vi.importActual<typeof import("@/lib/backgroundLook")>("@/lib/backgroundLook")).BG_MOUNT_DELAY_MS
+const REAL_BALL_DELAY = (await vi.importActual<typeof import("@/lib/ballLook")>("@/lib/ballLook")).BALL_MOUNT_DELAY_MS
 
 // AB:TIMER.TESTS:START
 const timerCss = readFileSync("src/timer.css", "utf8")
@@ -160,6 +187,8 @@ beforeEach(() => {
   state.mounts = 0
   state.unmounts = 0
   state.broken = false
+  state.ballDelay = 0
+  state.bgDelay = 0
   canvasMode = "webgl2"
   loseContext = vi.fn()
   // The answer of the WebGL 2 check is kept for the whole page (timerWarmup.ts), so every test starts without it.
@@ -484,6 +513,113 @@ describe("TimerBackground: lighting and fading", () => {
     wait(BG_FADE_MS)
     show({ active: true, seconds: 0, seed: "2026-10-08T07:00:00.000001+00:00" })
     expect(tintHex()).toBe(BALL_WHITE)
+  })
+})
+
+describe("TimerBackground: the wait before the library animation is made", () => {
+  beforeEach(() => {
+    state.bgDelay = REAL_BG_DELAY
+    state.ballDelay = REAL_BALL_DELAY
+  })
+
+  it("is 300 ms, and the wait of the glowing ball is 600 ms (written here again on purpose, see CONNECTIONS.md C33 and C47)", () => {
+    expect(REAL_BG_DELAY).toBe(300)
+    expect(REAL_BALL_DELAY).toBe(600)
+  })
+
+  it("makes the heavy glowing ball after the background, with at least 300 ms between them, so their work never lands in the same moment", () => {
+    expect(REAL_BALL_DELAY - REAL_BG_DELAY).toBeGreaterThanOrEqual(300)
+  })
+
+  it("makes no box and no library animation in the moment of the press of Start, and asks the browser nothing then", () => {
+    show({ active: true })
+    expect(has(".ab-timer-bg")).toBe(false)
+    expect(state.props).toHaveLength(0)
+    expect(state.mounts).toBe(0)
+    expect(contextAsks()).toBe(0)
+    expect(has("#after")).toBe(true)
+  })
+
+  it("makes the box with its animation when the wait is over, and not a moment before", () => {
+    show({ active: true })
+    wait(REAL_BG_DELAY - 1)
+    expect(has(".ab-timer-bg")).toBe(false)
+    wait(1)
+    expect(has(".ab-timer-bg")).toBe(true)
+    expect(has("#siderays-stub")).toBe(true)
+    expect(state.mounts).toBe(1)
+    expect(contextAsks()).toBe(1)
+  })
+
+  it("makes the background first and the glowing ball later, never in the same moment", () => {
+    showBoth()
+    expect(state.ballProps).toHaveLength(0)
+    expect(state.props).toHaveLength(0)
+    wait(REAL_BG_DELAY)
+    expect(state.props.length).toBeGreaterThan(0)
+    expect(state.ballProps).toHaveLength(0)
+    wait(REAL_BALL_DELAY - REAL_BG_DELAY - 1)
+    expect(state.ballProps).toHaveLength(0)
+    wait(1)
+    expect(state.ballProps.length).toBeGreaterThan(0)
+  })
+
+  it("makes the background with the right colour and light at once, also for a page opened in the middle of a session", () => {
+    show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
+    wait(REAL_BG_DELAY)
+    expect(tintHex()).toBe(PALETTE[1])
+    expect(state.mounts).toBe(1)
+  })
+
+  it("never makes the background for a session that ends during the wait", () => {
+    show({ active: true })
+    wait(REAL_BG_DELAY - 100)
+    show({ active: false })
+    // The old wait would have run out 100 ms from now, and the box of a fading background is still there for BG_FADE_MS: the clock is moved in steps so that a background made in that time would be seen.
+    wait(200)
+    expect(has(".ab-timer-bg")).toBe(false)
+    expect(state.mounts).toBe(0)
+    wait(REAL_BG_DELAY)
+    expect(has(".ab-timer-bg")).toBe(false)
+    wait(BG_FADE_MS * 3)
+    expect(has(".ab-timer-bg")).toBe(false)
+    expect(state.mounts).toBe(0)
+    expect(contextAsks()).toBe(0)
+  })
+
+  it("counts the wait again for every new session", () => {
+    show({ active: true })
+    wait(REAL_BG_DELAY)
+    show({ active: false })
+    wait(BG_FADE_MS)
+    expect(has(".ab-timer-bg")).toBe(false)
+    show({ active: true })
+    expect(has(".ab-timer-bg")).toBe(false)
+    wait(REAL_BG_DELAY - 1)
+    expect(has(".ab-timer-bg")).toBe(false)
+    wait(1)
+    expect(has("#siderays-stub")).toBe(true)
+    expect(state.mounts).toBe(2)
+  })
+
+  it("does not wait again, and does not make the animation again, for a colour step, a pause or a resume of the same session", () => {
+    show({ active: true, seconds: 0 })
+    wait(REAL_BG_DELAY)
+    show({ active: true, seconds: SOLID_FROM_SECONDS })
+    show({ active: true, seconds: SOLID_FROM_SECONDS + 1 })
+    expect(state.mounts).toBe(1)
+    expect(state.unmounts).toBe(0)
+    expect(has("#siderays-stub")).toBe(true)
+  })
+
+  it("asks the browser for WebGL 2 once the wait is over, and draws nothing when the answer is no", () => {
+    canvasMode = "none"
+    show({ active: true })
+    expect(contextAsks()).toBe(0)
+    wait(REAL_BG_DELAY)
+    expect(contextAsks()).toBe(1)
+    expect(has(".ab-timer-bg")).toBe(false)
+    expect(has("#after")).toBe(true)
   })
 })
 

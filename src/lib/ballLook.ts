@@ -13,6 +13,8 @@ export const BALL_WHITE = "#ffffff"
 export const BALL_BLEND_MS = 4000
 // How long the ball takes to fade out when the session ends, in milliseconds. The css fades for the same time (see CONNECTIONS.md C35).
 export const BALL_FADE_MS = 700
+// How long after a session lights the ball the library ball is made, in milliseconds. The ball compiles its programs for the graphics chip when it is made, which can hold the page for a moment; the wait lets the screen answer the press of Start first. The ball is the heavy one, so it is made last: the moving background is made earlier (BG_MOUNT_DELAY_MS in src/lib/backgroundLook.ts), because an animation that is made while another one is already drawing has to wait behind its drawing work, and the background draws little (see CONNECTIONS.md C47).
+export const BALL_MOUNT_DELAY_MS = 600
 
 // The order of the quality names is the order of the steps: 0 is white, 1 is the first colour of a palette, and so on.
 const STEPS: readonly Quality[] = ["meh", "solid", "deep", "flow"]

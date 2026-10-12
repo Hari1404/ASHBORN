@@ -1,8 +1,8 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from "react"
 import CrystalizedBall from "@/components/CrystalizedBall"
-import { BALL_BLEND_MS, BALL_FADE_MS, ballFlavour, ballParticles, ballTargetColour, blendHex } from "@/lib/ballLook"
+import { BALL_BLEND_MS, BALL_FADE_MS, BALL_MOUNT_DELAY_MS, ballFlavour, ballParticles, ballTargetColour, blendHex } from "@/lib/ballLook"
 import { LITE_LEVEL } from "@/lib/lite"
-import { canDrawWebgl2 } from "@/lib/timerWarmup"
+import { canDrawWebgl2, useMountDelay } from "@/lib/timerWarmup"
 
 // AB:TIMER.BALL:START
 // The glowing ball behind the big clock of the Pro Timer screen. It is shown while a session runs or is paused.
@@ -12,6 +12,7 @@ import { canDrawWebgl2 } from "@/lib/timerWarmup"
 // Every session has its own flavour (the library preset, the way the dust moves, the shape of a grain), drawn from the same seed as the palette and kept until the ball is taken away: it does not change while the ball fades, when the seed is gone (see CONNECTIONS.md C36).
 // The box of the ball is 136 percent of the dial and the ball is 66 percent of that box, so the ball is about 90 percent of the dial (see CONNECTIONS.md C31).
 // Whether this browser can draw the ball (it needs WebGL 2) is asked by canDrawWebgl2 (src/lib/timerWarmup.ts), once for the whole page, and only when a session is shown: opening the screen does not ask the browser anything (see CONNECTIONS.md C35 and C44).
+// The library ball is not made in the same moment as the press of Start: it is made BALL_MOUNT_DELAY_MS after the session lights it (useMountDelay in src/lib/timerWarmup.ts), so the clocks and the buttons answer first. The moving background is made before the ball (it is cheap to draw) and the ball last, because it is the heavy one (see CONNECTIONS.md C47). A session that ends during the wait never makes the ball.
 // If the library ball throws, the ball is left out and the rest of the screen stays.
 class BallGuard extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
@@ -95,7 +96,8 @@ export default function TimerBall({
     return () => window.clearTimeout(timer)
   }, [active, seed])
 
-  if (!shown || !canDrawWebgl2()) return null
+  const ready = useMountDelay(lit, active, BALL_MOUNT_DELAY_MS)
+  if (!shown || !ready || !canDrawWebgl2()) return null
   return (
     <div className="ab-timer-ball" data-out={active ? undefined : "yes"} aria-hidden="true">
       <BallGuard>
