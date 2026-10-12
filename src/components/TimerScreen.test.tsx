@@ -41,6 +41,7 @@ vi.mock("@/components/BlurText", async () => {
   }
 })
 
+import { COMEBACK_FADE_MS, COMEBACK_SHOW_MS } from "@/lib/stopAlertLines"
 import { formatClock, qualityOf } from "@/lib/timerMaths"
 import type { TimerView } from "@/lib/useTimer"
 import TimerScreen from "./TimerScreen"
@@ -63,12 +64,14 @@ function makeView(over: Partial<TimerView> = {}): TimerView {
     ringSeed: "",
     notice: null,
     stopAlert: null,
+    comeback: null,
     start: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
     stop: vi.fn(),
     end: vi.fn(),
     goBack: vi.fn(),
+    clearComeback: vi.fn(),
     retry: vi.fn(),
     ...over,
   }
@@ -508,6 +511,60 @@ describe("TimerScreen: the stop alert", () => {
     show({ status: "running", seconds: 601, ringSeed: SEED, stopAlert: null })
     expect(has(".ab-alert")).toBe(false)
     expect(q(".ab-timer-side").hasAttribute("inert")).toBe(false)
+  })
+})
+
+describe("TimerScreen: the comeback message", () => {
+  const COMEBACK = { line: "Back in. [glow:Stay.] The clock never left." }
+
+  it("shows no comeback message when the hook has none", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    expect(has(".ab-comeback")).toBe(false)
+  })
+
+  it("shows it as a child of the screen after the side, with the line without its marks", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED, comeback: COMEBACK })
+    const kids = Array.from(q(".ab-timer").children)
+    expect(kids.map((k) => k.id || k.className)).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side", "ab-comeback"])
+    expect(q(".ab-comeback-line").textContent).toBe("Back in. Stay. The clock never left.")
+  })
+
+  it("leaves the stop alert as the LAST child of the screen, if both are there", () => {
+    show({ status: "paused", seconds: 100, ringSeed: SEED, comeback: COMEBACK, stopAlert: { line: "Stop?", canGoBack: true } })
+    const kids = Array.from(q(".ab-timer").children)
+    expect(kids.map((k) => k.id || k.className)).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side", "ab-comeback", "ab-alert"])
+  })
+
+  it("does not switch off the buttons: Pause works while the message is there", () => {
+    const view = show({ status: "running", seconds: 100, ringSeed: SEED, comeback: COMEBACK })
+    expect(q(".ab-timer-side").hasAttribute("inert")).toBe(false)
+    const pause = q(".ab-timer-pill")
+    expect(pause.textContent).toBe("Pause")
+    act(() => pause.click())
+    expect(view.pause).toHaveBeenCalledTimes(1)
+  })
+
+  it("asks the hook to take it away (clearComeback) after the time and the fade, once", () => {
+    const view = show({ status: "running", seconds: 100, ringSeed: SEED, comeback: COMEBACK })
+    act(() => {
+      vi.advanceTimersByTime(COMEBACK_SHOW_MS + COMEBACK_FADE_MS - 1)
+    })
+    expect(view.clearComeback).not.toHaveBeenCalled()
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(view.clearComeback).toHaveBeenCalledTimes(1)
+  })
+
+  it("closes at once when the hook takes the message away, and then never asks to clear it", () => {
+    const view = show({ status: "running", seconds: 100, ringSeed: SEED, comeback: COMEBACK })
+    expect(has(".ab-comeback")).toBe(true)
+    show({ status: "paused", seconds: 101, ringSeed: SEED, comeback: null })
+    expect(has(".ab-comeback")).toBe(false)
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(view.clearComeback).not.toHaveBeenCalled()
   })
 })
 

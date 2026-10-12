@@ -377,6 +377,59 @@
 }
 /* AB:TIMER.STOP-ALERT:END */
 
+/* AB:TIMER.COMEBACK:START */
+/* The comeback message (Comeback.tsx): for a few seconds after GO BACK IN one line floats at the top of the screen, under the row of the menu button (the menu button is in menu.css, z-index 40). It is a child of .ab-timer (position relative), so top and left are of the screen. It is position absolute, so it takes no room from the dial and the buttons and nothing moves when it comes and goes, and it never catches a tap (pointer-events none), so Pause and Hold to end session work at once. Its z-index (2) is above the dial and the buttons (1, see C31). It is never on the screen at the same time as the stop alert (the session runs while it is shown, the alert needs a paused session). It must stay plain: no blur behind it (a blur over the moving background made the phone laggy). The fade out is the same time as COMEBACK_FADE_MS in stopAlertLines.ts (CONNECTIONS.md C48). */
+.ab-comeback {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  z-index: 2;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(calc(100% - 40px), 420px);
+  padding: 10px 16px;
+  transform: translateX(-50%);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: center;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.85), 0 0 3px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 500ms ease;
+  animation: ab-comeback-in 250ms ease;
+}
+
+.ab-comeback[data-leaving="true"] {
+  opacity: 0;
+}
+
+/* The line: the library text (BlurText) is a flex row that wraps, so it is centred with justify-content. */
+.ab-comeback-line {
+  margin: 0;
+  justify-content: center;
+  text-align: center;
+}
+
+@keyframes ab-comeback-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ab-comeback {
+    animation: none;
+    transition: none;
+  }
+}
+/* AB:TIMER.COMEBACK:END */
+
 /* AB:TIMER.BG:START */
 /* The moving background (TimerBackground.tsx): it fills the whole screen, sits at the very bottom, is dimmed so that the white digits stay easy to read, and never catches a tap. It has its own black, so that the tint layer below colours only the rays and not the clear parts of the animation (CONNECTIONS.md C37). It fades in when a session starts and out when it ends. The fade time is the same as BG_FADE_MS in backgroundLook.ts (CONNECTIONS.md C38). */
 .ab-timer-bg {

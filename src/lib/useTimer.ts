@@ -10,7 +10,7 @@ import {
   timerState,
   type TimerErrorKind,
 } from "@/lib/timerApi"
-import { pickStopLine, type LineQueues } from "@/lib/stopAlertLines"
+import { pickComebackLine, pickStopLine, type ComebackQueues, type LineQueues } from "@/lib/stopAlertLines"
 import {
   activeSeconds,
   canGoBackIn,
@@ -26,7 +26,8 @@ import {
 // The seconds are never counted by ticks. They are worked out from the stored times and the server time estimate (timerMaths.ts), so a sleeping phone loses nothing.
 // Rules: a button that finds the state changed on another device reads the state again (CONFLICTS); without a connection every button is off; a session still running at local midnight is ended by the database at 12:00.
 // The stop alert: Hold to end session does NOT end the session. stop pauses it (so the minutes of the line stay true while the alert is on the screen), picks one line for the seconds it stopped at, and opens the alert. end (I'M DONE) then ends it, goBack (GO BACK IN) resumes it. The time spent on the alert is never counted, because the session is paused. See CONNECTIONS.md C43.
-// What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43 and C45. The names used by the screen are in TimerView.
+// The comeback message: when GO BACK IN really resumes the session, goBack also picks one comeback line for the seconds the session stopped at (pickComebackLine) and keeps it as long as that session runs. It is never made when the session stays paused (the lines say the clock is running). The screen shows it for a few seconds (Comeback.tsx) and then calls clearComeback. See CONNECTIONS.md C48.
+// What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43, C45 and C48. The names used by the screen are in TimerView.
 
 export const POLL_ONLINE_MS = 30000
 export const POLL_OFFLINE_MS = 3000
@@ -59,6 +60,12 @@ type AlertState = { line: string; seconds: number; canGoBack: boolean; resume: b
 // The stop alert as the screen sees it: the line (its slots filled, its [effect:words] marks still in it) and whether GO BACK IN is offered (only for a session shorter than 45 minutes).
 export type StopAlertView = { line: string; canGoBack: boolean }
 
+// The comeback message as the hook keeps it: the line (its slots filled, its [effect:words] marks still in it) and the one session it belongs to (started_at).
+type ComebackState = { line: string; startedAt: string }
+
+// The comeback message as the screen sees it.
+export type ComebackView = { line: string }
+
 export type TimerView = {
   link: TimerLink
   problem: string
@@ -69,12 +76,14 @@ export type TimerView = {
   ringSeed: string
   notice: EndNotice | null
   stopAlert: StopAlertView | null
+  comeback: ComebackView | null
   start: () => void
   pause: () => void
   resume: () => void
   stop: () => void
   end: () => void
   goBack: () => void
+  clearComeback: () => void
   retry: () => void
 }
 
@@ -98,6 +107,11 @@ function alertMatches(alert: AlertState | null, row: TimerRow | null): alert is 
   return alert !== null && row !== null && row.status === "paused" && row.started_at === alert.startedAt && row.paused_at === alert.pausedAt
 }
 
+// The comeback message belongs to ONE running stretch of ONE session: it is shown only while that session is still running. When it is paused again, ended, or ended on another device, it does not match any more and the screen shows none (adopt also forgets it then, so it cannot come back when the session runs again). A comeback line says things like "the clock is running", so it is never shown for a session that is not running.
+function comebackMatches(comeback: ComebackState | null, row: TimerRow | null): comeback is ComebackState {
+  return comeback !== null && row !== null && row.status === "running" && row.started_at === comeback.startedAt
+}
+
 function dayOrFallback(ms: number, zone: string, fallback: string): string {
   try {
     return localDay(ms, zone)
@@ -113,6 +127,7 @@ export function useTimer(): TimerView {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<EndNotice | null>(null)
   const [alert, setAlert] = useState<AlertState | null>(null)
+  const [comeback, setComeback] = useState<ComebackState | null>(null)
   const [now, setNow] = useState(() => Date.now())
 
   const readingRef = useRef<Reading | null>(null)
@@ -123,8 +138,11 @@ export function useTimer(): TimerView {
   const aliveRef = useRef(true)
   const rolloverRef = useRef("")
   const alertRef = useRef<AlertState | null>(null)
+  const comebackRef = useRef<ComebackState | null>(null)
   // The shuffled queues of the stop alert lines: no line comes twice before all lines of its bank were shown. They live as long as the screen does.
   const queuesRef = useRef<LineQueues>({})
+  // The same for the comeback lines (their own queues, one per bank).
+  const comebackQueuesRef = useRef<ComebackQueues>({})
 
   const showLink = useCallback((next: TimerLink, text = "") => {
     linkRef.current = next
@@ -137,13 +155,26 @@ export function useTimer(): TimerView {
     setAlert(next)
   }, [])
 
-  const adopt = useCallback((next: Reading) => {
-    const t = Date.now()
-    const merged: Reading = { ...next, time: keepTimeBase(readingRef.current?.time ?? null, next.time, t) }
-    readingRef.current = merged
-    setReading(merged)
-    setNow(t)
+  const showComeback = useCallback((next: ComebackState | null) => {
+    comebackRef.current = next
+    setComeback(next)
   }, [])
+
+  // The screen calls this when the comeback message has been shown. It never changes anything but the message.
+  const clearComeback = useCallback(() => showComeback(null), [showComeback])
+
+  const adopt = useCallback(
+    (next: Reading) => {
+      const t = Date.now()
+      const merged: Reading = { ...next, time: keepTimeBase(readingRef.current?.time ?? null, next.time, t) }
+      readingRef.current = merged
+      setReading(merged)
+      setNow(t)
+      // The comeback message is forgotten for good as soon as the session it belongs to is not running any more.
+      if (comebackRef.current !== null && !comebackMatches(comebackRef.current, next.row)) showComeback(null)
+    },
+    [showComeback],
+  )
 
   const fail = useCallback(
     (error: unknown) => {
@@ -237,6 +268,12 @@ export function useTimer(): TimerView {
             if (!aliveRef.current) return
             const time = { serverMs: reply.serverNowMs, localMs: (sentAt + Date.now()) / 2 }
             adopt({ row: reply.row, time, savedSeconds: before?.savedSeconds ?? 0, day: before?.day ?? "" })
+            // The session runs again, so the comeback line is true. (A session that stays paused gets none: the lines say the clock is running.)
+            const picked = pickComebackLine(open.seconds, comebackQueuesRef.current)
+            if (picked !== null) {
+              comebackQueuesRef.current = picked.queues
+              showComeback({ line: picked.line, startedAt: open.startedAt })
+            }
           }
           showAlert(null)
         } else {
@@ -257,7 +294,7 @@ export function useTimer(): TimerView {
         if (aliveRef.current) setBusy(false)
       }
     },
-    [adopt, fail, refresh, showAlert],
+    [adopt, fail, refresh, showAlert, showComeback],
   )
 
   // Reading again: at the start, every 30 seconds (every 3 seconds while there is no connection), when the page comes back, and when the connection comes back.
@@ -335,12 +372,14 @@ export function useTimer(): TimerView {
     ringSeed: row === null ? "" : row.started_at,
     notice,
     stopAlert: alertMatches(alert, row) ? { line: alert.line, canGoBack: alert.canGoBack } : null,
+    comeback: comebackMatches(comeback, row) ? { line: comeback.line } : null,
     start: () => void act("start"),
     pause: () => void act("pause"),
     resume: () => void act("resume"),
     stop: () => void act("stop"),
     end: () => void act("end"),
     goBack: () => void act("goback"),
+    clearComeback,
     retry: () => void refresh(),
   }
 }

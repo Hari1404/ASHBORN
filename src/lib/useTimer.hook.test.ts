@@ -21,7 +21,7 @@ vi.mock("@/lib/timerApi", async (importOriginal) => {
 
 import { TimerError } from "@/lib/timerApi"
 import { fillSlots } from "@/lib/lineMarkup"
-import { STOP_ALERT_BANKS, bankIdFor } from "@/lib/stopAlertLines"
+import { COMEBACK_BANKS, STOP_ALERT_BANKS, bankIdFor, isComebackBank } from "@/lib/stopAlertLines"
 import { activeSeconds, canGoBackIn, type TimerRow } from "@/lib/timerMaths"
 import { POLL_OFFLINE_MS, POLL_ONLINE_MS, problemText, useTimer, type TimerView } from "./useTimer"
 
@@ -1127,6 +1127,182 @@ describe("useTimer: both reads at once", () => {
     expect(view.dayTotal).toBe(2000)
     await release(() => old.answer(5))
     expect(view.dayTotal).toBe(2000)
+  })
+})
+
+describe("useTimer: the comeback message", () => {
+  // The comeback lines of the bank of this length, with their slots filled (the marks are still in them, as the screen gets them).
+  function comebackLinesFor(seconds: number): string[] {
+    const bank = bankIdFor(seconds)
+    if (!isComebackBank(bank)) throw new Error("no comeback bank for " + seconds)
+    return COMEBACK_BANKS[bank].map((line) => fillSlots(line, seconds))
+  }
+
+  it("there is none before GO BACK IN: not while the session runs and not while the alert is open", async () => {
+    server.row = runningRow(125)
+    await mount()
+    expect(view.comeback).toBeNull()
+    await press(view.stop)
+    expect(view.stopAlert).not.toBeNull()
+    expect(view.comeback).toBeNull()
+  })
+
+  it("GO BACK IN on a session that the alert paused shows one comeback line for the seconds it stopped at, and the session runs again", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await settle(20_000)
+    await press(view.goBack)
+    expect(view.status).toBe("running")
+    expect(view.stopAlert).toBeNull()
+    expect(comebackLinesFor(125)).toContain(view.comeback?.line)
+    expect(view.comeback?.line).not.toMatch(/[{}]/)
+  })
+
+  it("picks the line from the comeback bank of the seconds the session stopped at, for every length that can go back in", async () => {
+    for (const seconds of [30, 100, 400, 700, 1300, 1900, 2600]) {
+      server.row = runningRow(seconds)
+      await mount()
+      await press(view.stop)
+      await press(view.goBack)
+      expect(comebackLinesFor(seconds)).toContain(view.comeback?.line)
+      act(() => root?.unmount())
+      container?.remove()
+      server.row = null
+    }
+  })
+
+  it("the comeback line has the minutes of the session as they were when it stopped, not as they are after the break", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await settle(300_000)
+    await press(view.goBack)
+    expect(comebackLinesFor(125)).toContain(view.comeback?.line)
+    expect(view.seconds).toBe(125)
+  })
+
+  it("a session that was already paused before the hold stays paused after GO BACK IN and gets NO comeback message (its lines say the clock is running)", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.pause)
+    await press(view.stop)
+    await press(view.goBack)
+    expect(api.timerResume).not.toHaveBeenCalled()
+    expect(view.status).toBe("paused")
+    expect(view.comeback).toBeNull()
+  })
+
+  it("I'M DONE gives no comeback message", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await press(view.end)
+    expect(view.comeback).toBeNull()
+  })
+
+  it("a failed resume gives no comeback message", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    api.timerResume.mockImplementationOnce(async () => {
+      throw new TimerError("UNKNOWN")
+    })
+    await press(view.goBack)
+    expect(view.link).toBe("problem")
+    expect(view.comeback).toBeNull()
+  })
+
+  it("stays through the reading that comes every 30 seconds, as long as the session runs", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await press(view.goBack)
+    const line = view.comeback?.line
+    await settle(POLL_ONLINE_MS + 1000)
+    expect(api.timerState.mock.calls.length).toBeGreaterThan(2)
+    expect(view.comeback?.line).toBe(line)
+  })
+
+  it("clearComeback takes it away, a second call changes nothing, and the function stays the same one while the screen is drawn again and again", async () => {
+    server.row = runningRow(125)
+    await mount()
+    const first = view.clearComeback
+    await press(view.stop)
+    await press(view.goBack)
+    expect(view.comeback).not.toBeNull()
+    await settle(5000)
+    expect(view.clearComeback).toBe(first)
+    await press(view.clearComeback)
+    expect(view.comeback).toBeNull()
+    await press(view.clearComeback)
+    expect(view.comeback).toBeNull()
+    expect(view.status).toBe("running")
+  })
+
+  it("is gone when the session is paused again, and does not come back when it runs again", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await press(view.goBack)
+    expect(view.comeback).not.toBeNull()
+    await press(view.pause)
+    expect(view.comeback).toBeNull()
+    await press(view.resume)
+    expect(view.status).toBe("running")
+    expect(view.comeback).toBeNull()
+  })
+
+  it("is gone when Hold to end session is used again, and the new alert has no comeback behind it", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await press(view.goBack)
+    await press(view.stop)
+    expect(view.stopAlert).not.toBeNull()
+    expect(view.comeback).toBeNull()
+    await press(view.goBack)
+    expect(view.status).toBe("running")
+    expect(comebackLinesFor(125)).toContain(view.comeback?.line)
+  })
+
+  it("is gone when the session is ended on another device, and a new session does not bring it back", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await press(view.goBack)
+    expect(view.comeback).not.toBeNull()
+    server.row = null
+    await settle(POLL_ONLINE_MS + 1000)
+    expect(view.status).toBe("idle")
+    expect(view.comeback).toBeNull()
+    await press(view.start)
+    expect(view.status).toBe("running")
+    expect(view.comeback).toBeNull()
+  })
+
+  it("is gone when the session is paused on another device", async () => {
+    server.row = runningRow(125)
+    await mount()
+    await press(view.stop)
+    await press(view.goBack)
+    server.row = { ...runningRow(125), status: "paused", paused_at: iso(serverNow()) }
+    await settle(POLL_ONLINE_MS + 1000)
+    expect(view.status).toBe("paused")
+    expect(view.comeback).toBeNull()
+  })
+
+  it("no comeback line comes twice before all lines of the bank were shown (the queue lives on between alerts)", async () => {
+    server.row = runningRow(125)
+    await mount()
+    const size = comebackLinesFor(125).length
+    const shown: string[] = []
+    for (let i = 0; i < size; i++) {
+      await press(view.stop)
+      await press(view.goBack)
+      shown.push(view.comeback?.line ?? "")
+    }
+    expect(new Set(shown).size).toBe(size)
   })
 })
 

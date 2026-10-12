@@ -395,6 +395,10 @@ export const COMEBACK_BANKS: Readonly<Record<ComebackBankId, readonly string[]>>
   ],
 }
 
+// How long the comeback message stays on the screen after GO BACK IN, and how long its fade out takes, in milliseconds. The fade time is the same number as the transition of .ab-comeback in timer.css (see CONNECTIONS.md C48). The wait is long enough to read the longest comeback line (113 characters) once its words have come in.
+export const COMEBACK_SHOW_MS = 6000
+export const COMEBACK_FADE_MS = 500
+
 // ---- Choosing a line ----
 // Every bank is shown in a shuffled order and no line comes twice before all lines of the bank have been shown (as in the old app). The queue of a bank is the indexes still to show (the next one is the LAST in the list) and the index shown last, so that the first line of a new round is never the line that ended the old round. The stop alert and the comeback lines each have their own queues.
 export type BankQueue = { rest: readonly number[]; last: number | null }

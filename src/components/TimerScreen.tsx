@@ -1,3 +1,4 @@
+import Comeback from "@/components/Comeback"
 import HoldButton from "@/components/HoldButton"
 import StopAlert from "@/components/StopAlert"
 import TimerBackground from "@/components/TimerBackground"
@@ -12,6 +13,7 @@ import "../timer.css"
 // Behind the big clock sits the glowing ball (TimerBall.tsx). It lights when a session starts, changes colour as the session gets deeper, stops and dims when paused, and fades when the session ends.
 // Behind everything, over the whole screen, sits the moving background (TimerBackground.tsx, the Side Rays animation). It is the first thing inside the main element, it has the same colour as the ball at every moment, and the screen is black without a session (see CONNECTIONS.md C37 and C38).
 // Start and Pause / Resume are normal taps. End Session is the library Hold Button (src/components/HoldButton.tsx, never edited): hold it until it is full. It does not end the session: it opens the stop alert (StopAlert.tsx, the last thing inside the main element), which pauses the session and offers I'M DONE and GO BACK IN (see CONNECTIONS.md C43).
+// After GO BACK IN the comeback message (Comeback.tsx) floats over the screen for a few seconds, while the hook has one (see CONNECTIONS.md C48). It sits just before the stop alert, so the stop alert stays the last thing inside the main element.
 // The ball sits in a box that is larger than the dial, and the ball is a share of that box (see CONNECTIONS.md C31).
 // The look of the clock digits (Space Grotesk, fixed width) is in timer.css (see CONNECTIONS.md C32).
 // While the first reading is on its way (the link is loading) the screen does not show zeros that would jump to the real numbers: the two clocks are invisible, and where the buttons will be there is a faint blank pill (ab-timer-wait) that is not a button. When the reading is there, the clocks and the buttons fade in together (timer.css, CONNECTIONS.md C46).
@@ -93,6 +95,7 @@ export default function TimerScreen() {
           )}
         </div>
       </div>
+      {timer.comeback === null ? null : <Comeback line={timer.comeback.line} onGone={timer.clearComeback} />}
       {timer.stopAlert === null ? null : (
         <StopAlert
           line={timer.stopAlert.line}
