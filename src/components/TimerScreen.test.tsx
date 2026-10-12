@@ -33,14 +33,6 @@ vi.mock("@/components/TimerBackground", async () => {
   }
 })
 
-// BlurText (the library text that shows the line of the stop alert) watches its box with an IntersectionObserver, which jsdom does not have. A stand-in shows the text it is given, so the tests can read it.
-vi.mock("@/components/BlurText", async () => {
-  const { createElement: h } = await import("react")
-  return {
-    default: (props: { text?: string; className?: string }) => h("p", { className: props.className, "data-blur-stub": "yes" }, props.text),
-  }
-})
-
 import { COMEBACK_FADE_MS, COMEBACK_SHOW_MS } from "@/lib/stopAlertLines"
 import { formatClock, qualityOf } from "@/lib/timerMaths"
 import type { TimerView } from "@/lib/useTimer"

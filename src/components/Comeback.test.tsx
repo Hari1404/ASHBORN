@@ -5,18 +5,6 @@ import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// BlurText (the library text) watches its box with an IntersectionObserver, which jsdom does not have. A stand-in shows the text it is given and records the other settings.
-const blur = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }))
-vi.mock("@/components/BlurText", async () => {
-  const { createElement: h } = await import("react")
-  return {
-    default: (props: Record<string, unknown>) => {
-      blur.props.push(props)
-      return h("p", { className: props.className as string }, props.text as string)
-    },
-  }
-})
-
 import { COMEBACK_FADE_MS, COMEBACK_SHOW_MS } from "@/lib/stopAlertLines"
 import Comeback from "./Comeback"
 
@@ -70,7 +58,6 @@ function wait(ms: number): void {
 
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-  blur.props = []
   vi.useFakeTimers()
 })
 
@@ -89,19 +76,29 @@ describe("Comeback: what it shows", () => {
     expect(box().textContent).toBe("Back in. Stay.")
   })
 
-  it("shows the line without its [effect:words] marks, and no effect is drawn yet", () => {
+  it("shows the line without its [effect:words] marks, with real spaces between the words", () => {
     show("You [heat:earn] it. [shake:Not] [ghost:really], and [glow:real session] now.")
     expect(box().textContent).toBe("You earn it. Not really, and real session now.")
     expect(box().textContent).not.toMatch(/[[\]]/)
   })
 
-  it("hands the line to BlurText to be shown word by word, from the top", () => {
+  it("draws the effect of every marked keyword, and keeps the punctuation next to it outside the effect", () => {
+    show("Back in. [rise:Stay], [strike:please].")
+    const fx = Array.from(box().querySelectorAll<HTMLElement>(".ab-fx"))
+    expect(fx.map((e) => [e.textContent, e.getAttribute("data-effect")])).toEqual([
+      ["Stay", "rise"],
+      ["please", "strike"],
+    ])
+    expect(box().textContent).toBe("Back in. Stay, please.")
+  })
+
+  it("shows the line with LineText: one box per word, numbered from 0, in the line with the class ab-comeback-line", () => {
     show("Back in. [glow:Stay.]")
-    const last = blur.props[blur.props.length - 1]
-    expect(last.text).toBe("Back in. Stay.")
-    expect(last.animateBy).toBe("words")
-    expect(last.direction).toBe("top")
-    expect(last.className).toBe("ab-comeback-line")
+    const line = box().querySelector<HTMLElement>(".ab-comeback-line")
+    expect(line?.tagName).toBe("P")
+    const words = Array.from(box().querySelectorAll<HTMLElement>(".ab-line-word"))
+    expect(words.map((w) => w.textContent)).toEqual(["Back", "in.", "Stay."])
+    expect(words.map((w) => w.style.getPropertyValue("--word-i"))).toEqual(["0", "1", "2"])
   })
 
   it("has no button and nothing that takes the focus", () => {
@@ -211,9 +208,9 @@ describe("the css of the comeback message", () => {
     expect(css).not.toMatch(/overflow/)
   })
 
-  it("centres the line, which BlurText draws as a flex row that wraps", () => {
-    expect(rule(css, ".ab-comeback-line")).toMatch(/justify-content:\s*center;/)
+  it("centres the line, which is plain wrapping text (words with real spaces), not a flex row", () => {
     expect(rule(css, ".ab-comeback-line")).toMatch(/text-align:\s*center;/)
+    expect(rule(css, ".ab-comeback-line")).not.toMatch(/display:\s*flex/)
   })
 
   it("stops its fades for people who asked for less motion", () => {

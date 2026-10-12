@@ -297,10 +297,9 @@
   outline: none;
 }
 
-/* The line: the library text (BlurText) is a flex row that wraps, so it is centred with justify-content. */
+/* The line (LineText.tsx): words in boxes with real spaces between them, so it wraps like text and is centred with text-align. */
 .ab-alert-line {
   margin: 0;
-  justify-content: center;
   text-align: center;
   font-size: clamp(1.45rem, 5.6vw, 2.25rem);
   font-weight: 600;
@@ -406,10 +405,9 @@
   opacity: 0;
 }
 
-/* The line: the library text (BlurText) is a flex row that wraps, so it is centred with justify-content. */
+/* The line (LineText.tsx): words in boxes with real spaces between them, so it wraps like text and is centred with text-align. */
 .ab-comeback-line {
   margin: 0;
-  justify-content: center;
   text-align: center;
 }
 
@@ -429,6 +427,196 @@
   }
 }
 /* AB:TIMER.COMEBACK:END */
+
+/* AB:TIMER.LINE-TEXT:START */
+/* The words of a line and the six effects of its keywords (LineText.tsx, CONNECTIONS.md C49). The stop alert and the comeback message show their line with it.
+   A word comes in from the top and out of a blur, one word after the other (80 ms apart), the same movement as the React Bits BlurText that these lines used before: blur 10px, 0 opacity and 50px up, then blur 5px, half opacity and 5px down, then sharp, in 700 ms, in a straight line. The number of the word (--word-i, set by LineText.tsx) times the 80 ms is its delay. backwards means that the first frame shows while the word waits, and that afterwards the word is just a word (no filter and no transform stays on it, so the phone has no extra layers to keep).
+   An effect starts 450 ms after its word started to come in, plays ONCE and then rests in its own look, which is the plain rule of the effect. Nothing loops. Only transform, opacity, colour and text-shadow are animated, on a few words, and never a blur behind the text (a blur over the moving background made the phone laggy, C22, C25).
+   What the six mean (lineMarkup.ts): glow = the important or true thing, heat = effort and earning, shake = failure and flinching, strike = the fake thing, ghost = nothing and fading, rise = growing and stacking. The names are the values of data-effect, so a new name in EFFECTS needs a rule here, and a rule here needs a name in EFFECTS. */
+.ab-line-word {
+  display: inline-block;
+  animation: ab-word-in 700ms linear calc(var(--word-i) * 80ms) backwards;
+}
+
+.ab-fx {
+  display: inline-block;
+  position: relative;
+}
+
+/* glow: bright white with a soft violet halo. It flares up and settles. */
+.ab-fx[data-effect="glow"] {
+  color: #fff;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.85), 0 0 30px rgba(182, 156, 255, 0.8);
+  animation: ab-fx-glow 1400ms ease-out calc(var(--word-i) * 80ms + 450ms) backwards;
+}
+
+/* heat: the word warms up from white to ember orange. */
+.ab-fx[data-effect="heat"] {
+  color: #ff8a3d;
+  text-shadow: 0 0 10px rgba(255, 100, 30, 0.65), 0 0 22px rgba(255, 60, 20, 0.35);
+  animation: ab-fx-heat 1200ms ease-out calc(var(--word-i) * 80ms + 450ms) backwards;
+}
+
+/* shake: a quick tremble that dies down, and the word stays a little red. */
+.ab-fx[data-effect="shake"] {
+  color: #ff8c9a;
+  animation: ab-fx-shake 700ms ease-out calc(var(--word-i) * 80ms + 450ms) backwards;
+}
+
+/* strike: the word dims and a line is drawn through it from the left. */
+.ab-fx[data-effect="strike"] {
+  opacity: 0.6;
+  animation: ab-fx-strike 600ms ease-out calc(var(--word-i) * 80ms + 450ms) backwards;
+}
+
+.ab-fx[data-effect="strike"]::after {
+  content: "";
+  position: absolute;
+  left: -2%;
+  right: -2%;
+  top: 55%;
+  height: 0.09em;
+  min-height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transform-origin: left center;
+  animation: ab-fx-strike-line 450ms ease-out calc(var(--word-i) * 80ms + 450ms) backwards;
+}
+
+/* ghost: the word fades away, flickers once, and is left faint. */
+.ab-fx[data-effect="ghost"] {
+  opacity: 0.38;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+  animation: ab-fx-ghost 1600ms ease-in-out calc(var(--word-i) * 80ms + 450ms) backwards;
+}
+
+/* rise: the word lifts and grows past its place, then settles a little higher and bigger, in mint green. */
+.ab-fx[data-effect="rise"] {
+  color: #7dffb0;
+  text-shadow: 0 0 10px rgba(80, 255, 160, 0.45);
+  transform: translateY(-0.05em) scale(1.06);
+  animation: ab-fx-rise 900ms ease-out calc(var(--word-i) * 80ms + 450ms) backwards;
+}
+
+@keyframes ab-word-in {
+  0% {
+    opacity: 0;
+    filter: blur(10px);
+    transform: translateY(-50px);
+  }
+  50% {
+    opacity: 0.5;
+    filter: blur(5px);
+    transform: translateY(5px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes ab-fx-glow {
+  0% {
+    text-shadow: 0 0 0 rgba(255, 255, 255, 0), 0 0 0 rgba(182, 156, 255, 0);
+  }
+  45% {
+    text-shadow: 0 0 18px #fff, 0 0 44px rgba(182, 156, 255, 1);
+  }
+}
+
+@keyframes ab-fx-heat {
+  0% {
+    color: #fff;
+    text-shadow: 0 0 0 rgba(255, 100, 30, 0), 0 0 0 rgba(255, 60, 20, 0);
+  }
+  55% {
+    color: #ffd08a;
+    text-shadow: 0 0 14px rgba(255, 170, 60, 0.95), 0 0 30px rgba(255, 90, 20, 0.7);
+  }
+}
+
+@keyframes ab-fx-shake {
+  0% {
+    color: #fff;
+    transform: translateX(0);
+  }
+  10% {
+    color: #ff8c9a;
+    transform: translateX(-4px) rotate(-1deg);
+  }
+  20% {
+    transform: translateX(4px) rotate(1deg);
+  }
+  30% {
+    transform: translateX(-3px) rotate(-1deg);
+  }
+  40% {
+    transform: translateX(3px) rotate(1deg);
+  }
+  50% {
+    transform: translateX(-2px);
+  }
+  60% {
+    transform: translateX(2px);
+  }
+  70% {
+    transform: translateX(-1px);
+  }
+  80% {
+    transform: translateX(1px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes ab-fx-strike {
+  0% {
+    opacity: 1;
+  }
+}
+
+@keyframes ab-fx-strike-line {
+  0% {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes ab-fx-ghost {
+  0% {
+    opacity: 1;
+  }
+  30% {
+    opacity: 0.12;
+  }
+  50% {
+    opacity: 0.55;
+  }
+  70% {
+    opacity: 0.2;
+  }
+}
+
+@keyframes ab-fx-rise {
+  0% {
+    color: #fff;
+    transform: translateY(0.5em) scale(0.9);
+  }
+  60% {
+    transform: translateY(-0.12em) scale(1.12);
+  }
+}
+
+/* People who asked for less motion get the words and the effects at rest at once: no blur-in, no tremble, no flicker. The colours stay. */
+@media (prefers-reduced-motion: reduce) {
+  .ab-line-word,
+  .ab-fx,
+  .ab-fx[data-effect="strike"]::after {
+    animation: none;
+  }
+}
+/* AB:TIMER.LINE-TEXT:END */
 
 /* AB:TIMER.BG:START */
 /* The moving background (TimerBackground.tsx): it fills the whole screen, sits at the very bottom, is dimmed so that the white digits stay easy to read, and never catches a tap. It has its own black, so that the tint layer below colours only the rays and not the clear parts of the animation (CONNECTIONS.md C37). It fades in when a session starts and out when it ends. The fade time is the same as BG_FADE_MS in backgroundLook.ts (CONNECTIONS.md C38). */

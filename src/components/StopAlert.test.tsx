@@ -5,18 +5,6 @@ import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// BlurText (the library text) watches its box with an IntersectionObserver, which jsdom does not have. A stand-in shows the text it is given and records the other settings.
-const blur = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }))
-vi.mock("@/components/BlurText", async () => {
-  const { createElement: h } = await import("react")
-  return {
-    default: (props: Record<string, unknown>) => {
-      blur.props.push(props)
-      return h("p", { className: props.className as string }, props.text as string)
-    },
-  }
-})
-
 import StopAlert from "./StopAlert"
 
 // AB:TIMER.TESTS:START
@@ -65,7 +53,6 @@ function q(selector: string): HTMLElement {
 
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-  blur.props = []
 })
 
 afterEach(() => {
@@ -86,19 +73,31 @@ describe("StopAlert: what it shows", () => {
     expect(document.getElementById(described)?.textContent).toBe("Ten minutes. Solid. Stay.")
   })
 
-  it("shows the line without its [effect:words] marks, and no effect is drawn yet", () => {
+  it("shows the line without its [effect:words] marks, with real spaces between the words", () => {
     show({ line: "You [heat:earn] it. [shake:Not] [ghost:really], and [glow:real session] now." })
     expect(q(".ab-alert-line").textContent).toBe("You earn it. Not really, and real session now.")
     expect(q(".ab-alert-line").textContent).not.toMatch(/[[\]]/)
   })
 
-  it("hands the line to BlurText to be shown word by word, from the top", () => {
+  it("draws the effect of every marked keyword (one box for each marked word) and none for the plain words", () => {
+    show({ line: "You [heat:earn] it. [shake:Not] [ghost:really], and [glow:real session] now." })
+    const fx = Array.from(container?.querySelectorAll<HTMLElement>(".ab-alert-line .ab-fx") ?? [])
+    expect(fx.map((e) => [e.textContent, e.getAttribute("data-effect")])).toEqual([
+      ["earn", "heat"],
+      ["Not", "shake"],
+      ["really", "ghost"],
+      ["real", "glow"],
+      ["session", "glow"],
+    ])
+  })
+
+  it("shows the line with LineText: one box per word, numbered from 0, in the line with the class ab-alert-line", () => {
     show()
-    const last = blur.props[blur.props.length - 1]
-    expect(last.text).toBe("Ten minutes. Solid. Stay.")
-    expect(last.animateBy).toBe("words")
-    expect(last.direction).toBe("top")
-    expect(last.className).toBe("ab-alert-line")
+    const line = q(".ab-alert-line")
+    expect(line.tagName).toBe("P")
+    const words = Array.from(line.querySelectorAll<HTMLElement>(".ab-line-word"))
+    expect(words.map((w) => w.textContent)).toEqual(["Ten", "minutes.", "Solid.", "Stay."])
+    expect(words.map((w) => w.style.getPropertyValue("--word-i"))).toEqual(["0", "1", "2", "3"])
   })
 
   it("puts I'M DONE first and GO BACK IN second", () => {
@@ -191,9 +190,9 @@ describe("the css of the stop alert", () => {
     expect(rule(css, ".ab-alert")).not.toMatch(/align-items:\s*center/)
   })
 
-  it("centres the line, which BlurText draws as a flex row that wraps", () => {
-    expect(rule(css, ".ab-alert-line")).toMatch(/justify-content:\s*center;/)
+  it("centres the line, which is plain wrapping text (words with real spaces), not a flex row", () => {
     expect(rule(css, ".ab-alert-line")).toMatch(/text-align:\s*center;/)
+    expect(rule(css, ".ab-alert-line")).not.toMatch(/display:\s*flex/)
   })
 
   it("stops its fade in for people who asked for less motion", () => {
