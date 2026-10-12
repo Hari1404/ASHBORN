@@ -417,8 +417,8 @@ function shuffledIndexes(size: number, random: () => number): number[] {
   return list
 }
 
-// The next index of a bank of this size and the queue that is left after it. The queue that comes in is not changed.
-function nextIndex(size: number, old: BankQueue | undefined, random: () => number): { index: number; queue: BankQueue } {
+// The next index of a bank of this size and the queue that is left after it. The queue that comes in is not changed. It is exported because the milestone lines (milestoneLines.ts, CONNECTIONS.md C50) are shuffled the same way.
+export function nextIndex(size: number, old: BankQueue | undefined, random: () => number): { index: number; queue: BankQueue } {
   const before = old ?? { rest: [], last: null }
   let rest = before.rest
   if (rest.length === 0) {

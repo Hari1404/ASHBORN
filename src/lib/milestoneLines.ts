@@ -1,0 +1,384 @@
+import { nextIndex, type BankQueue } from "@/lib/stopAlertLines"
+import { MILESTONE_MINUTES } from "@/lib/timerMaths"
+
+// AB:TIMER.MILESTONE-LINES:START
+// The lines of the milestone messages of the Pro Timer (shown while a session runs, when it reaches 15, 25, 45, 60, 90, 120, 150 and 180 minutes) and the choice of one line. Pure functions: no screen, no clock of its own (the random numbers are handed in, so the tests can fix them).
+// Every milestone has a bank of 36 lines: 34 general lines and two lines about the glowing ball and the rays of light (ballLine and raysLine). The two are kept apart because a line about the ball is false when no ball is drawn (a browser without WebGL 2) and a line about the rays is false when no rays are drawn (a browser without WebGL 2, and lite level 2, see src/lib/backgroundLook.ts). The choice only takes them when the caller says they are drawn (MilestoneVisuals).
+// Every line uses the marks of lineMarkup.ts (see CONNECTIONS.md C42): [effect:words] marks the keywords that get an effect when the line is shown. There are NO slots ({n}, {time}, {left}): a milestone is at an exact minute, so a line writes its number out.
+// Rules that every line follows (the tests of milestoneLines.test.ts check them, see CONNECTIONS.md C50): one to three marked keywords; no number is written that is not true at that milestone (the tests keep a list of the numbers each bank may use); "flow" is only said from 90 minutes and never the quality words solid and deep; the word "milestone" is never used; no time of day and nothing about sessions before this one; a line about the ball or the rays is true for every second the message can be on the screen.
+// The choice is shuffled like the stop alert lines (stopAlertLines.ts, nextIndex): no line comes twice before all lines of the pool have been shown, and a new round never starts with the line that ended the old one. The queues are kept by the hook for as long as the screen lives.
+// The words were written by the planner with the owner and are kept in ASHBORN_MILESTONE_LINES.md (the same words, 36 per milestone).
+// The automated tests are in src/lib/milestoneLines.test.ts. Run them with: npm test
+
+export type MilestoneMinute = (typeof MILESTONE_MINUTES)[number]
+export type MilestoneBank = { lines: readonly string[]; ballLine: string; raysLine: string }
+
+// How long a milestone message stays on the screen, and how long its fade out takes, in milliseconds. The fade time is the same number as the transition of .ab-milestone in timer.css (see CONNECTIONS.md C51). The wait is long enough to read the longest line (122 characters) once its words have come in.
+export const MILESTONE_SHOW_MS = 6000
+export const MILESTONE_FADE_MS = 500
+
+export const MILESTONE_BANKS: Readonly<Record<MilestoneMinute, MilestoneBank>> = {
+  // 15 minutes: the spark.
+  15: {
+    lines: [
+      "Fifteen minutes. The [heat:warm-up] is over. This is where the work starts.",
+      "A quarter of an hour in. The urge to check something has probably come and [ghost:gone].",
+      "15 minutes. Starting was the hard part, and it's already [rise:behind you].",
+      "Breaking news: a person has been sitting with one task for 15 minutes. Experts are [glow:stunned]. Witnesses say it's going well.",
+      "The first [shake:itch to quit] has probably visited already. [heat:Keep the door shut].",
+      "A quarter of an hour is about four songs. You spent them on something that [rise:lasts].",
+      "15 minutes. Your attention span has just been upgraded from [strike:goldfish] to something with a little more dignity.",
+      "Fifteen minutes ago this was an idea. Now it's [glow:work].",
+      "Somewhere a notification is waiting. It can [ghost:wait] a little longer.",
+      "The clock says 15. The urge says leave. One of them is [strike:lying].",
+      "15 minutes gone. You can't borrow them back, so make sure they [glow:count].",
+      "Quarter hour. It was never about motivation. It was [heat:momentum], and it's here now.",
+      "The first fifteen minutes are the [shake:wobbly] ones. Yours are done.",
+      "A spark has caught. It's small, and it's [heat:real]. Feed it.",
+      "You just outlasted the version of you who was going to [strike:start in a minute].",
+      "Fifteen minutes in, and there's no cinematic montage and no swelling music. Just [heat:a task] and a chair. Glamour is overrated.",
+      "The hard part is no longer starting. It's [heat:staying]. You're good at it so far.",
+      "Quarter hour down. Your future self just got a small [rise:gift]. Send another.",
+      "The scroll sends its regards. It has been [ghost:waiting] 15 minutes and is starting to take it personally.",
+      "15 minutes. Productivity gurus charge good money for what you just did for [glow:free].",
+      "A standing ovation was considered for minute 15. The committee decided you should [heat:keep going] instead.",
+      "The world keeps spinning without [strike:constant checking]. Funny how that works.",
+      "Your brain, 15 minutes ago: 'Surely something else is more urgent.' Your brain now: [ghost:still looking]. Nothing found.",
+      "Nobody finishes a session wishing they'd stopped at [ghost:minute fifteen].",
+      "Shoulders down, jaw loose, eyes on the work. 15 minutes in and still [glow:here].",
+      "A real session starts at 45, so you're a third of the way to [glow:real].",
+      "Foundations don't look like much, and neither do your first 15 minutes. Keep [rise:laying].",
+      "Your last distraction burned out minutes ago. This one [heat:burns longer].",
+      "Motivational quotes are [strike:optional] at minute 15. You're already doing the thing they talk about.",
+      "Say it plainly: you are [glow:doing it]. Now do the next minute.",
+      "Somewhere, a tab is sulking because nobody clicked it. Let it [ghost:sulk].",
+      "15 minutes of making beats 15 minutes of scrolling every time. You [rise:chose right].",
+      "Fifteen minutes. A fridge somewhere is [shake:calling your name]. It will still be a fridge in half an hour.",
+      "Plot twist: the thing you were avoiding is [rise:15 minutes] smaller than it was.",
+    ],
+    ballLine: "The ball has changed colour once since you started. It's [heat:warming up], and so are you.",
+    raysLine: "The rays are brighter than when you started, and they're still [rise:growing].",
+  },
+  // 25 minutes: the middle.
+  25: {
+    lines: [
+      "25 minutes. A full [glow:pomodoro], and you're still here.",
+      "This is the middle: too far in to wave it off, not far enough to [glow:celebrate]. Walk through it.",
+      "The itch for a break is loud around 25 minutes, and usually a [strike:liar].",
+      "More than halfway to a [glow:real session]. Don't leave the last 20 minutes on the table.",
+      "Boredom just walked in. It wants you to [shake:flinch]. Offer it a chair and carry on.",
+      "The urge to quit is loudest around here, and it's [ghost:all noise].",
+      "You're 25 minutes in. Too far to waste, too early to [strike:coast].",
+      "Time to hold a small meeting with the urge to scroll. Agenda: [strike:no items]. Meeting adjourned.",
+      "Quitting at 25 usually comes with a promise to come back. Promises like that [ghost:fade].",
+      "The world can manage 25 minutes without [strike:instant replies]. It'll manage 20 more.",
+      "The work stopped feeling new a while ago. That's when it starts [rise:sticking].",
+      "The 25-minute method is named after a tomato-shaped kitchen timer. You are now [glow:more focused than a tomato].",
+      "Plot twist at minute 25: any 'one quick check' on the schedule has been [ghost:cancelled] due to lack of interest.",
+      "25 minutes down. You don't need a reward yet. You need [glow:twenty more].",
+      "Quick body check: unclench your hands, drop your shoulders, breathe out. Still [glow:going].",
+      "This is the 25-minute wall. Walls get easier when you stop looking for [strike:the way around].",
+      "Minute 25. Your willpower files a complaint with the management. The management is you, and the complaint is [strike:denied].",
+      "25 minutes of work beats an hour of almost starting. [rise:Take the win], then take the next ten.",
+      "The old habit is [shake:begging]. The new one is [heat:working]. Choose again.",
+      "Think of a forge: 25 minutes in, the metal is finally [heat:hot enough] to shape. Don't pull it out now.",
+      "Ten, fifteen, twenty: the usual places to quit. 25 minutes is what getting past them [glow:looks like].",
+      "The 'five more minutes in bed' voice has no authority here. It is [strike:out of its jurisdiction].",
+      "Twenty minutes to a real session. That's just two rounds of [rise:ten].",
+      "A message from your future self: 'Thanks. Please [heat:continue].' He's too busy being grateful to write more.",
+      "Stopping now would feel like [shake:losing]. Let that feeling work for you.",
+      "Nobody gets here by being perfect. They get here by returning to the page, [heat:over and over].",
+      "The coffee, the snack, the chat, the quick look. All of them can [ghost:wait] another twenty minutes.",
+      "At 25 minutes, 'I deserve a break' starts auditioning for the role of [strike:reasonable thought]. Don't cast it.",
+      "The itch to check the news is trending. It will be [ghost:old news] in twenty minutes.",
+      "Midpoint maths: 25 down, 20 to a real session. The numbers are [rise:on your side].",
+      "In films, this is where the hero gets a montage. You get a [heat:glass of water]. Equally heroic.",
+      "A 'quick look' would have swallowed these 25 minutes whole, and burped. You have [glow:work] instead.",
+      "Somewhere between minute 20 and minute 30 the work stops being a chore and starts being [rise:yours].",
+      "A sip of water, a slow breath, then back to it. The next 20 minutes buy you a [glow:real session].",
+    ],
+    ballLine: "Five minutes until the ball changes colour again. [heat:Go and earn it].",
+    raysLine: "The rays are at about half of their full light, and still [rise:climbing].",
+  },
+  // 45 minutes: it counts.
+  45: {
+    lines: [
+      "45 minutes. That's a [glow:real session]. It counts, whatever happens next.",
+      "The first half is over, and you're still [heat:on the pitch].",
+      "45 minutes of focus. Not a warm-up, not a performance. [glow:Actual work].",
+      "You crossed the line. From here, every minute is a [rise:bonus].",
+      "Official statement: the committee has reviewed the last 45 minutes and finds them [glow:acceptable]. Proceed.",
+      "A real session is done, and nobody asked you to [strike:feel ready] first.",
+      "Forty-five minutes: a football half, a lecture slot, a chunk of your life, [glow:well used].",
+      "Breaking: local person completes 45 minutes of actual work. Nearby phone [shake:reportedly furious].",
+      "The version of you that said 'later' is a [ghost:small figure] in the mirror now.",
+      "Your excuses held an emergency meeting a while ago. Attendance was [ghost:poor].",
+      "This is what 45 minutes looks like when you don't [strike:throw it away].",
+      "Here's an imaginary medal. Shiny, weightless, [glow:fully deserved].",
+      "Most of the hard part is behind you. The rest is [rise:compound interest].",
+      "Forty-five minutes of focus is a skill, not luck. You [heat:built] it.",
+      "Alert: productivity detected. Please remain calm and [heat:keep typing].",
+      "Some people never see this number on a timer. You [glow:just did].",
+      "The ash is behind you, and the fire is [heat:burning steady]. 45 minutes of it.",
+      "The first half is over. The commentators are speechless. The crowd is one [ghost:confused pigeon].",
+      "The clock isn't your [shake:enemy] anymore. It's your witness.",
+      "Whatever you've built in these 45 minutes is real. It exists now, and it [glow:can't be unmade].",
+      "Time check: 45 minutes. Water check: have a sip. Ego check: [shake:keep it small]. Plan check: keep going.",
+      "A parade was planned for minute 45. The confetti is [ghost:stuck in the post].",
+      "You hit 45 without a drumroll. The drumroll is the next [rise:forty-five].",
+      "The urge to stop used to be loud. Now it sounds like a bad radio station, [ghost:far away].",
+      "The urge to check your phone has been [ghost:placed on hold]. Your call is important to it.",
+      "Real work doesn't announce itself. It just stacks up like this, [rise:one block at a time].",
+      "45 minutes in, 'I'll start tomorrow' is a [strike:very funny joke]. Because you started.",
+      "You don't owe anyone an explanation for these 45 minutes. They were [glow:for you].",
+      "This is the part of the film where the hero checks the clock, nods once, and gets [heat:back to it].",
+      "45 minutes of your life, used on purpose. A lot of life isn't. [glow:Notice that].",
+      "Pride is allowed. Just don't let it sit in your chair. [heat:Keep working].",
+      "Somewhere a feed is refreshing itself for an audience of nobody. [ghost:Tragic.] Unrelated to you.",
+      "First half done. Sip some water, unclench your jaw, and play the [heat:second half].",
+      "These 45 minutes didn't need a speech. They needed [heat:you].",
+    ],
+    ballLine: "The ball is on its second colour, with one change left, 45 minutes away. [rise:Keep climbing].",
+    raysLine: "The rays are about two-thirds of the way to full light. The room is [glow:filling up] around you.",
+  },
+  // 60 minutes: one hour.
+  60: {
+    lines: [
+      "One hour. Sixty minutes of [glow:your life], spent on purpose.",
+      "An hour! Your calendar is shocked, your chair is concerned, and your [glow:attention] is thriving.",
+      "60 minutes. One hour you'll never have to wonder where it [ghost:went].",
+      "An hour is a long bus ride, a TV episode, a small chapter. You [rise:wrote one].",
+      "The distractions that show up around minute 20 have filed for [ghost:early retirement].",
+      "Starting is one skill. [heat:Staying] is the real one.",
+      "A hundred other places wanted this hour. The hour chose [glow:you].",
+      "This is where 'I can't' officially becomes [strike:a lie].",
+      "The forge is hot now. Sixty minutes of heat, and the metal [heat:takes shape].",
+      "If you stopped right now, it would still be a [glow:great hour]. But you've got that look. You're not stopping.",
+      "Breaking: an hour passes. Nothing was [strike:optimised], hacked or 'disrupted'. Someone just did the work.",
+      "Look at the clock: 60. Look at yourself: [glow:still working]. That's not nothing.",
+      "One hour in, small wins have turned into [rise:real weight].",
+      "You've stopped chasing motivation. Motivation is now [ghost:chasing you], out of breath, three minutes behind.",
+      "The old you would have celebrated at 15 minutes and gone [shake:home].",
+      "This hour is [glow:locked in]. Nothing can undo it, not even a bad next minute.",
+      "A productivity course would charge a lot to teach you this hour. You did it for [glow:free].",
+      "Your attention just did an hour of honest [heat:labour]. Give it a sip of water.",
+      "Nobody has stood at the end of an hour like this and wished they'd [ghost:scrolled more].",
+      "The hour has been reviewed by an independent panel of one desk, one chair and one very [shake:smug lamp]. Verdict: approved.",
+      "Sixty minutes. A long fight, and you [heat:won it].",
+      "The first hour is the proof. The rest is just [glow:more proof].",
+      "One hour down. Roll your shoulders, soften your eyes, then [heat:dive back in].",
+      "An hour of real attention is a small miracle these days. You just [glow:made one].",
+      "At 60 minutes the day is no longer a gamble. The casino of procrastination is [strike:officially closed].",
+      "Sixty minutes ago you could have quit for free. Now it would cost you something [shake:good]. Terrible deal. Don't take it.",
+      "The work has its own momentum now. You're just [rise:steering].",
+      "The hour is yours. Spend minute 61 like you [heat:own it].",
+      "Whatever was bothering you at minute one is a [ghost:footnote] now.",
+      "If the clock could clap, it would. All it can do is [glow:tick]. It's doing its best.",
+      "The distance from 'I'll try' to 'I did' is exactly this long, and you [heat:crossed it].",
+      "Your to-do list has asked for a moment. It wants to say [rise:thank you]. It's a bit emotional.",
+      "Breathe out slowly. There's a deeper, [rise:better] version of this session waiting at 90.",
+      "60 minutes in: everything you add now sits on top of something [rise:sturdy].",
+    ],
+    ballLine: "One colour change left for the ball, 30 minutes away. You're in the [heat:long game] now.",
+    raysLine: "The rays are about three-quarters of the way to full light. Another half hour and they [glow:blaze].",
+  },
+  // 90 minutes: flow begins.
+  90: {
+    lines: [
+      "90 minutes. [glow:Flow] has arrived. Keep your voice down, it startles easily.",
+      "Ninety minutes is a full football match. The whistle never blew, so it's [heat:extra time].",
+      "An hour and a half in, and the work has started to feel like [glow:home].",
+      "Breaking: a rare [glow:flow state] has been sighted. Wildlife experts urge calm. Please don't point your phone at it.",
+      "The first hour ran on willpower. This part runs on [glow:flow]. Same chair, [rise:much better engine].",
+      "A motion to quit was proposed in parliament. Nobody seconded it. The motion [ghost:dies on the floor].",
+      "Your attention has moved into the quiet room at the back of your head. Please don't [shake:knock].",
+      "Sisyphus called. He heard the boulder is [rise:rolling downhill] for you now, and he'd like to know your secret.",
+      "Phoenix report: 90 minutes in, the ash is long gone and the [rise:wings] are showing.",
+      "Weather for your attention: clear skies, light winds, no [shake:interruptions] expected until further notice.",
+      "The urge to quit has moved out. Forwarding address: [ghost:unknown].",
+      "'I can't focus for long' was a [strike:draft]. You've edited it in public.",
+      "Don't stare at the flow to check that it's there. It's [glow:there]. Staring is how it leaves.",
+      "Time gets strange in [glow:flow]. Ninety minutes can pass like [ghost:a long blink].",
+      "Nearby thoughts have been asked to keep the noise down. Several are [shake:grumbling] but complying.",
+      "Ninety minutes ago this was a plan. Now it's [rise:progress] you could point at.",
+      "The forge is at its hottest now. Don't open the door to [shake:check on it].",
+      "Some people chase flow with playlists, candles and special tea. You got here the old way: [heat:one minute after another].",
+      "You're allowed to be a little [glow:impressed] with yourself. Briefly. Then back in.",
+      "Distraction isn't dead. It's [ghost:locked out]. That's what [glow:flow] looks like from the outside.",
+      "Everything else on the list has started to look [rise:smaller]. That's a side effect of 90 minutes.",
+      "A quiet message from your future self: [glow:more of this], please.",
+      "Your inbox has sent a strongly worded letter about your absence. It can [ghost:wait in the post].",
+      "Effort has turned into [glow:momentum]. Momentum doesn't ask your permission to [heat:continue].",
+      "The part of you that wanted to quit is still around. It's just too [ghost:bored] to speak.",
+      "Good work is made of hours like this one, and you're [heat:in it].",
+      "Remember this one. Ninety minutes of [glow:full attention] is somewhere you can come back to.",
+      "'I'll just check one thing' called round, looked at your focus, and [ghost:left]. Wrong house.",
+      "Your focus has been promoted. New title: Head of the [heat:Next Minute]. No office, no pay rise, excellent results.",
+      "Nobody will applaud minute 91. It will quietly be [rise:added] to the pile anyway.",
+      "You don't have to be [strike:intense] to go far. Calm is the [glow:faster gear].",
+      "The best part of focus is that nobody can see it. The second best part is what it [rise:leaves behind].",
+      "Meanwhile, the world kept all of its notifications on. You were somewhere [glow:better].",
+      "Thirty more minutes would make this a [glow:two-hour] session. You don't have to decide that now. Just [heat:keep going].",
+    ],
+    ballLine: "The ball just took its last colour. There's nothing after this one, only more of it. [glow:Stay in it].",
+    raysLine: "The rays have reached full strength. Whatever is lighting this room now, it's [glow:you].",
+  },
+  // 120 minutes: two hours.
+  120: {
+    lines: [
+      "Two hours. 120 minutes of [glow:real attention], and the work is better for every one.",
+      "Water check. Take a sip. A working brain gets [heat:thirsty] and rarely says so.",
+      "Blink slowly, twice. Your eyes have been holding a [heat:long stare] and would like a small favour.",
+      "Roll your shoulders back. About now they tend to [shake:creep] up toward your ears.",
+      "Your chair has started writing its memoirs. Working title: 'Two Hours, Still [ghost:Sitting]'.",
+      "Look at something far away for a few seconds. The work will [glow:still be here]. It's loyal like that.",
+      "Two hours is a long film with no interval and no [ghost:adverts]. You made the whole thing.",
+      "Two hours is a short flight. You covered a lot of ground and never left your [glow:seat].",
+      "A stretch is for your body. A 'quick break' is the urge to quit in a [strike:fake moustache].",
+      "Unclench your jaw. Nobody needs it that tight to finish good [heat:work].",
+      "Posture check: your spine has asked for [glow:one small favour]. Sit tall, like a person and not a [shake:question mark].",
+      "Two hours: proof that [strike:short attention span] was a rumour. Nice try, rumour.",
+      "Reach both arms up, stretch tall, then come back to the [heat:work]. It's warm and it will wait.",
+      "Your lower back has filed a formal request for a [glow:stretch]. It will accept it any time in the next few minutes.",
+      "The first hour was proof. The second hour is a [glow:habit] forming.",
+      "Two hours of focus is a lot of bricks. Look how [rise:tall] the wall is getting.",
+      "From ash to ember to a [heat:steady fire]. Two hours of it, and nobody had to light a match twice.",
+      "Take a long, slow breath in, and out. The next 30 minutes go better with a [glow:calm body].",
+      "Quick audit: water, eyes, shoulders, jaw. Fix whichever is [shake:complaining] loudest, then back to it.",
+      "The snack cupboard says it isn't angry, just [ghost:waiting]. It is angry.",
+      "Time check: 120 minutes. Posture check: [shake:slightly croissant-shaped]. Water check: [glow:sip].",
+      "Your brain has been working hard for two hours. Pay it in [heat:water], not in [strike:guilt].",
+      "A stretch will fix most of what your body is grumbling about faster than [strike:ignoring it] will.",
+      "'Two hours of focus' used to sound like something people made up. Now it's something you [glow:did].",
+      "Nobody has ever regretted a glass of water at minute 120. It's a [glow:free upgrade].",
+      "Your future self has reviewed these two hours. Rating: [rise:five stars]. Comment: 'Very good work. [glow:Would be me again].'",
+      "A slow clap for 120 minutes, performed entirely by the [ghost:ceiling fan].",
+      "Two hours is where plenty of plans [shake:wobble]. Yours is still [glow:standing].",
+      "Let the shoulders drop, let the eyes soften, and let the next thought come [rise:slowly].",
+      "A sip of water won't break your [glow:flow]. It will [rise:protect] it.",
+      "Two hours is long enough to put a real dent in anything. Admire the [rise:dent] for one second, then keep [heat:hammering].",
+      "Breaking: two hours of sustained attention reported at one desk. A nearby sofa declined to comment, but looked [shake:jealous].",
+      "Be [glow:glad] you started. Two hours later, it's still the best decision on the table.",
+      "Thirty minutes of [glow:flow] behind you, and the body is still on board. Keep it that way with a sip and a [heat:slow breath].",
+    ],
+    ballLine: "The ball has held its last colour for 30 minutes. It looks [glow:right] in it.",
+    raysLine: "The rays have been at full strength for 30 minutes. They have no shoulders to roll. [heat:You do].",
+  },
+  // 150 minutes: the long haul.
+  150: {
+    lines: [
+      "Two and a half hours. 150 minutes of [glow:real attention], and still [heat:going].",
+      "The long haul has a [glow:quiet rhythm]. You're in it now.",
+      "Two and a half hours is a long film with an interval, and you wrote the [rise:whole script].",
+      "Stand up for a moment if you can. Shake out your hands. The long haul goes better with [glow:good circulation].",
+      "Posture check: at this stage most of us have become a [shake:question mark]. Straighten out.",
+      "Drink some water. This isn't advice from a productivity guru. It's advice from your [heat:kidneys].",
+      "The ash became ember a long time ago. Ember is the part of the fire that [heat:lasts].",
+      "Every long run has a quiet stretch where the crowd thins out and the legs stop [strike:negotiating]. Here it is. [heat:Keep moving].",
+      "Your eyes have been loyal for 150 minutes. Pay them with a look out of a [glow:window], or at anything far away.",
+      "The kettle has begun to feel like a [ghost:distant relative]. A glass of water would count as a [glow:visit].",
+      "Long sessions aren't about intensity. They're about staying [rise:gentle] with yourself.",
+      "Captain speaking: we're at cruising altitude, with [glow:clear skies] ahead. Passengers may now [heat:stretch their legs].",
+      "'Later' had two and a half hours to turn up. It's still [ghost:nowhere to be seen].",
+      "A clear head, a steady hand, a glass of water. That's all the [rise:equipment] you need for the next 30 minutes.",
+      "Your shoulders have a message: 'Please, let go.' The work doesn't need them [strike:up by your ears].",
+      "Take a slow breath. Hold it for a moment. Let it out. The long haul is mostly [glow:breathing] and carrying on.",
+      "Some work gets done in a sprint. This kind gets done by [heat:walking steadily] toward it.",
+      "It's okay to be a little tired. Tired is [strike:not the same] as finished. Water, then carry on.",
+      "Compared with minute 15, the urge to quit is [ghost:basically a whisper] now.",
+      "Here's to the [heat:unseen hours]. You know they happened, and so does the work.",
+      "Two and a half hours. No cape, no [strike:hustle playlist], no cold plunge. Just [heat:attention], held for a long time.",
+      "Breaking: the urge to scroll has been spotted outside the building, holding a small [ghost:sign]. Police say it is not dangerous.",
+      "You don't need a finish line to keep your [heat:stride].",
+      "A good place to rest is coming up. Not yet. But [glow:soon]. Keep the pace until then.",
+      "Your future self is writing a thank-you card. His handwriting is [shake:shaky] because he's a little emotional.",
+      "Roll your wrists and shake your hands out. They do [heat:heroic work] and never get thanked.",
+      "Two and a half hours is just 'one more minute', [rise:said 150 times].",
+      "Out here the work gets slower and clearer. That's the long haul doing its [heat:job].",
+      "Sip, stretch, breathe. The body is [glow:part of the team], not the [strike:equipment].",
+      "The urge to quit is in a museum now, behind glass, with a small [ghost:plaque].",
+      "Take a second to unclench everything that isn't doing the work. Face, hands, [shake:jaw].",
+      "Think of the hours as laps. This one's a long [rise:lap], and you're taking it [glow:smoothly].",
+      "There's a stage of focus where you stop pushing and start [rise:carrying]. Notice that it's gentler.",
+      "A nearby clock would like it known that 150 minutes went by without a single [strike:complaint]. It's suspicious.",
+    ],
+    ballLine: "The ball has held its last colour for an hour now. A whole hour of [glow:glowing], and it isn't tired.",
+    raysLine: "The rays have been at full strength for an hour. They never ask for a break. You're allowed to [glow:ask for a stretch].",
+  },
+  // 180 minutes: the peak.
+  180: {
+    lines: [
+      "Three hours. 180 minutes of [glow:real attention]. That's a [heat:peak].",
+      "Three hours is two football matches back to back, with no half-time oranges. Your [glow:attention] played both.",
+      "A T20 match lasts about this long. You've been [heat:batting] the whole time, and nobody has bowled you out.",
+      "Summit report: three hours up. The summit is a bad place to camp. Come down, eat something, [rise:come back].",
+      "Your body would like to remind you that it exists. It's the thing that's been [heat:carrying your brain] around.",
+      "Rest isn't the opposite of work. It's the other half of [glow:the same job].",
+      "Finish the thought you're on, then give yourself [glow:real rest]. Not a different screen. Real rest.",
+      "Go to a window or outside for a minute, look at something far away, and let your eyes [rise:come back].",
+      "Three hours of focus isn't an [strike:ordinary thing]. Treat it like the [glow:rare thing] it is.",
+      "The ash is long gone. What stands here now is something that [rise:rose from it]. Let it rest.",
+      "Official notice: your chair and your body have jointly applied for a [glow:break]. The application has strong support.",
+      "Your brain has run a very long race. Hand it water, shade and a [glow:soft landing].",
+      "At 180 minutes, the next best thing you can do for your work is a [glow:proper rest].",
+      "'Just one more hour' is a lovely thought and a lousy [strike:plan]. Rest first.",
+      "You could stop right now and call this a [glow:triumph]. Nobody would dare argue with three hours.",
+      "Stand, stretch, walk to a window, drink something. Come back [rise:rested].",
+      "Breaking: after three hours at one desk, a spine has [shake:formally resigned]. A replacement is being sought.",
+      "The urge to quit has [ghost:retired], moved to a small coastal town, and taken up pottery.",
+      "Hydrate, eat something real, rest your eyes. Then the next session is a fresh [heat:start].",
+      "If this were a film, it would be a long one with an interval. Take your [heat:interval].",
+      "Three hours ago this was a blank page. Now it's [rise:a place] you could live in.",
+      "Rating from your future self: [rise:five stars]. Comment: 'Would be [glow:tired again], on purpose.'",
+      "Nothing about this was easy, and you did it anyway. That's the [heat:definition] of earned.",
+      "The gentlest thing you can do for the work is leave it [glow:alone for a bit]. It will still be here.",
+      "A short speech: well done. That's it. Now go and do [ghost:absolutely nothing], and do it [glow:well].",
+      "This was three hours of work that was never a [strike:meeting that could have been an email].",
+      "Be properly [glow:proud] of this. Not a quick glance. A whole minute.",
+      "Starting was the hard part. It's three hours behind you, [ghost:getting smaller].",
+      "Please don't read this as an order to stop. Read it as a [glow:very polite invitation] from your body.",
+      "Water, food, fresh air, a window. Four things your brain would like to be [glow:reintroduced] to.",
+      "Rest like you've [heat:paid for it]. You have.",
+      "Three hours is the top of this particular hill. The view from here is [glow:very good]. Look at it for a moment.",
+      "There's a quiet pride in having used three hours on purpose. Hold it for a moment, then [rise:rest into it].",
+      "Your calendar would like it noted that three hours were [glow:very well spent]. It doesn't often get to say that.",
+    ],
+    ballLine: "The ball has held its last colour for 90 minutes. It's built for this. You're [rise:built for it too].",
+    raysLine: "The rays have been at full strength for 90 minutes. Even light is allowed a [ghost:dimmer switch].",
+  },
+}
+
+// What is drawn on the screen right now. A line about the ball is only chosen when the ball is drawn, a line about the rays only when the rays are drawn.
+export type MilestoneVisuals = { ball: boolean; rays: boolean }
+
+// The shuffled queues of the milestone lines. One queue for every milestone and every combination of drawn things (the pool of lines is a different list for each combination, so a queue is never used for another pool).
+export type MilestoneQueues = Partial<Record<string, BankQueue>>
+export type PickedMilestone = { minute: MilestoneMinute; index: number; line: string; queues: MilestoneQueues }
+
+export function isMilestoneMinute(minute: number): minute is MilestoneMinute {
+  return (MILESTONE_MINUTES as readonly number[]).includes(minute)
+}
+
+// The lines that may be shown at this milestone: the 34 general lines, then the ball line and the rays line when they are drawn (34, 35 or 36 lines).
+export function milestonePool(minute: MilestoneMinute, visuals: MilestoneVisuals): readonly string[] {
+  const bank = MILESTONE_BANKS[minute]
+  const pool = [...bank.lines]
+  if (visuals.ball) pool.push(bank.ballLine)
+  if (visuals.rays) pool.push(bank.raysLine)
+  return pool
+}
+
+// Picks the line for a milestone, or null when the number is not a milestone. The queues that come in are not changed; the new ones come back. The line still has its [effect:words] marks (lineMarkup.ts turns them into pieces).
+export function pickMilestoneLine(
+  minute: number,
+  visuals: MilestoneVisuals,
+  queues: MilestoneQueues,
+  random: () => number = Math.random,
+): PickedMilestone | null {
+  if (!isMilestoneMinute(minute)) return null
+  const pool = milestonePool(minute, visuals)
+  const key = minute + ":" + (visuals.ball ? "b" : "-") + (visuals.rays ? "r" : "-")
+  const { index, queue } = nextIndex(pool.length, queues[key], random)
+  return { minute, index, line: pool[index], queues: { ...queues, [key]: queue } }
+}
+// AB:TIMER.MILESTONE-LINES:END
