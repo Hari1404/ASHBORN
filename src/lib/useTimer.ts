@@ -10,14 +10,19 @@ import {
   timerState,
   type TimerErrorKind,
 } from "@/lib/timerApi"
+import { pickMilestoneLine, type MilestoneQueues, type MilestoneVisuals } from "@/lib/milestoneLines"
 import { pickComebackLine, pickStopLine, type ComebackQueues, type LineQueues } from "@/lib/stopAlertLines"
 import {
   activeSeconds,
   canGoBackIn,
   dayHasEnded,
   dayTotalSeconds,
+  earlierMinutes,
   estimateServerNowMs,
   localDay,
+  milestoneDone,
+  milestoneOnTime,
+  milestoneWaiting,
   type TimerRow,
 } from "@/lib/timerMaths"
 
@@ -28,7 +33,8 @@ import {
 // The stop alert: Hold to end session does NOT end the session. stop pauses it (so the minutes of the line stay true while the alert is on the screen), picks one line for the seconds it stopped at, and opens the alert. end (I'M DONE) then ends it, goBack (GO BACK IN) resumes it. The time spent on the alert is never counted, because the session is paused. See CONNECTIONS.md C43.
 // GO BACK IN does NOT resume the session: it closes the alert and the session stays paused as it is. The person presses Resume when he is ready (Packet 06E). goBack only remembers that the next Resume of THIS pause is a comeback (pendingRef: the seconds it stopped at, the session and the pause).
 // The comeback message: when that Resume really runs the session again, resume picks one comeback line for the seconds the session stopped at (pickComebackLine) and keeps it as long as that session runs. A Resume that is not the one after GO BACK IN (or after any other pause) gets none. The screen shows it for a few seconds (Comeback.tsx) and then calls clearComeback. See CONNECTIONS.md C48.
-// What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43, C45 and C48. The names used by the screen are in TimerView.
+// The milestone message (Packet 07B): when the session reaches 15, 25, 45, 60, 90, 120, 150 or 180 minutes the message WAITS until the person is looking (the page is visible), the session is running and no other milestone message is on the screen, and is then shown at once. A message that nobody saw is shown the moment the person looks again, up to 10 minutes after its milestone (timerMaths.ts, milestoneWaiting), with the number of minutes it is late when that is 5 or more (earlier); after 10 minutes it is given up for good. Only the newest milestone is shown, and each is shown at most once per session. The lines about the glowing ball and the rays are only picked when the message is on time (milestoneOnTime) and the screen draws them (the option drawn, given by TimerScreen.tsx); a late message gets the general lines only. The screen shows it for 30 seconds (Milestone.tsx) and then calls clearMilestone.
+// What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43, C45, C48 and C51. The names used by the screen are in TimerView.
 
 export const POLL_ONLINE_MS = 30000
 export const POLL_OFFLINE_MS = 3000
@@ -69,6 +75,20 @@ type ComebackState = { line: string; startedAt: string }
 // The comeback message as the screen sees it.
 export type ComebackView = { line: string }
 
+// What the screen tells the hook about what it draws. The hook never asks the browser itself (the ball and the rays need WebGL 2 and a lite level, which only the screen knows, see CONNECTIONS.md C51). Without it nothing counts as drawn.
+export type TimerOptions = { drawn?: () => MilestoneVisuals }
+
+const NOTHING_DRAWN: MilestoneVisuals = { ball: false, rays: false }
+
+// The milestone message as the hook keeps it: the line (its [effect:words] marks still in it), how many minutes late it is when that is 5 or more (null for no tag), and the one session it belongs to (started_at).
+type MilestoneState = { line: string; earlier: number | null; startedAt: string }
+
+// The milestones of one session that are done (shown or given up), so none comes twice.
+type MilestonesDone = { startedAt: string; minutes: number[] }
+
+// The milestone message as the screen sees it.
+export type MilestoneView = { line: string; earlier: number | null }
+
 export type TimerView = {
   link: TimerLink
   problem: string
@@ -80,6 +100,7 @@ export type TimerView = {
   notice: EndNotice | null
   stopAlert: StopAlertView | null
   comeback: ComebackView | null
+  milestone: MilestoneView | null
   start: () => void
   pause: () => void
   resume: () => void
@@ -87,6 +108,7 @@ export type TimerView = {
   end: () => void
   goBack: () => void
   clearComeback: () => void
+  clearMilestone: () => void
   retry: () => void
 }
 
@@ -115,6 +137,11 @@ function comebackMatches(comeback: ComebackState | null, row: TimerRow | null): 
   return comeback !== null && row !== null && row.status === "running" && row.started_at === comeback.startedAt
 }
 
+// The milestone message belongs to ONE running stretch of ONE session, like the comeback message: it is shown only while that session is running. When it is paused (the stop alert pauses it), ended, or ended on another device, it does not match any more and the screen shows none (adopt also forgets it then).
+function milestoneMatches(milestone: MilestoneState | null, row: TimerRow | null): milestone is MilestoneState {
+  return milestone !== null && row !== null && row.status === "running" && row.started_at === milestone.startedAt
+}
+
 // The pending comeback belongs to ONE pause of ONE session, like the alert. It counts only while the session is still paused at that same moment: when the session was resumed or ended on another device, or paused again later, it does not match any more.
 function pendingMatches(pending: PendingComeback | null, row: TimerRow | null): pending is PendingComeback {
   return pending !== null && row !== null && row.status === "paused" && row.started_at === pending.startedAt && row.paused_at === pending.pausedAt
@@ -128,7 +155,7 @@ function dayOrFallback(ms: number, zone: string, fallback: string): string {
   }
 }
 
-export function useTimer(): TimerView {
+export function useTimer(options: TimerOptions = {}): TimerView {
   const [reading, setReading] = useState<Reading | null>(null)
   const [link, setLink] = useState<TimerLink>("loading")
   const [problem, setProblem] = useState("")
@@ -136,6 +163,9 @@ export function useTimer(): TimerView {
   const [notice, setNotice] = useState<EndNotice | null>(null)
   const [alert, setAlert] = useState<AlertState | null>(null)
   const [comeback, setComeback] = useState<ComebackState | null>(null)
+  const [milestone, setMilestone] = useState<MilestoneState | null>(null)
+  // True while the page is visible: only then is a waiting milestone message shown (a message nobody sees has no value).
+  const [looking, setLooking] = useState(() => typeof document === "undefined" || document.visibilityState === "visible")
   const [now, setNow] = useState(() => Date.now())
 
   const readingRef = useRef<Reading | null>(null)
@@ -148,10 +178,16 @@ export function useTimer(): TimerView {
   const alertRef = useRef<AlertState | null>(null)
   const comebackRef = useRef<ComebackState | null>(null)
   const pendingRef = useRef<PendingComeback | null>(null)
+  const milestoneRef = useRef<MilestoneState | null>(null)
+  const doneRef = useRef<MilestonesDone | null>(null)
+  const lookingRef = useRef(looking)
+  const drawnRef = useRef(options.drawn)
   // The shuffled queues of the stop alert lines: no line comes twice before all lines of its bank were shown. They live as long as the screen does.
   const queuesRef = useRef<LineQueues>({})
   // The same for the comeback lines (their own queues, one per bank).
   const comebackQueuesRef = useRef<ComebackQueues>({})
+  // The same for the milestone lines (one queue for every milestone and every set of drawn things).
+  const milestoneQueuesRef = useRef<MilestoneQueues>({})
 
   const showLink = useCallback((next: TimerLink, text = "") => {
     linkRef.current = next
@@ -172,6 +208,14 @@ export function useTimer(): TimerView {
   // The screen calls this when the comeback message has been shown. It never changes anything but the message.
   const clearComeback = useCallback(() => showComeback(null), [showComeback])
 
+  const showMilestone = useCallback((next: MilestoneState | null) => {
+    milestoneRef.current = next
+    setMilestone(next)
+  }, [])
+
+  // The screen calls this when the milestone message has been shown for its time and has faded. It never changes anything but the message (the milestone stays done).
+  const clearMilestone = useCallback(() => showMilestone(null), [showMilestone])
+
   const adopt = useCallback(
     (next: Reading) => {
       const t = Date.now()
@@ -181,10 +225,12 @@ export function useTimer(): TimerView {
       setNow(t)
       // The comeback message is forgotten for good as soon as the session it belongs to is not running any more.
       if (comebackRef.current !== null && !comebackMatches(comebackRef.current, next.row)) showComeback(null)
+      // The same for the milestone message: it goes when its session is not running any more (paused by the stop alert, ended).
+      if (milestoneRef.current !== null && !milestoneMatches(milestoneRef.current, next.row)) showMilestone(null)
       // The same for the pending comeback (GO BACK IN was pressed, Resume not yet): it is forgotten when the pause it belongs to is over.
       if (pendingRef.current !== null && !pendingMatches(pendingRef.current, next.row)) pendingRef.current = null
     },
-    [showComeback],
+    [showComeback, showMilestone],
   )
 
   const fail = useCallback(
@@ -353,12 +399,53 @@ export function useTimer(): TimerView {
     return () => window.clearInterval(tick)
   }, [])
 
+  // What the screen draws is read when a message is picked, so the hook always has the newest function.
+  useEffect(() => {
+    drawnRef.current = options.drawn
+  }, [options.drawn])
+
+  // Looking: the page is visible. When the page comes back, the time is taken again in the same step, so the message is picked for the seconds of this moment and its tag says the true number of minutes.
+  useEffect(() => {
+    const sync = () => {
+      const visible = document.visibilityState === "visible"
+      if (visible === lookingRef.current) return
+      lookingRef.current = visible
+      setLooking(visible)
+      if (visible) setNow(Date.now())
+    }
+    document.addEventListener("visibilitychange", sync)
+    window.addEventListener("pageshow", sync)
+    return () => {
+      document.removeEventListener("visibilitychange", sync)
+      window.removeEventListener("pageshow", sync)
+    }
+  }, [])
+
   const serverNow = reading === null ? 0 : estimateServerNowMs(reading.time.serverMs, reading.time.localMs, now)
   const row = reading?.row ?? null
   const seconds = row === null ? 0 : activeSeconds(row, serverNow)
   const dayOver = row !== null && dayHasEnded(row, serverNow)
   // Only used while nothing runs (see the rollover below), so it is always the day of this device.
   const currentDay = reading === null ? "" : dayOrFallback(serverNow, deviceZoneOrUtc(), reading.day)
+
+  // The milestone message (see the comment at the top). Every second it asks which milestone is waiting. It is shown only while the session runs, the page is visible and no other milestone message is on the screen; until then it waits, and after 10 minutes it is given up. What is shown or given up is written down for this session, so it never comes twice.
+  useEffect(() => {
+    if (row === null) {
+      doneRef.current = null
+      return
+    }
+    const done = doneRef.current?.startedAt === row.started_at ? doneRef.current.minutes : []
+    const waiting = milestoneWaiting(seconds, done)
+    doneRef.current = { startedAt: row.started_at, minutes: waiting.handled }
+    if (waiting.minute === null) return
+    if (row.status !== "running" || !looking || milestone !== null) return
+    const drawn = milestoneOnTime(waiting.lateSeconds) ? (drawnRef.current?.() ?? NOTHING_DRAWN) : NOTHING_DRAWN
+    const picked = pickMilestoneLine(waiting.minute, drawn, milestoneQueuesRef.current)
+    doneRef.current = { startedAt: row.started_at, minutes: milestoneDone(waiting.minute, waiting.handled) }
+    if (picked === null) return
+    milestoneQueuesRef.current = picked.queues
+    showMilestone({ line: picked.line, earlier: earlierMinutes(waiting.lateSeconds), startedAt: row.started_at })
+  }, [row, seconds, looking, milestone, showMilestone])
 
   // Local midnight reached while the session was running: the database ends it at 12:00.
   useEffect(() => {
@@ -384,6 +471,7 @@ export function useTimer(): TimerView {
     notice,
     stopAlert: alertMatches(alert, row) ? { line: alert.line, canGoBack: alert.canGoBack } : null,
     comeback: comebackMatches(comeback, row) ? { line: comeback.line } : null,
+    milestone: milestoneMatches(milestone, row) ? { line: milestone.line, earlier: milestone.earlier } : null,
     start: () => void act("start"),
     pause: () => void act("pause"),
     resume: () => void act("resume"),
@@ -391,6 +479,7 @@ export function useTimer(): TimerView {
     end: () => void act("end"),
     goBack: () => void act("goback"),
     clearComeback,
+    clearMilestone,
     retry: () => void refresh(),
   }
 }

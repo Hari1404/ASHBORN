@@ -13,8 +13,8 @@ import { MILESTONE_MINUTES } from "@/lib/timerMaths"
 export type MilestoneMinute = (typeof MILESTONE_MINUTES)[number]
 export type MilestoneBank = { lines: readonly string[]; ballLine: string; raysLine: string }
 
-// How long a milestone message stays on the screen, and how long its fade out takes, in milliseconds. The fade time is the same number as the transition of .ab-milestone in timer.css (see CONNECTIONS.md C51). The wait is long enough to read the longest line (122 characters) once its words have come in.
-export const MILESTONE_SHOW_MS = 6000
+// How long a milestone message stays on the screen, and how long its fade out takes, in milliseconds. The fade time is the same number as the transition of .ab-milestone in timer.css (see CONNECTIONS.md C51). It stays 30 seconds (the person may be reading at the edge of the screen, and the message is only worth anything if it is seen), from the moment the person is looking at it. The same message can be shown late (up to 10 minutes after its milestone, with a tag), see CONNECTIONS.md C51.
+export const MILESTONE_SHOW_MS = 30000
 export const MILESTONE_FADE_MS = 500
 
 export const MILESTONE_BANKS: Readonly<Record<MilestoneMinute, MilestoneBank>> = {
@@ -97,7 +97,7 @@ export const MILESTONE_BANKS: Readonly<Record<MilestoneMinute, MilestoneBank>> =
       "Somewhere between minute 20 and minute 30 the work stops being a chore and starts being [rise:yours].",
       "A sip of water, a slow breath, then back to it. The next 20 minutes buy you a [glow:real session].",
     ],
-    ballLine: "Five minutes until the ball changes colour again. [heat:Go and earn it].",
+    ballLine: "About five minutes until the ball changes colour again. [heat:Go and earn it].",
     raysLine: "The rays are at about half of their full light, and still [rise:climbing].",
   },
   // 45 minutes: it counts.

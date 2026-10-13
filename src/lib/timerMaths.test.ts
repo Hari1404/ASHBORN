@@ -4,6 +4,8 @@ import {
   FLOW_FROM_SECONDS,
   GO_BACK_IN_LIMIT_SECONDS,
   MAX_LIVE_STEP_SECONDS,
+  MILESTONE_EARLIER_FROM_SECONDS,
+  MILESTONE_KEEP_SECONDS,
   MILESTONE_MINUTES,
   MIN_SESSION_SECONDS,
   NEON_COLORS,
@@ -16,9 +18,12 @@ import {
   dayTotalSeconds,
   estimateServerNowMs,
   formatClock,
+  earlierMinutes,
   isSessionCounted,
   localDay,
-  milestoneStep,
+  milestoneDone,
+  milestoneOnTime,
+  milestoneWaiting,
   parseServerTimeMs,
   qualityOf,
   ringColor,
@@ -447,116 +452,171 @@ describe("dayTotalSeconds", () => {
 })
 
 describe("milestones", () => {
-  it("are further apart than one normal step, so one step can cross at most one of them", () => {
+  const ALL = [15, 25, 45, 60, 90, 120, 150, 180]
+
+  it("are further apart than the time a message is kept, or exactly as far apart as it (so an old message ends when the next one is due)", () => {
     const minutes = [...MILESTONE_MINUTES]
     for (let i = 1; i < minutes.length; i++) {
       expect(minutes[i]).toBeGreaterThan(minutes[i - 1])
-      expect((minutes[i] - minutes[i - 1]) * 60).toBeGreaterThan(MAX_LIVE_STEP_SECONDS)
+      expect((minutes[i] - minutes[i - 1]) * 60).toBeGreaterThanOrEqual(MILESTONE_KEEP_SECONDS)
     }
   })
 
-  function runTicks(stepSeconds: number, endSeconds: number) {
-    let previous: number | null = null
-    let shown: number[] = []
-    const announced: number[] = []
-    for (let t = 0; t <= endSeconds; t += stepSeconds) {
-      const result = milestoneStep(previous, t, shown)
-      shown = result.shown
-      if (result.announce !== null) announced.push(result.announce)
-      previous = t
-    }
-    return { announced, shown }
-  }
-
-  it("announces a milestone when it is crossed", () => {
-    expect(milestoneStep(899, 900, [])).toEqual({ announce: 15, shown: [15] })
-    expect(milestoneStep(1499, 1500, [15])).toEqual({ announce: 25, shown: [15, 25] })
-    expect(milestoneStep(10799, 10800, [15, 25, 45, 60, 90, 120, 150])).toEqual({
-      announce: 180,
-      shown: [15, 25, 45, 60, 90, 120, 150, 180],
-    })
+  it("are kept for 10 minutes, and get the tag from 5 minutes late (written here again on purpose, see CONNECTIONS.md C51)", () => {
+    expect(MILESTONE_KEEP_SECONDS).toBe(600)
+    expect(MILESTONE_EARLIER_FROM_SECONDS).toBe(300)
+    expect(MILESTONE_EARLIER_FROM_SECONDS).toBeLessThan(MILESTONE_KEEP_SECONDS)
   })
 
-  it("does not announce one second before", () => {
-    expect(milestoneStep(898, 899, [])).toEqual({ announce: null, shown: [] })
+  it("wait for nothing before the first milestone", () => {
+    expect(milestoneWaiting(0, [])).toEqual({ minute: null, lateSeconds: 0, handled: [] })
+    expect(milestoneWaiting(899, [])).toEqual({ minute: null, lateSeconds: 0, handled: [] })
   })
 
-  it("does not announce the same milestone twice", () => {
-    expect(milestoneStep(900, 901, [15])).toEqual({ announce: null, shown: [15] })
+  it("are due the second they are reached, and 0 seconds late then", () => {
+    expect(milestoneWaiting(900, [])).toEqual({ minute: 15, lateSeconds: 0, handled: [] })
+    expect(milestoneWaiting(1500, [15])).toEqual({ minute: 25, lateSeconds: 0, handled: [15] })
+    expect(milestoneWaiting(10800, [15, 25, 45, 60, 90, 120, 150])).toEqual({ minute: 180, lateSeconds: 0, handled: [15, 25, 45, 60, 90, 120, 150] })
   })
 
-  it("announces each of the eight milestones exactly once, for every tick size", () => {
+  it("keep waiting, and count how late they are, until the person looks (the seconds of the session clock)", () => {
+    expect(milestoneWaiting(901, []).lateSeconds).toBe(1)
+    expect(milestoneWaiting(900 + 299, []).lateSeconds).toBe(299)
+    expect(milestoneWaiting(900 + 540, [])).toEqual({ minute: 15, lateSeconds: 540, handled: [] })
+  })
+
+  it("are still shown exactly 10 minutes late, and given up one second later", () => {
+    expect(milestoneWaiting(3600 + MILESTONE_KEEP_SECONDS, [])).toEqual({ minute: 60, lateSeconds: 600, handled: [15, 25, 45] })
+    expect(milestoneWaiting(3600 + MILESTONE_KEEP_SECONDS + 1, [])).toEqual({ minute: null, lateSeconds: 0, handled: [15, 25, 45, 60] })
+  })
+
+  it("are never shown when the page opens long after them, and are marked as done", () => {
+    expect(milestoneWaiting(7900, [])).toEqual({ minute: null, lateSeconds: 0, handled: [15, 25, 45, 60, 90, 120] })
+    expect(milestoneWaiting(100000, [])).toEqual({ minute: null, lateSeconds: 0, handled: [15, 25, 45, 60, 90, 120, 150, 180] })
+  })
+
+  it("are shown late when the page opens soon enough after them, and only the newest one", () => {
+    expect(milestoneWaiting(7300, [])).toEqual({ minute: 120, lateSeconds: 100, handled: [15, 25, 45, 60, 90] })
+    expect(milestoneWaiting(900 + 420, [])).toEqual({ minute: 15, lateSeconds: 420, handled: [] })
+  })
+
+  it("show only the newest one when two are waiting (15 and 25 are exactly 10 minutes apart), and the older one is given up when the newer one is shown", () => {
+    const waiting = milestoneWaiting(1500, [])
+    expect(waiting).toEqual({ minute: 25, lateSeconds: 0, handled: [] })
+    expect(milestoneDone(25, waiting.handled)).toEqual([15, 25])
+    expect(milestoneWaiting(1501, [])).toEqual({ minute: 25, lateSeconds: 1, handled: [15] })
+  })
+
+  it("never come back after they were shown or given up", () => {
+    expect(milestoneWaiting(905, [15])).toEqual({ minute: null, lateSeconds: 0, handled: [15] })
+    expect(milestoneWaiting(2000, [15, 25])).toEqual({ minute: null, lateSeconds: 0, handled: [15, 25] })
+  })
+
+  it("keep a done milestone done when the clock steps back over it", () => {
+    expect(milestoneWaiting(899, [15])).toEqual({ minute: null, lateSeconds: 0, handled: [15] })
+    expect(milestoneWaiting(900, [15]).minute).toBeNull()
+  })
+
+  it("stay quiet while paused (the same seconds again and again)", () => {
+    const first = milestoneWaiting(950, [])
+    for (let i = 0; i < 5; i++) expect(milestoneWaiting(950, first.handled).lateSeconds).toBe(first.lateSeconds)
+  })
+
+  it("make a done list that is always in the order of the milestones, without a number that is no milestone", () => {
+    expect(milestoneDone(60, [150, 15])).toEqual([15, 25, 45, 60, 150])
+    expect(milestoneDone(60, [7, 15])).toEqual([15, 25, 45, 60])
+    expect(milestoneDone(180, [])).toEqual(ALL)
+  })
+
+  it("show every milestone once, with any tick size, when the person always looks (the tag never comes)", () => {
     for (const step of [0.25, 1, 3, 7, 10]) {
-      const { announced } = runTicks(step, 11000)
-      expect(announced, "tick size " + step).toEqual([15, 25, 45, 60, 90, 120, 150, 180])
+      let handled: number[] = []
+      const shown: number[] = []
+      for (let t = 0; t <= 11000; t += step) {
+        const waiting = milestoneWaiting(t, handled)
+        handled = waiting.handled
+        if (waiting.minute !== null) {
+          shown.push(waiting.minute)
+          expect(earlierMinutes(waiting.lateSeconds), "tick size " + step).toBeNull()
+          handled = milestoneDone(waiting.minute, handled)
+        }
+      }
+      expect(shown, "tick size " + step).toEqual(ALL)
     }
   })
 
-  it("stays silent when every step is longer than a normal step, but still remembers them", () => {
-    const { announced, shown } = runTicks(11, 11000)
-    expect(announced).toEqual([])
-    expect(shown).toEqual([15, 25, 45, 60, 90, 120, 150, 180])
+  it("show only the newest and give up the rest after a long absence, whatever the gap (the person looks every N seconds)", () => {
+    for (const gap of [30, 200, 301, 599, 600, 601, 900, 4000]) {
+      let handled: number[] = []
+      const shown: { minute: number; late: number }[] = []
+      for (let t = 0; t <= 11000; t += gap) {
+        const waiting = milestoneWaiting(t, handled)
+        handled = waiting.handled
+        if (waiting.minute !== null) {
+          shown.push({ minute: waiting.minute, late: waiting.lateSeconds })
+          handled = milestoneDone(waiting.minute, handled)
+        }
+      }
+      expect(new Set(shown.map((x) => x.minute)).size, "gap " + gap).toBe(shown.length)
+      for (const x of shown) {
+        expect(x.late, "gap " + gap).toBeLessThanOrEqual(MILESTONE_KEEP_SECONDS)
+        expect(x.late, "gap " + gap).toBeGreaterThanOrEqual(0)
+      }
+    }
   })
 
-  it("is silent on the first tick after the page opened, and marks what was passed", () => {
-    expect(milestoneStep(null, 7300, [])).toEqual({ announce: null, shown: [15, 25, 45, 60, 90, 120] })
-    expect(milestoneStep(null, 900, [])).toEqual({ announce: null, shown: [15] })
-    expect(milestoneStep(null, 0, [])).toEqual({ announce: null, shown: [] })
-  })
-
-  it("does not send a burst after a long gap", () => {
-    expect(milestoneStep(800, 3000, [])).toEqual({ announce: null, shown: [15, 25, 45] })
-  })
-
-  it("announces with a step of exactly 10 seconds and is silent with 11", () => {
-    expect(milestoneStep(895, 905, [])).toEqual({ announce: 15, shown: [15] })
-    expect(milestoneStep(894, 905, [])).toEqual({ announce: null, shown: [15] })
-  })
-
-  it("does not announce again when the time steps back and forward over a milestone", () => {
-    let shown: number[] = []
-    const first = milestoneStep(899, 900, shown)
-    expect(first.announce).toBe(15)
-    shown = first.shown
-    const back = milestoneStep(900, 899, shown)
-    expect(back.announce).toBeNull()
-    shown = back.shown
-    const forward = milestoneStep(899, 900, shown)
-    expect(forward.announce).toBeNull()
-    expect(forward.shown).toEqual([15])
-  })
-
-  it("does not announce when the previous second was already past the milestone", () => {
-    expect(milestoneStep(1000, 1001, [])).toEqual({ announce: null, shown: [15] })
-  })
-
-  it("stays quiet while paused (the same seconds again and again)", () => {
-    expect(milestoneStep(900, 900, [15])).toEqual({ announce: null, shown: [15] })
-  })
-
-  it("never announces twice, whatever the ticks do (seeded random walk)", () => {
+  it("never show twice, whatever the ticks do (seeded random walk)", () => {
     const random = seeded(7)
     let t = 0
-    let previous: number | null = null
-    let shown: number[] = []
-    const announced: number[] = []
+    let handled: number[] = []
+    const shown: number[] = []
     for (let i = 0; i < 40000; i++) {
       t += random() < 0.05 ? -1 : random() * 1.5
       if (t < 0) t = 0
-      const result = milestoneStep(previous, t, shown)
-      shown = result.shown
-      if (result.announce !== null) announced.push(result.announce)
-      previous = t
+      const waiting = milestoneWaiting(t, handled)
+      handled = waiting.handled
+      if (waiting.minute !== null && random() < 0.3) {
+        shown.push(waiting.minute)
+        handled = milestoneDone(waiting.minute, handled)
+      }
     }
-    expect(new Set(announced).size).toBe(announced.length)
-    for (const m of announced) expect([...MILESTONE_MINUTES]).toContain(m)
+    expect(new Set(shown).size).toBe(shown.length)
+    for (const m of shown) expect([...MILESTONE_MINUTES]).toContain(m)
   })
 
-  it("does not change the list it was given", () => {
+  it("do not change the list they were given", () => {
     const given = Object.freeze([15])
-    const result = milestoneStep(1499, 1500, given)
+    expect(milestoneWaiting(1500, given).handled).toEqual([15])
+    expect(milestoneDone(25, given)).toEqual([15, 25])
     expect(given).toEqual([15])
-    expect(result.shown).toEqual([15, 25])
+  })
+})
+
+describe("the tag of a late milestone message", () => {
+  it("is null under 5 minutes late, including exactly 299 seconds", () => {
+    expect(earlierMinutes(0)).toBeNull()
+    expect(earlierMinutes(3 * 60)).toBeNull()
+    expect(earlierMinutes(299)).toBeNull()
+  })
+
+  it("is the whole minutes from exactly 5 minutes late up to 10 minutes", () => {
+    expect(earlierMinutes(300)).toBe(5)
+    expect(earlierMinutes(359)).toBe(5)
+    expect(earlierMinutes(540)).toBe(9)
+    expect(earlierMinutes(599)).toBe(9)
+    expect(earlierMinutes(600)).toBe(10)
+  })
+
+  it("treats a bad number as 0 seconds late", () => {
+    expect(earlierMinutes(Number.NaN)).toBeNull()
+    expect(earlierMinutes(-50)).toBeNull()
+  })
+
+  it("says a message is on time only within one normal step of its milestone", () => {
+    expect(milestoneOnTime(0)).toBe(true)
+    expect(milestoneOnTime(MAX_LIVE_STEP_SECONDS)).toBe(true)
+    expect(milestoneOnTime(MAX_LIVE_STEP_SECONDS + 1)).toBe(false)
+    expect(milestoneOnTime(300)).toBe(false)
   })
 })
 

@@ -12,6 +12,8 @@ export const FLOW_FROM_SECONDS = 5400
 export const GO_BACK_IN_LIMIT_SECONDS = 2700
 export const MILESTONE_MINUTES = [15, 25, 45, 60, 90, 120, 150, 180] as const
 export const MAX_LIVE_STEP_SECONDS = 10
+export const MILESTONE_KEEP_SECONDS = 600
+export const MILESTONE_EARLIER_FROM_SECONDS = 300
 export const RING_LOOP_SECONDS = 3600
 export const RING_FIRST_COLOR = "#ffffff"
 export const NEON_COLORS = [
@@ -37,7 +39,8 @@ export type TimerRow = {
   cap_at: string
 }
 
-export type MilestoneStep = { announce: number | null; shown: number[] }
+// What is waiting at this moment: the milestone to show (null for none), how many seconds late it is, and the list of the milestones that are done (shown or given up).
+export type MilestoneWaiting = { minute: number | null; lateSeconds: number; handled: number[] }
 
 // ---- Whole seconds and the clock text ----
 // Anything that is not a finite number above 0 counts as 0. Otherwise the fraction is cut off (floor), never rounded.
@@ -171,27 +174,36 @@ export function dayTotalSeconds(savedSeconds: number, runningSeconds: number | n
 }
 
 // ---- Milestone messages ----
-// Call this on every tick with the seconds of the previous tick (null on the first tick after Start or after the page opened),
-// the seconds now, and the milestones already passed or shown. It tells which milestone to announce, if any, and the new list.
-// A milestone is announced only when it is crossed during a normal step of at most MAX_LIVE_STEP_SECONDS.
-// After a long gap (page closed, phone locked) the milestones that were passed are marked as shown without a message.
-export function milestoneStep(
-  previousSeconds: number | null,
-  currentSeconds: number,
-  shown: readonly number[],
-): MilestoneStep {
+// A milestone message waits for the person. It is not lost when nobody looks: it is shown the moment the person looks again, up to MILESTONE_KEEP_SECONDS (10 minutes) after the milestone. After that it is given up and never shown (a message that was not seen in time has lost its value).
+// Call milestoneWaiting on every tick with the seconds now and the milestones that are done. It gives the newest milestone that is still waiting and still fresh, how late it is, and the new list of the done ones (the ones that were too old are now in it).
+// Older milestones that are still waiting when a newer one is due are given up by milestoneDone, so only the newest message is shown.
+// Late seconds are seconds of the session clock (what the big clock shows), so the tag always agrees with the clock.
+export function milestoneWaiting(currentSeconds: number, handled: readonly number[]): MilestoneWaiting {
   const now = wholeSeconds(currentSeconds)
-  const nextShown = MILESTONE_MINUTES.filter((m) => shown.includes(m) || m * 60 <= now)
-  let announce: number | null = null
-  if (previousSeconds !== null) {
-    const before = wholeSeconds(previousSeconds)
-    const step = now - before
-    const crossed = nextShown.filter((m) => !shown.includes(m) && m * 60 > before)
-    if (crossed.length > 0 && step <= MAX_LIVE_STEP_SECONDS) {
-      announce = crossed[crossed.length - 1]
-    }
+  const open = MILESTONE_MINUTES.filter((m) => m * 60 <= now && !handled.includes(m))
+  const fresh = open.filter((m) => now - m * 60 <= MILESTONE_KEEP_SECONDS)
+  const minute = fresh.length > 0 ? fresh[fresh.length - 1] : null
+  return {
+    minute,
+    lateSeconds: minute === null ? 0 : now - minute * 60,
+    handled: MILESTONE_MINUTES.filter((m) => handled.includes(m) || (m * 60 <= now && !fresh.includes(m))),
   }
-  return { announce, shown: nextShown }
+}
+
+// The list of done milestones after the message of this milestone was shown: this one and every older one are done.
+export function milestoneDone(minute: number, handled: readonly number[]): number[] {
+  return MILESTONE_MINUTES.filter((m) => handled.includes(m) || m <= minute)
+}
+
+// The number on the tag "N min earlier": whole minutes, and only when the message is MILESTONE_EARLIER_FROM_SECONDS (5 minutes) or more late. Under that there is no tag.
+export function earlierMinutes(lateSeconds: number): number | null {
+  const late = wholeSeconds(lateSeconds)
+  return late >= MILESTONE_EARLIER_FROM_SECONDS ? Math.floor(late / 60) : null
+}
+
+// True when the message is shown within one normal step of its milestone. Only then are the lines about the glowing ball and the rays of light true (they speak of the moment of the milestone).
+export function milestoneOnTime(lateSeconds: number): boolean {
+  return wholeSeconds(lateSeconds) <= MAX_LIVE_STEP_SECONDS
 }
 
 // ---- The hour ring ----

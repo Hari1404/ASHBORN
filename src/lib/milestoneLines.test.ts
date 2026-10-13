@@ -188,8 +188,10 @@ describe("the lines about the ball and the rays", () => {
     }
   })
 
-  // The message is on the screen from the milestone second to the end of its fade, and it can start up to MAX_LIVE_STEP_SECONDS late (the hook announces a milestone that was crossed in a step of that size, see milestoneStep in timerMaths.ts). A claim must hold for all of those seconds.
+  // The message is on the screen from the milestone second to the end of its fade, and it can start up to MAX_LIVE_STEP_SECONDS late (a message that is shown later than that never gets the lines about the ball and the rays, see milestoneOnTime in timerMaths.ts and CONNECTIONS.md C51). A claim must hold for all of those seconds, to within a little less than the length of that window (TOLERANCE_MINUTES).
   const WINDOW = MAX_LIVE_STEP_SECONDS + (MILESTONE_SHOW_MS + MILESTONE_FADE_MS) / 1000
+  const TOLERANCE_MINUTES = 0.7
+  expect(WINDOW / 60).toBeLessThan(TOLERANCE_MINUTES)
   const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tolerance
   const minutesToFlow = (s: number) => (FLOW_FROM_SECONDS - s) / 60
   const minutesSinceFlow = (s: number) => (s - FLOW_FROM_SECONDS) / 60
@@ -207,51 +209,51 @@ describe("the lines about the ball and the rays", () => {
     {
       minute: 25,
       ball: /five minutes until the ball changes colour again/i,
-      ballHolds: (s) => ballStep(s) === 1 && near((DEEP_FROM_SECONDS - s) / 60, 5, 0.35),
+      ballHolds: (s) => ballStep(s) === 1 && near((DEEP_FROM_SECONDS - s) / 60, 5, TOLERANCE_MINUTES),
       rays: /about half of their full light/i,
       raysHolds: (s) => near(bgLight(s), 0.5, 0.05) && bgLight(s) < 1,
     },
     {
       minute: 45,
       ball: /second colour, with one change left, 45 minutes away/i,
-      ballHolds: (s) => ballStep(s) === 2 && near(minutesToFlow(s), 45, 0.35),
+      ballHolds: (s) => ballStep(s) === 2 && near(minutesToFlow(s), 45, TOLERANCE_MINUTES),
       rays: /about two-thirds of the way to full light/i,
       raysHolds: (s) => near(bgLight(s), 2 / 3, 0.03),
     },
     {
       minute: 60,
       ball: /one colour change left for the ball, 30 minutes away/i,
-      ballHolds: (s) => ballStep(s) === 2 && near(minutesToFlow(s), 30, 0.35),
+      ballHolds: (s) => ballStep(s) === 2 && near(minutesToFlow(s), 30, TOLERANCE_MINUTES),
       rays: /about three-quarters of the way to full light. Another half hour/i,
-      raysHolds: (s) => near(bgLight(s), 0.75, 0.03) && near((BG_LIGHT_FULL_AT_SECONDS - s) / 60, 30, 0.35),
+      raysHolds: (s) => near(bgLight(s), 0.75, 0.03) && near((BG_LIGHT_FULL_AT_SECONDS - s) / 60, 30, TOLERANCE_MINUTES),
     },
     {
       minute: 90,
       ball: /just took its last colour/i,
-      ballHolds: (s) => ballStep(s) === 3 && minutesSinceFlow(s) < 0.35,
+      ballHolds: (s) => ballStep(s) === 3 && minutesSinceFlow(s) < TOLERANCE_MINUTES,
       rays: /reached full strength/i,
-      raysHolds: (s) => bgLight(s) === 1 && minutesSinceFull(s) < 0.35,
+      raysHolds: (s) => bgLight(s) === 1 && minutesSinceFull(s) < TOLERANCE_MINUTES,
     },
     {
       minute: 120,
       ball: /held its last colour for 30 minutes/i,
-      ballHolds: (s) => ballStep(s) === 3 && near(minutesSinceFlow(s), 30, 0.35),
+      ballHolds: (s) => ballStep(s) === 3 && near(minutesSinceFlow(s), 30, TOLERANCE_MINUTES),
       rays: /at full strength for 30 minutes/i,
-      raysHolds: (s) => bgLight(s) === 1 && near(minutesSinceFull(s), 30, 0.35),
+      raysHolds: (s) => bgLight(s) === 1 && near(minutesSinceFull(s), 30, TOLERANCE_MINUTES),
     },
     {
       minute: 150,
       ball: /held its last colour for an hour/i,
-      ballHolds: (s) => ballStep(s) === 3 && near(minutesSinceFlow(s), 60, 0.35),
+      ballHolds: (s) => ballStep(s) === 3 && near(minutesSinceFlow(s), 60, TOLERANCE_MINUTES),
       rays: /at full strength for an hour/i,
-      raysHolds: (s) => bgLight(s) === 1 && near(minutesSinceFull(s), 60, 0.35),
+      raysHolds: (s) => bgLight(s) === 1 && near(minutesSinceFull(s), 60, TOLERANCE_MINUTES),
     },
     {
       minute: 180,
       ball: /held its last colour for 90 minutes/i,
-      ballHolds: (s) => ballStep(s) === 3 && near(minutesSinceFlow(s), 90, 0.35),
+      ballHolds: (s) => ballStep(s) === 3 && near(minutesSinceFlow(s), 90, TOLERANCE_MINUTES),
       rays: /at full strength for 90 minutes/i,
-      raysHolds: (s) => bgLight(s) === 1 && near(minutesSinceFull(s), 90, 0.35),
+      raysHolds: (s) => bgLight(s) === 1 && near(minutesSinceFull(s), 90, TOLERANCE_MINUTES),
     },
   ]
 
@@ -399,8 +401,8 @@ describe("pickMilestoneLine", () => {
 })
 
 describe("the times of the message", () => {
-  it("are 6 seconds on the screen and half a second of fade, the same as the comeback message", () => {
-    expect(MILESTONE_SHOW_MS).toBe(6000)
+  it("are 30 seconds on the screen and half a second of fade (written here again on purpose, see CONNECTIONS.md C51)", () => {
+    expect(MILESTONE_SHOW_MS).toBe(30000)
     expect(MILESTONE_FADE_MS).toBe(500)
   })
 })

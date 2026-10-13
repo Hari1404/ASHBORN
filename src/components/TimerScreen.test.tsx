@@ -57,6 +57,7 @@ function makeView(over: Partial<TimerView> = {}): TimerView {
     notice: null,
     stopAlert: null,
     comeback: null,
+    milestone: null,
     start: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
@@ -64,6 +65,7 @@ function makeView(over: Partial<TimerView> = {}): TimerView {
     end: vi.fn(),
     goBack: vi.fn(),
     clearComeback: vi.fn(),
+    clearMilestone: vi.fn(),
     retry: vi.fn(),
     ...over,
   }

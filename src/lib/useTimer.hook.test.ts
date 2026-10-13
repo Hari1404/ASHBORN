@@ -23,7 +23,8 @@ import { TimerError } from "@/lib/timerApi"
 import { fillSlots } from "@/lib/lineMarkup"
 import { COMEBACK_BANKS, STOP_ALERT_BANKS, bankIdFor, isComebackBank } from "@/lib/stopAlertLines"
 import { activeSeconds, canGoBackIn, type TimerRow } from "@/lib/timerMaths"
-import { POLL_OFFLINE_MS, POLL_ONLINE_MS, problemText, useTimer, type TimerView } from "./useTimer"
+import { MILESTONE_BANKS, milestonePool } from "@/lib/milestoneLines"
+import { POLL_OFFLINE_MS, POLL_ONLINE_MS, problemText, useTimer, type TimerOptions, type TimerView } from "./useTimer"
 
 // AB:TIMER.TESTS:START
 // 2026-10-07 10:00:00 UTC is 15:30 on 7 October in Asia/Kolkata. Local midnight there is 18:30 UTC.
@@ -89,13 +90,15 @@ function installFakeServer(): void {
 }
 
 let view: TimerView
+// The options the harness gives the hook (the screen gives it what it draws). A test sets this before it mounts.
+let harnessOptions: TimerOptions | undefined
 let root: Root | null = null
 let container: HTMLElement | null = null
 
 // The number of times the screen was really drawn (committed). React may call the function one more time without drawing, so the calls are not counted.
 let renders = 0
 function Harness() {
-  view = useTimer()
+  view = useTimer(harnessOptions)
   return null
 }
 
@@ -173,6 +176,7 @@ beforeEach(() => {
   vi.setSystemTime(T0)
   server = { row: null, saved: {}, offsetMs: 0, down: null }
   renders = 0
+  harnessOptions = undefined
   for (const fn of Object.values(api)) fn.mockReset()
   installFakeServer()
   setVisible(true)
@@ -1413,6 +1417,282 @@ describe("useTimer: the time zone of the session", () => {
     vi.setSystemTime(Date.parse("2026-10-07T20:00:00Z"))
     await mount()
     expect(api.timerDayTotal).toHaveBeenCalledWith("2026-10-08")
+  })
+})
+
+describe("useTimer: the milestone message", () => {
+  const BOTH = { ball: true, rays: true }
+  const NEITHER = { ball: false, rays: false }
+  // The lines that may be shown for a milestone, as the screen gets them (the marks are still in them).
+  const poolFor = (minute: 15 | 25 | 45 | 60 | 90 | 120 | 150 | 180, visuals = NEITHER) => [...milestonePool(minute, visuals)]
+
+  function lookAway(): void {
+    setVisible(false)
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"))
+    })
+  }
+  async function lookBack(): Promise<void> {
+    setVisible(true)
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+  }
+
+  it("there is none before the first milestone, and one line comes the second the session reaches 15 minutes, with no tag", async () => {
+    server.row = runningRow(800)
+    await mount()
+    await settle(99_000)
+    expect(view.seconds).toBe(899)
+    expect(view.milestone).toBeNull()
+    await settle(1000)
+    expect(view.seconds).toBe(900)
+    expect(view.milestone).not.toBeNull()
+    expect(view.milestone?.earlier).toBeNull()
+    expect(poolFor(15, BOTH)).toContain(view.milestone?.line)
+  })
+
+  it("keeps the same line while it is on the screen, and gives no second line for the same milestone", async () => {
+    server.row = runningRow(899)
+    await mount()
+    await settle(1000)
+    const line = view.milestone?.line
+    expect(line).toBeDefined()
+    await settle(20_000)
+    expect(view.milestone?.line).toBe(line)
+  })
+
+  it("is gone after the screen has called clearMilestone, and does not come back (not on the next ticks, not after the next reading)", async () => {
+    server.row = runningRow(899)
+    await mount()
+    await settle(1000)
+    expect(view.milestone).not.toBeNull()
+    await press(view.clearMilestone)
+    expect(view.milestone).toBeNull()
+    await settle(2 * POLL_ONLINE_MS)
+    expect(view.milestone).toBeNull()
+  })
+
+  it("asks the screen what it draws only when the message is on time, and picks a general line when nothing is drawn", async () => {
+    const drawn = vi.fn(() => NEITHER)
+    harnessOptions = { drawn }
+    server.row = runningRow(899)
+    await mount()
+    expect(drawn).not.toHaveBeenCalled()
+    await settle(1000)
+    expect(drawn).toHaveBeenCalledTimes(1)
+    expect([...MILESTONE_BANKS[15].lines]).toContain(view.milestone?.line)
+  })
+
+  it("picks only from the lines that are true for what is drawn (ball only, rays only, both), over many sessions", async () => {
+    for (const visuals of [{ ball: true, rays: false }, { ball: false, rays: true }, BOTH]) {
+      harnessOptions = { drawn: () => visuals }
+      const pool = poolFor(45, visuals)
+      for (let i = 0; i < 8; i++) {
+        server.row = runningRow(2699)
+        await mount()
+        await settle(1000)
+        expect(pool).toContain(view.milestone?.line)
+        act(() => root?.unmount())
+        root = null
+        container?.remove()
+        container = null
+        server.row = null
+      }
+    }
+  })
+
+  it("counts nothing as drawn when the screen gives no option", async () => {
+    server.row = runningRow(899)
+    await mount()
+    await settle(1000)
+    expect([...MILESTONE_BANKS[15].lines]).toContain(view.milestone?.line)
+  })
+
+  it("waits while the person is not looking, and shows the message the moment the page comes back, with no tag when it is under 5 minutes late", async () => {
+    server.row = runningRow(800)
+    await mount()
+    lookAway()
+    await settle(100_000 + 3 * 60_000)
+    expect(view.seconds).toBe(1080)
+    expect(view.milestone).toBeNull()
+    await lookBack()
+    expect(view.milestone).not.toBeNull()
+    expect(view.milestone?.earlier).toBeNull()
+    expect([...MILESTONE_BANKS[15].lines]).toContain(view.milestone?.line)
+  })
+
+  it("is shown 9 minutes late with the tag 9, and with exactly 5 minutes late with the tag 5", async () => {
+    for (const [late, tag] of [[540, 9], [300, 5], [359, 5]] as const) {
+      server.row = runningRow(800)
+      await mount()
+      lookAway()
+      await settle((100 + late) * 1000)
+      expect(view.milestone).toBeNull()
+      await lookBack()
+      expect(view.milestone?.earlier, "late " + late).toBe(tag)
+      act(() => root?.unmount())
+      root = null
+      container?.remove()
+      container = null
+      server.row = null
+    }
+  })
+
+  it("does not show the tag at 299 seconds late, and a late message never gets the ball or rays lines", async () => {
+    const drawn = vi.fn(() => BOTH)
+    harnessOptions = { drawn }
+    server.row = runningRow(800)
+    await mount()
+    lookAway()
+    await settle((100 + 299) * 1000)
+    await lookBack()
+    expect(view.milestone?.earlier).toBeNull()
+    expect(drawn).not.toHaveBeenCalled()
+    expect([...MILESTONE_BANKS[15].lines]).toContain(view.milestone?.line)
+  })
+
+  it("comes back with the page (pageshow) as well", async () => {
+    server.row = runningRow(800)
+    await mount()
+    lookAway()
+    await settle(200_000)
+    expect(view.milestone).toBeNull()
+    setVisible(true)
+    await act(async () => {
+      window.dispatchEvent(new Event("pageshow"))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(view.milestone).not.toBeNull()
+  })
+
+  it("is given up for good after 10 minutes without a look, and nothing comes until the next milestone", async () => {
+    // The page is hidden from the start, so nobody saw the message of minute 15 that was waiting at 1400 seconds.
+    setVisible(false)
+    server.row = runningRow(1400)
+    await mount()
+    await settle(800_000)
+    expect(view.seconds).toBe(2200)
+    await lookBack()
+    expect(view.milestone).toBeNull()
+    await settle(400_000)
+    expect(view.seconds).toBe(2600)
+    expect(view.milestone).toBeNull()
+    await settle(100_000)
+    expect(view.seconds).toBe(2700)
+    expect(poolFor(45, BOTH)).toContain(view.milestone?.line)
+  })
+
+  it("shows only the newest when two are waiting (15 is 10 minutes late when 25 is due), and the old one never comes", async () => {
+    setVisible(false)
+    server.row = runningRow(1400)
+    await mount()
+    await settle(105_000)
+    expect(view.seconds).toBe(1505)
+    await lookBack()
+    expect([...MILESTONE_BANKS[25].lines]).toContain(view.milestone?.line)
+    expect(view.milestone?.earlier).toBeNull()
+    await press(view.clearMilestone)
+    await settle(60_000)
+    expect(view.milestone).toBeNull()
+  })
+
+  it("a page that is opened soon after a milestone shows it, and one opened long after does not", async () => {
+    server.row = runningRow(7300)
+    await mount()
+    expect([...MILESTONE_BANKS[120].lines]).toContain(view.milestone?.line)
+    expect(view.milestone?.earlier).toBeNull()
+    act(() => root?.unmount())
+    root = null
+    container?.remove()
+    container = null
+    server.row = runningRow(7900)
+    await mount()
+    expect(view.milestone).toBeNull()
+  })
+
+  it("is not shown while the session is paused, and the Resume shows it (the lateness is counted in seconds of the session, not of the wall clock)", async () => {
+    server.row = runningRow(905, { status: "paused", paused_at: iso(serverNow() - 3_600_000), paused_seconds: 0 })
+    server.row = { ...server.row, started_at: iso(serverNow() - 905_000 - 3_600_000) }
+    await mount()
+    expect(view.status).toBe("paused")
+    expect(view.seconds).toBe(905)
+    await settle(30_000)
+    expect(view.milestone).toBeNull()
+    await press(view.resume)
+    expect(view.status).toBe("running")
+    expect(view.milestone).not.toBeNull()
+    expect(view.milestone?.earlier).toBeNull()
+  })
+
+  it("goes away when the session is paused by the stop alert, and does not come back at GO BACK IN and Resume", async () => {
+    server.row = runningRow(899)
+    await mount()
+    await settle(1000)
+    expect(view.milestone).not.toBeNull()
+    await press(view.stop)
+    expect(view.status).toBe("paused")
+    expect(view.milestone).toBeNull()
+    await press(view.goBack)
+    await press(view.resume)
+    expect(view.status).toBe("running")
+    expect(view.milestone).toBeNull()
+  })
+
+  it("goes away when the session ends, and the next session has its own milestones", async () => {
+    server.row = runningRow(899)
+    await mount()
+    await settle(1000)
+    expect(view.milestone).not.toBeNull()
+    await press(view.stop)
+    await press(view.end)
+    expect(view.status).toBe("idle")
+    expect(view.milestone).toBeNull()
+    await press(view.start)
+    expect(view.status).toBe("running")
+    expect(view.milestone).toBeNull()
+    await settle(900_000)
+    expect(view.seconds).toBe(900)
+    expect(view.milestone).not.toBeNull()
+  })
+
+  it("goes away when the session was ended on another device (the next reading shows no session)", async () => {
+    server.row = runningRow(899)
+    await mount()
+    await settle(1000)
+    expect(view.milestone).not.toBeNull()
+    server.row = null
+    await settle(POLL_ONLINE_MS)
+    expect(view.status).toBe("idle")
+    expect(view.milestone).toBeNull()
+  })
+
+  it("shows every milestone of one long session once, when the person always looks, and never twice", async () => {
+    // The person looks every 5 seconds. Every milestone is a whole multiple of 5 seconds, so each one is seen on the second it is reached. (A look every second took 4.6 of the 5 seconds a test may take and ran out of time on a slower computer, so the step is 5 and the test has its own limit.)
+    server.row = runningRow(0)
+    await mount()
+    const shown: string[] = []
+    for (let t = 5; t <= 10_800; t += 5) {
+      await settle(5000)
+      if (view.milestone !== null) {
+        // Every appearance is counted, so a milestone that came twice would be in the list twice.
+        shown.push(String(view.seconds))
+        expect(view.milestone.earlier).toBeNull()
+        await press(view.clearMilestone)
+      }
+    }
+    expect(shown).toEqual(["900", "1500", "2700", "3600", "5400", "7200", "9000", "10800"])
+  }, 60_000)
+
+  it("does not draw the screen again for the ticks while a message waits", async () => {
+    server.row = runningRow(800)
+    await mount()
+    lookAway()
+    await settle(60_000)
+    const before = renders
+    await settle(10_000)
+    expect(renders - before).toBeLessThanOrEqual(11)
   })
 })
 // AB:TIMER.TESTS:END
