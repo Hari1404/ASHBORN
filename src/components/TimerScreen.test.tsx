@@ -7,7 +7,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // The timer hook is replaced by a view that each test fills in, so this file only tests what the screen draws and which buttons it wires.
 const state = vi.hoisted(() => ({ view: null as unknown }))
-vi.mock("@/lib/useTimer", () => ({ useTimer: () => state.view }))
+// The screen hands the hook what it draws (the option drawn); the stand-in keeps the options so a test can read them.
+const hook = vi.hoisted(() => ({ options: null as unknown }))
+vi.mock("@/lib/useTimer", () => ({
+  useTimer: (options: unknown) => {
+    hook.options = options
+    return state.view
+  },
+}))
+
+// The lite level is read from the browser when the file is imported (matchMedia, which jsdom does not have), so it is replaced by a fixed level that a test can change.
+const lite = vi.hoisted(() => ({ level: 0 }))
+vi.mock("@/lib/lite", () => ({
+  get LITE_LEVEL() {
+    return lite.level
+  },
+}))
 
 // The glowing ball is replaced by a stand-in that records what the screen hands to it (the ball itself is tested in TimerBall.test.tsx).
 const ball = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }))
@@ -33,7 +48,9 @@ vi.mock("@/components/TimerBackground", async () => {
   }
 })
 
+import { MILESTONE_FADE_MS, MILESTONE_SHOW_MS } from "@/lib/milestoneLines"
 import { COMEBACK_FADE_MS, COMEBACK_SHOW_MS } from "@/lib/stopAlertLines"
+import { forgetWarmup } from "@/lib/timerWarmup"
 import { formatClock, qualityOf } from "@/lib/timerMaths"
 import type { TimerView } from "@/lib/useTimer"
 import TimerScreen from "./TimerScreen"
@@ -559,6 +576,137 @@ describe("TimerScreen: the comeback message", () => {
       vi.advanceTimersByTime(60_000)
     })
     expect(view.clearComeback).not.toHaveBeenCalled()
+  })
+})
+
+describe("TimerScreen: the milestone message", () => {
+  const MILESTONE = { line: "Fifteen minutes. The [heat:warm-up] is over.", earlier: null }
+
+  it("shows no milestone message when the hook has none", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    expect(has(".ab-milestone")).toBe(false)
+  })
+
+  it("shows it as a child of the screen after the side, with the line without its marks and no tag", () => {
+    show({ status: "running", seconds: 900, ringSeed: SEED, milestone: MILESTONE })
+    const kids = Array.from(q(".ab-timer").children)
+    expect(kids.map((k) => k.id || k.className)).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side", "ab-milestone"])
+    expect(q(".ab-milestone-line").textContent).toBe("Fifteen minutes. The warm-up is over.")
+    expect(has(".ab-milestone-tag")).toBe(false)
+  })
+
+  it("shows the tag when the hook says the message is late", () => {
+    show({ status: "running", seconds: 1440, ringSeed: SEED, milestone: { ...MILESTONE, earlier: 9 } })
+    expect(q(".ab-milestone-tag").textContent).toBe("9 min earlier")
+  })
+
+  it("leaves the stop alert as the LAST child of the screen, with the comeback message before the milestone message", () => {
+    show({
+      status: "paused",
+      seconds: 900,
+      ringSeed: SEED,
+      comeback: { line: "Back in." },
+      milestone: MILESTONE,
+      stopAlert: { line: "Stop?", canGoBack: true },
+    })
+    const kids = Array.from(q(".ab-timer").children)
+    expect(kids.map((k) => k.id || k.className)).toEqual([
+      "background-stub",
+      "ab-timer-dial",
+      "ab-timer-side",
+      "ab-comeback",
+      "ab-milestone",
+      "ab-alert",
+    ])
+  })
+
+  it("does not switch off the buttons: Pause works while the message is there", () => {
+    const view = show({ status: "running", seconds: 900, ringSeed: SEED, milestone: MILESTONE })
+    expect(q(".ab-timer-side").hasAttribute("inert")).toBe(false)
+    const pause = q(".ab-timer-pill")
+    expect(pause.textContent).toBe("Pause")
+    act(() => pause.click())
+    expect(view.pause).toHaveBeenCalledTimes(1)
+  })
+
+  it("asks the hook to take it away (clearMilestone) after 30 seconds and the fade, once", () => {
+    const view = show({ status: "running", seconds: 900, ringSeed: SEED, milestone: MILESTONE })
+    act(() => {
+      vi.advanceTimersByTime(MILESTONE_SHOW_MS + MILESTONE_FADE_MS - 1)
+    })
+    expect(view.clearMilestone).not.toHaveBeenCalled()
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(view.clearMilestone).toHaveBeenCalledTimes(1)
+  })
+
+  it("closes at once when the hook takes the message away, and then never asks to clear it", () => {
+    const view = show({ status: "running", seconds: 900, ringSeed: SEED, milestone: MILESTONE })
+    expect(has(".ab-milestone")).toBe(true)
+    show({ status: "paused", seconds: 901, ringSeed: SEED, milestone: null })
+    expect(has(".ab-milestone")).toBe(false)
+    act(() => {
+      vi.advanceTimersByTime(120_000)
+    })
+    expect(view.clearMilestone).not.toHaveBeenCalled()
+  })
+})
+
+describe("TimerScreen: what it tells the hook that it draws", () => {
+  type Drawn = () => { ball: boolean; rays: boolean }
+  const drawn = (): Drawn => {
+    const given = (hook.options as { drawn?: Drawn } | null)?.drawn
+    if (given === undefined) throw new Error("the screen gave the hook no drawn option")
+    return given
+  }
+
+  // jsdom cannot make a WebGL 2 context, so the test says whether the browser can.
+  function browserCanDrawWebgl2(can: boolean): void {
+    forgetWarmup()
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((kind: string) =>
+      can && kind === "webgl2" ? { getExtension: () => null } : null) as unknown as HTMLCanvasElement["getContext"])
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    forgetWarmup()
+    lite.level = 0
+  })
+
+  it("gives the hook the option drawn", () => {
+    show()
+    expect(typeof drawn()).toBe("function")
+  })
+
+  it("says the ball and the rays are drawn when the browser can draw WebGL 2 and the lite level is 0 or 1", () => {
+    browserCanDrawWebgl2(true)
+    for (const level of [0, 1]) {
+      lite.level = level
+      show()
+      expect(drawn()(), "lite " + level).toEqual({ ball: true, rays: true })
+    }
+  })
+
+  it("says the ball is drawn but the rays are not at lite level 2", () => {
+    browserCanDrawWebgl2(true)
+    lite.level = 2
+    show()
+    expect(drawn()()).toEqual({ ball: true, rays: false })
+  })
+
+  it("says nothing is drawn when the browser cannot draw WebGL 2", () => {
+    browserCanDrawWebgl2(false)
+    show()
+    expect(drawn()()).toEqual({ ball: false, rays: false })
+  })
+
+  it("asks the browser nothing when it only opens (the question is asked only when a milestone is picked)", () => {
+    const spy = vi.spyOn(HTMLCanvasElement.prototype, "getContext")
+    forgetWarmup()
+    show({ status: "idle" })
+    show({ status: "running", seconds: 100, ringSeed: SEED })
+    expect(spy).not.toHaveBeenCalled()
   })
 })
 

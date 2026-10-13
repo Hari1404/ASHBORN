@@ -1,8 +1,13 @@
 import Comeback from "@/components/Comeback"
 import HoldButton from "@/components/HoldButton"
+import Milestone from "@/components/Milestone"
 import StopAlert from "@/components/StopAlert"
 import TimerBackground from "@/components/TimerBackground"
 import TimerBall from "@/components/TimerBall"
+import { bgDrawn } from "@/lib/backgroundLook"
+import { LITE_LEVEL } from "@/lib/lite"
+import type { MilestoneVisuals } from "@/lib/milestoneLines"
+import { canDrawWebgl2 } from "@/lib/timerWarmup"
 import { formatClock, qualityOf } from "@/lib/timerMaths"
 import { useTimer, type EndNotice } from "@/lib/useTimer"
 import "../timer.css"
@@ -13,11 +18,17 @@ import "../timer.css"
 // Behind the big clock sits the glowing ball (TimerBall.tsx). It lights when a session starts, changes colour as the session gets deeper, stops and dims when paused, and fades when the session ends.
 // Behind everything, over the whole screen, sits the moving background (TimerBackground.tsx, the Side Rays animation). It is the first thing inside the main element, it has the same colour as the ball at every moment, and the screen is black without a session (see CONNECTIONS.md C37 and C38).
 // Start and Pause / Resume are normal taps. End Session is the library Hold Button (src/components/HoldButton.tsx, never edited): hold it until it is full. It does not end the session: it opens the stop alert (StopAlert.tsx, the last thing inside the main element), which pauses the session and offers I'M DONE and GO BACK IN (see CONNECTIONS.md C43).
-// After GO BACK IN the comeback message (Comeback.tsx) floats over the screen for a few seconds, while the hook has one (see CONNECTIONS.md C48). It sits just before the stop alert, so the stop alert stays the last thing inside the main element.
+// After GO BACK IN the comeback message (Comeback.tsx) floats over the screen for a few seconds, while the hook has one (see CONNECTIONS.md C48). The milestone message (Milestone.tsx) floats at the bottom for 30 seconds, while the hook has one (see CONNECTIONS.md C51). Both sit just before the stop alert, so the stop alert stays the last thing inside the main element.
 // The ball sits in a box that is larger than the dial, and the ball is a share of that box (see CONNECTIONS.md C31).
 // The look of the clock digits (Space Grotesk, fixed width) is in timer.css (see CONNECTIONS.md C32).
 // While the first reading is on its way (the link is loading) the screen does not show zeros that would jump to the real numbers: the two clocks are invisible, and where the buttons will be there is a faint blank pill (ab-timer-wait) that is not a button. When the reading is there, the clocks and the buttons fade in together (timer.css, CONNECTIONS.md C46).
 // On a phone the screen is one column: the dial, then the line, then the buttons. On a wide screen (a laptop) the dial is a big circle on the left and the line and the buttons stand on the right, inside the box ab-timer-side (see CONNECTIONS.md C39). The tags and the rest that come later go into that box too.
+
+// What the screen really draws, told to the hook when it picks a milestone line (a line about the ball is only true when the ball is drawn, a line about the rays only when the rays are drawn: the same conditions as TimerBall.tsx and TimerBackground.tsx, see CONNECTIONS.md C51). It is asked only at a milestone, when a session is already shown.
+function drawnNow(): MilestoneVisuals {
+  const webgl = canDrawWebgl2()
+  return { ball: webgl, rays: webgl && bgDrawn(LITE_LEVEL) }
+}
 
 function noticeText(notice: EndNotice): string {
   const head = notice.capped ? "Day ended at midnight. " : ""
@@ -26,7 +37,7 @@ function noticeText(notice: EndNotice): string {
 }
 
 export default function TimerScreen() {
-  const timer = useTimer()
+  const timer = useTimer({ drawn: drawnNow })
   const ready = timer.link === "online" && !timer.busy
 
   let note = ""
@@ -96,6 +107,9 @@ export default function TimerScreen() {
         </div>
       </div>
       {timer.comeback === null ? null : <Comeback line={timer.comeback.line} onGone={timer.clearComeback} />}
+      {timer.milestone === null ? null : (
+        <Milestone line={timer.milestone.line} earlier={timer.milestone.earlier} onGone={timer.clearMilestone} />
+      )}
       {timer.stopAlert === null ? null : (
         <StopAlert
           line={timer.stopAlert.line}
