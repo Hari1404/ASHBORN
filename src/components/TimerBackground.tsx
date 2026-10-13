@@ -1,13 +1,13 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from "react"
 import Grainient from "@/components/Grainient"
-import { BG_BLEND_MS, BG_FADE_MS, BG_MOUNT_DELAY_MS, BG_SETTINGS, bgBlendRamp, bgDrawn, bgPaletteIndex, bgRamp } from "@/lib/backgroundLook"
+import { BG_FADE_MS, BG_MOUNT_DELAY_MS, BG_SETTINGS, bgDrawn, bgPaletteIndex, bgRamp } from "@/lib/backgroundLook"
 import { LITE_LEVEL } from "@/lib/lite"
 import { canDrawWebgl2, useMountDelay } from "@/lib/timerWarmup"
 
 // AB:TIMER.BG:START
 // The moving background of the Pro Timer screen. It is shown while a session runs or is paused, and it is plain black (nothing is drawn) when there is no session.
-// Library: src/components/Grainient.tsx (React Bits, never edited). It draws a slow flowing gradient with a little grain from a ramp of five colours (its `colors`). This file hands it the ramp of the session and nothing else changes: the ramp starts all black and gets its colours at 10, 30 and 90 minutes, moving to each new colour in BG_BLEND_MS (backgroundLook.ts, CONNECTIONS.md C37).
-// The library reads its `colors` again on its own while it runs and never builds its drawing again for them, so the ramp is simply given as a new list of five colours many times a second while it moves (useBlendedRamp). Every other setting is the same all the time (BG_SETTINGS).
+// Library: src/components/Grainient.tsx (React Bits, never edited). It draws a slow flowing gradient with a little grain from a ramp of five colours (its `colors`). This file hands it the ramp of the seconds of the session and nothing else changes: the ramp starts all black and grows slowly and all the time, with the look of the first colour step at 10 minutes, of the second at 30 minutes and the whole palette at 90 minutes (backgroundLook.ts, CONNECTIONS.md C37).
+// The library reads its `colors` again on its own while it runs and never builds its drawing again for them, so the ramp is simply given as a new list of five colours whenever the seconds of the session change. There is no blend over time and no timer here: the ramp is a plain function of the seconds (bgRamp). Every other setting is the same all the time (BG_SETTINGS).
 // The palette is the one of the glowing ball (bgPaletteIndex gives the same number as the ball for the same session), so the ball and the background are of the same colour family.
 // A new session lights a new background, like the ball: it is made again and starts black. When the session ends the background fades out for BG_FADE_MS and is then taken away. While it fades its colours stay where they were.
 // The background needs WebGL 2, like the ball. Without it, or when the library throws, or at lite level 2, nothing is drawn and the clocks still work (see CONNECTIONS.md C38).
@@ -33,33 +33,9 @@ class BackgroundGuard extends Component<{ children: ReactNode }, { failed: boole
   }
 }
 
-// The five colours on the way from the ramp they have to the ramp they should have. The first ramp is taken at once (a page opened in the middle of a session shows the right colours at once). A new target in the middle of a blend starts from the colours the blend has reached, so nothing jumps.
-function useBlendedRamp(target: readonly string[]): readonly string[] {
-  const key = target.join(",")
-  const [ramp, setRamp] = useState<readonly string[]>(target)
-  const current = useRef<readonly string[]>(target)
-  useEffect(() => {
-    if (current.current.join(",") === key) return undefined
-    const from = current.current
-    const to = key.split(",")
-    const startedAt = performance.now()
-    let frame = 0
-    const step = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / BG_BLEND_MS)
-      current.current = bgBlendRamp(from, to, progress)
-      setRamp(current.current)
-      if (progress < 1) frame = requestAnimationFrame(step)
-    }
-    frame = requestAnimationFrame(step)
-    return () => cancelAnimationFrame(frame)
-  }, [key])
-  return ramp
-}
-
-// One lit background. The screen makes it again for every new session, so its colours always start at the ramp of the first moment.
+// One lit background. The screen makes it again for every new session, so it always starts black. The ramp it is given is the ramp of the seconds the session has reached, so a page opened in the middle of a session shows the right colours at once.
 function LitBackground({ target, still }: { target: readonly string[]; still: boolean }) {
-  const colours = useBlendedRamp(target)
-  return <Grainient {...BG_SETTINGS} speed={still ? 0 : BG_SETTINGS.speed} colors={[...colours]} />
+  return <Grainient {...BG_SETTINGS} speed={still ? 0 : BG_SETTINGS.speed} colors={[...target]} />
 }
 
 export default function TimerBackground({
@@ -77,7 +53,7 @@ export default function TimerBackground({
   const wasActive = useRef(active)
   const litSeed = useRef(seed)
 
-  // The ramp the background moves towards. When the session ends the seconds and the seed are gone while the background is still fading: the ramp of the last moment is kept, so it does not start to move towards black in the middle of the fade.
+  // The ramp of the seconds the session has reached. When the session ends the seconds and the seed are gone while the background is still fading: the ramp of the last moment is kept, so it does not jump to black in the middle of the fade.
   const target = bgRamp(seconds, bgPaletteIndex(seed))
   const [held, setHeld] = useState(target)
   if (active && held.join(",") !== target.join(",")) setHeld(target)

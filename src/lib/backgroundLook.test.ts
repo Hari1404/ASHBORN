@@ -1,19 +1,16 @@
 import { describe, expect, it } from "vitest"
 import {
-  BG_BLEND_MS,
   BG_FADE_MS,
   BG_LIGHT_FULL_AT_SECONDS,
   BG_LIGHT_START,
   BG_PALETTES,
   BG_SETTINGS,
-  bgBlendRamp,
   bgDrawn,
-  bgEase,
   bgLight,
   bgPaletteIndex,
   bgRamp,
 } from "./backgroundLook"
-import { BALL_BLEND_MS, BALL_PALETTES, ballPaletteIndex } from "./ballLook"
+import { BALL_PALETTES, ballPaletteIndex } from "./ballLook"
 import { DEEP_FROM_SECONDS, FLOW_FROM_SECONDS, SOLID_FROM_SECONDS } from "./timerMaths"
 
 // AB:TIMER.TESTS:START
@@ -39,9 +36,9 @@ describe("the timing of the background", () => {
     expect(BG_FADE_MS).toBe(700)
   })
 
-  it("moves from one colour step to the next in 12 seconds, which is slower than the 4 seconds of the glowing ball", () => {
-    expect(BG_BLEND_MS).toBe(12000)
-    expect(BG_BLEND_MS).toBeGreaterThan(BALL_BLEND_MS)
+  it("has no blend time of its own any more: the colours are a plain function of the seconds of the session", async () => {
+    const look = await import("./backgroundLook")
+    for (const gone of ["BG_BLEND_MS", "bgEase", "bgBlendRamp"]) expect(Object.keys(look)).not.toContain(gone)
   })
 })
 
@@ -125,54 +122,96 @@ describe("which palette a session gets", () => {
   })
 })
 
+// The four looks of the ramp, written here again on purpose: black, then the dark shade and the main colour (the two light places hold the main colour), then the lighter tint, then the whole palette.
+function looksOf(p: readonly string[]): string[][] {
+  return [
+    [p[0], p[0], p[0], p[0], p[0]],
+    [p[0], p[1], p[2], p[2], p[2]],
+    [p[0], p[1], p[2], p[3], p[3]],
+    [...p],
+  ]
+}
+const CUT_OFFS = [0, SOLID_FROM_SECONDS, DEEP_FROM_SECONDS, FLOW_FROM_SECONDS]
+
 describe("the ramp of the session", () => {
-  it("is all black before the first colour step, so the screen is black", () => {
+  it("is all black at second 0, so the screen starts black, and is hardly different from black in the first second", () => {
     BG_PALETTES.forEach((palette, index) => {
-      for (const seconds of [0, 1, 60, SOLID_FROM_SECONDS - 1]) {
-        expect(bgRamp(seconds, index)).toEqual([palette[0], palette[0], palette[0], palette[0], palette[0]])
+      expect(bgRamp(0, index)).toEqual([palette[0], palette[0], palette[0], palette[0], palette[0]])
+      const black = channels(palette[0])
+      for (const colour of bgRamp(1, index)) channels(colour).forEach((value, c) => expect(Math.abs(value - black[c])).toBeLessThanOrEqual(1))
+    })
+  })
+
+  it("has exactly the look of each colour step at the second of that step, and the whole palette from the flow step on", () => {
+    BG_PALETTES.forEach((p, index) => {
+      const looks = looksOf(p)
+      CUT_OFFS.forEach((at, i) => expect(bgRamp(at, index)).toEqual(looks[i]))
+      expect(bgRamp(FLOW_FROM_SECONDS * 4, index)).toEqual([...p])
+      expect(bgRamp(Infinity, index)).toEqual([...p])
+    })
+  })
+
+  it("is on its way between two colour steps: at the middle of the time every colour is in the middle of its two looks, channel by channel", () => {
+    BG_PALETTES.forEach((p, index) => {
+      const looks = looksOf(p)
+      for (let i = 0; i < 3; i++) {
+        const ramp = bgRamp((CUT_OFFS[i] + CUT_OFFS[i + 1]) / 2, index)
+        ramp.forEach((colour, k) => {
+          const a = channels(looks[i][k])
+          const b = channels(looks[i + 1][k])
+          channels(colour).forEach((value, c) => expect(Math.abs(value - (a[c] + b[c]) / 2)).toBeLessThanOrEqual(1))
+        })
       }
     })
   })
 
-  it("brings in the dark shade and the main colour at the solid step, and the light end holds the main colour", () => {
-    BG_PALETTES.forEach((p, index) => {
-      expect(bgRamp(SOLID_FROM_SECONDS, index)).toEqual([p[0], p[1], p[2], p[2], p[2]])
-      expect(bgRamp(DEEP_FROM_SECONDS - 1, index)).toEqual([p[0], p[1], p[2], p[2], p[2]])
+  it("has already begun to change long before the first cut-off: at 5 minutes it is no longer black", () => {
+    BG_PALETTES.forEach((p, index) => expect(bgRamp(300, index)).not.toEqual(looksOf(p)[0]))
+  })
+
+  it("never stands still for 5 minutes before the flow step: the ramp 5 minutes later is always a different ramp", () => {
+    BG_PALETTES.forEach((_, index) => {
+      for (let s = 0; s + 300 <= FLOW_FROM_SECONDS; s += 60) expect(bgRamp(s + 300, index)).not.toEqual(bgRamp(s, index))
     })
   })
 
-  it("brings in the lighter tint at the deep step", () => {
-    BG_PALETTES.forEach((p, index) => {
-      expect(bgRamp(DEEP_FROM_SECONDS, index)).toEqual([p[0], p[1], p[2], p[3], p[3]])
-      expect(bgRamp(FLOW_FROM_SECONDS - 1, index)).toEqual([p[0], p[1], p[2], p[3], p[3]])
+  it("never jumps: two seconds in a row differ by at most one level in every channel (checked for every second of the first 100 minutes, for every palette)", () => {
+    BG_PALETTES.forEach((_, index) => {
+      let biggest = 0
+      for (let s = 0; s < 6000; s++) {
+        const a = bgRamp(s, index)
+        const b = bgRamp(s + 1, index)
+        a.forEach((colour, k) => {
+          const x = channels(colour)
+          const y = channels(b[k])
+          for (let c = 0; c < 3; c++) biggest = Math.max(biggest, Math.abs(x[c] - y[c]))
+        })
+      }
+      expect(biggest).toBeLessThanOrEqual(1)
     })
   })
 
-  it("brings in the lightest tint at the flow step, and keeps the whole palette from then on", () => {
-    BG_PALETTES.forEach((p, index) => {
-      expect(bgRamp(FLOW_FROM_SECONDS, index)).toEqual([...p])
-      expect(bgRamp(FLOW_FROM_SECONDS * 4, index)).toEqual([...p])
-    })
-  })
-
-  it("never has a colour that is lighter than the one after it, and never loses a colour while the session goes on (checked every minute for every palette)", () => {
+  it("never has a colour that is lighter than the one after it, and never gets darker while the session goes on (checked every 30 seconds for four hours for every palette; half a level of brightness is allowed for the rounding of the channels)", () => {
+    const ROUNDING = 0.5
     BG_PALETTES.forEach((_, index) => {
       let before = bgRamp(0, index)
-      for (let minute = 1; minute <= 240; minute++) {
-        const now = bgRamp(minute * 60, index)
-        for (let i = 1; i < now.length; i++) expect(luma(now[i])).toBeGreaterThanOrEqual(luma(now[i - 1]))
-        for (let i = 0; i < now.length; i++) expect(luma(now[i])).toBeGreaterThanOrEqual(luma(before[i]))
+      for (let s = 30; s <= 4 * 3600; s += 30) {
+        const now = bgRamp(s, index)
+        for (let i = 1; i < now.length; i++) expect(luma(now[i])).toBeGreaterThanOrEqual(luma(now[i - 1]) - ROUNDING)
+        for (let i = 0; i < now.length; i++) expect(luma(now[i])).toBeGreaterThanOrEqual(luma(before[i]) - ROUNDING)
         before = now
       }
+      expect(luma(bgRamp(FLOW_FROM_SECONDS, index)[4])).toBeGreaterThan(luma(bgRamp(DEEP_FROM_SECONDS, index)[4]))
     })
   })
 
   it("always starts with the black of the palette and has five colours", () => {
     BG_PALETTES.forEach((p, index) => {
-      for (const seconds of [0, SOLID_FROM_SECONDS, DEEP_FROM_SECONDS, FLOW_FROM_SECONDS]) {
+      for (const seconds of [0, 1, 300, SOLID_FROM_SECONDS, 1200, DEEP_FROM_SECONDS, 3600, FLOW_FROM_SECONDS, FLOW_FROM_SECONDS * 3]) {
         const ramp = bgRamp(seconds, index)
         expect(ramp).toHaveLength(5)
         expect(ramp[0]).toBe(p[0])
+        for (const colour of ramp) expect(colour).toMatch(HEX)
       }
     })
   })
@@ -181,96 +220,6 @@ describe("the ramp of the session", () => {
     for (const odd of [Number.NaN, -1, -Infinity]) expect(bgRamp(odd, 0)).toEqual(bgRamp(0, 0))
     for (const odd of [-1, 6, 2.5, Number.NaN]) expect(bgRamp(0, odd)).toEqual(bgRamp(0, 0))
     expect(bgRamp(Infinity, 1)).toHaveLength(5)
-  })
-})
-
-describe("how far the colours have moved", () => {
-  it("is exactly 0 at the start and exactly 1 when it has arrived", () => {
-    expect(bgEase(0)).toBe(0)
-    expect(bgEase(1)).toBe(1)
-    expect(bgEase(0.5)).toBe(0.5)
-  })
-
-  it("is slow at the start and at the end and fast in the middle", () => {
-    expect(bgEase(0.25)).toBeLessThan(0.25)
-    expect(bgEase(0.1)).toBeLessThan(0.1)
-    expect(bgEase(0.75)).toBeGreaterThan(0.75)
-    expect(bgEase(0.9)).toBeGreaterThan(0.9)
-    expect(bgEase(0.25)).toBeCloseTo(0.15625, 10)
-  })
-
-  it("never goes backwards (checked in a thousand steps)", () => {
-    let before = bgEase(0)
-    for (let i = 1; i <= 1000; i++) {
-      const now = bgEase(i / 1000)
-      expect(now).toBeGreaterThanOrEqual(before)
-      before = now
-    }
-  })
-
-  it("cuts a progress outside 0 to 1 to the ends, and counts a progress that is not a number as arrived", () => {
-    expect(bgEase(-3)).toBe(0)
-    expect(bgEase(7)).toBe(1)
-    expect(bgEase(Number.NaN)).toBe(1)
-    expect(bgEase(Infinity)).toBe(1)
-  })
-})
-
-describe("the colours on the way from one ramp to another", () => {
-  const FROM = ["#000000", "#102030", "#204060", "#406080", "#6080a0"]
-  const TO = ["#000000", "#ffffff", "#204060", "#ff8000", "#6080a0"]
-
-  it("gives the old ramp at progress 0 and the new ramp, exactly as written, at progress 1", () => {
-    expect(bgBlendRamp(FROM, TO, 0)).toEqual(FROM)
-    expect(bgBlendRamp(FROM, TO, 1)).toEqual(TO)
-  })
-
-  it("is in the middle of every colour at half the time (the ease is 0.5 there), channel by channel", () => {
-    const half = bgBlendRamp(FROM, TO, 0.5)
-    expect(half).toHaveLength(5)
-    for (let i = 0; i < 5; i++) {
-      const a = channels(FROM[i])
-      const b = channels(TO[i])
-      channels(half[i]).forEach((value, c) => expect(Math.abs(value - (a[c] + b[c]) / 2)).toBeLessThanOrEqual(1))
-    }
-  })
-
-  it("leaves a colour that does not change where it is, at every progress", () => {
-    for (const progress of [0, 0.2, 0.5, 0.8, 1]) {
-      const ramp = bgBlendRamp(FROM, TO, progress)
-      expect(ramp[0]).toBe("#000000")
-      expect(ramp[2]).toBe("#204060")
-      expect(ramp[4]).toBe("#6080a0")
-    }
-  })
-
-  it("keeps every colour between its old and its new value, and comes closer all the time", () => {
-    let before = Infinity
-    for (let i = 0; i <= 20; i++) {
-      const ramp = bgBlendRamp(FROM, TO, i / 20)
-      const away = Math.hypot(...channels(ramp[1]).map((v, c) => v - channels(TO[1])[c]))
-      expect(away).toBeLessThanOrEqual(before)
-      before = away
-      for (let k = 0; k < 5; k++) {
-        const a = channels(FROM[k])
-        const b = channels(TO[k])
-        channels(ramp[k]).forEach((value, c) => {
-          expect(value).toBeGreaterThanOrEqual(Math.min(a[c], b[c]))
-          expect(value).toBeLessThanOrEqual(Math.max(a[c], b[c]))
-        })
-      }
-    }
-    expect(before).toBe(0)
-  })
-
-  it("is slower than a straight line at the start: a quarter of the way in, a colour has moved less than a quarter", () => {
-    const quarter = channels(bgBlendRamp(["#000000"], ["#ffffff"], 0.25)[0])[0]
-    expect(quarter).toBeLessThan(0.25 * 255)
-    expect(quarter).toBeGreaterThan(0)
-  })
-
-  it("takes the new colour as it is when the old ramp has fewer colours than the new one", () => {
-    expect(bgBlendRamp(["#000000"], ["#000000", "#ff0000"], 0.3)[1]).toBe("#ff0000")
   })
 })
 

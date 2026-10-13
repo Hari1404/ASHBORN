@@ -73,7 +73,7 @@ vi.mock("@/components/CrystalizedBall", async () => {
   }
 })
 
-import { BG_BLEND_MS, BG_FADE_MS, BG_PALETTES, BG_SETTINGS, bgPaletteIndex, bgRamp } from "@/lib/backgroundLook"
+import { BG_FADE_MS, BG_PALETTES, BG_SETTINGS, bgPaletteIndex, bgRamp } from "@/lib/backgroundLook"
 import { BALL_FADE_MS, BALL_PALETTES, BALL_WHITE, ballPaletteIndex } from "@/lib/ballLook"
 import { DEEP_FROM_SECONDS, FLOW_FROM_SECONDS, SOLID_FROM_SECONDS } from "@/lib/timerMaths"
 import { forgetWarmup } from "@/lib/timerWarmup"
@@ -321,36 +321,29 @@ describe("TimerBackground: what it hands to the library", () => {
     expect(colours()).toEqual([...bgRamp(DEEP_FROM_SECONDS + 5, bgPaletteIndex(SEED))])
   })
 
-  it("never gives the library another setting while the colours move, and does not make it again", () => {
-    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
-    show({ active: true, seconds: SOLID_FROM_SECONDS })
-    wait(BG_BLEND_MS)
-    show({ active: true, seconds: DEEP_FROM_SECONDS })
-    wait(BG_BLEND_MS)
-    show({ active: true, seconds: FLOW_FROM_SECONDS })
-    wait(BG_BLEND_MS)
+  it("never gives the library another setting while the colours grow, and does not make it again", () => {
+    for (const seconds of [0, 1, 300, SOLID_FROM_SECONDS, 1200, DEEP_FROM_SECONDS, 3600, FLOW_FROM_SECONDS, FLOW_FROM_SECONDS + 600]) show({ active: true, seconds })
     const settingsOnly = new Set(state.props.map((p) => JSON.stringify({ ...p, colors: 0 })))
     expect(settingsOnly.size).toBe(1)
     expect(state.mounts).toBe(1)
     expect(state.unmounts).toBe(0)
   })
 
-  it("gives the library new colours while they move, and nothing more once they have arrived", () => {
-    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
-    show({ active: true, seconds: SOLID_FROM_SECONDS })
+  it("gives the library the colours of the seconds it is shown, and has no timer of its own that moves them", () => {
+    const index = bgPaletteIndex(SEED)
+    show({ active: true, seconds: 300 })
+    expect(colours()).toEqual([...bgRamp(300, index)])
     const before = state.props.length
-    wait(1000)
-    expect(state.props.length).toBeGreaterThan(before)
-    wait(BG_BLEND_MS)
-    const arrived = state.props.length
-    wait(5000)
-    expect(state.props.length).toBe(arrived)
+    wait(60000)
+    expect(state.props.length).toBe(before)
+    expect(colours()).toEqual([...bgRamp(300, index)])
+    show({ active: true, seconds: 360 })
+    expect(colours()).toEqual([...bgRamp(360, index)])
+    expect(colours()).not.toEqual([...bgRamp(300, index)])
   })
 
   it("always gives it five colours", () => {
-    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
-    show({ active: true, seconds: SOLID_FROM_SECONDS })
-    wait(BG_BLEND_MS)
+    for (const seconds of [0, 300, SOLID_FROM_SECONDS, 1200, DEEP_FROM_SECONDS, FLOW_FROM_SECONDS]) show({ active: true, seconds })
     for (const p of state.props) expect(p.colors).toHaveLength(5)
   })
 })
@@ -362,88 +355,56 @@ describe("TimerBackground: the colours of the ramp", () => {
   })
 
   it("show the right colours at once when the page is opened in the middle of a session", () => {
+    const index = bgPaletteIndex(SEED)
     show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
-    expect(colours()).toEqual([...bgRamp(DEEP_FROM_SECONDS + 5, bgPaletteIndex(SEED))])
-    expect(colours()).toEqual([PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[3], PALETTE[3]])
+    expect(colours()).toEqual([...bgRamp(DEEP_FROM_SECONDS + 5, index)])
+    expect(colours().slice(0, 4)).toEqual([PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[3]])
     expect(state.mounts).toBe(1)
   })
 
-  it("stay black until the solid cut-off", () => {
-    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
-    wait(5000)
-    expect(colours()).toEqual([...bgRamp(0, bgPaletteIndex(SEED))])
+  it("begin to come in long before the first cut-off: at 5 minutes the screen is no longer black", () => {
+    show({ active: true, seconds: 300 })
+    expect(colours()).toEqual([...bgRamp(300, bgPaletteIndex(SEED))])
+    expect(colours()).not.toEqual([PALETTE[0], PALETTE[0], PALETTE[0], PALETTE[0], PALETTE[0]])
   })
 
-  it("move from black to the first ramp in exactly BG_BLEND_MS, not at once", () => {
-    const start = [...bgRamp(0, bgPaletteIndex(SEED))]
+  it("come steadily closer to the look of the first colour step all the way to its cut-off, and are exactly that look at the cut-off", () => {
     const target = [...bgRamp(SOLID_FROM_SECONDS, bgPaletteIndex(SEED))]
-    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
-    show({ active: true, seconds: SOLID_FROM_SECONDS })
-    expect(colours()).toEqual(start)
-    wait(BG_BLEND_MS / 2)
-    const half = colours()
-    expect(half).not.toEqual(start)
-    expect(half).not.toEqual(target)
-    half.forEach((colour, i) => {
-      const from = channels(start[i])
-      const to = channels(target[i])
-      channels(colour).forEach((value, c) => {
-        expect(value).toBeGreaterThanOrEqual(Math.min(from[c], to[c]))
-        expect(value).toBeLessThanOrEqual(Math.max(from[c], to[c]))
-      })
-    })
-    // The smooth end of the blend is within one step of a channel of its target in the last moments, so the check "not there yet" is made two seconds before the end.
-    wait(BG_BLEND_MS / 2 - 2000)
-    expect(colours()).not.toEqual(target)
-    wait(2000)
-    expect(colours()).toEqual(target)
-    wait(3000)
-    expect(colours()).toEqual(target)
-  })
-
-  it("start slowly and end slowly: a quarter of the way in a colour has moved about 16 percent of the way, not 25", () => {
-    const start = [...bgRamp(0, bgPaletteIndex(SEED))]
-    const target = [...bgRamp(SOLID_FROM_SECONDS, bgPaletteIndex(SEED))]
-    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
-    show({ active: true, seconds: SOLID_FROM_SECONDS })
-    wait(BG_BLEND_MS / 4)
-    // The main colour (the third of the ramp) goes from black to its colour: how far has it come?
-    const moved = away([colours()[2]], [start[2]]) / away([target[2]], [start[2]])
-    expect(moved).toBeGreaterThan(0.1)
-    expect(moved).toBeLessThan(0.2)
-    wait(BG_BLEND_MS / 2)
-    const movedThree = away([colours()[2]], [start[2]]) / away([target[2]], [start[2]])
-    expect(movedThree).toBeGreaterThan(0.8)
-    expect(movedThree).toBeLessThan(0.9)
-  })
-
-  it("come steadily closer to the new colours while they move", () => {
-    const target = [...bgRamp(SOLID_FROM_SECONDS, bgPaletteIndex(SEED))]
-    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
-    show({ active: true, seconds: SOLID_FROM_SECONDS })
-    const seen: number[] = [away(colours(), target)]
-    for (let i = 0; i < 4; i++) {
-      wait(BG_BLEND_MS / 4)
+    expect(target).toEqual([PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[2], PALETTE[2]])
+    const seen: number[] = []
+    for (let seconds = 0; seconds <= SOLID_FROM_SECONDS; seconds += 60) {
+      show({ active: true, seconds })
       seen.push(away(colours(), target))
     }
     for (let i = 1; i < seen.length; i++) expect(seen[i]).toBeLessThan(seen[i - 1])
     expect(seen.at(-1)).toBe(0)
   })
 
-  it("go on at the deep cut-off, and again at the flow cut-off", () => {
-    show({ active: true, seconds: SOLID_FROM_SECONDS + 5 })
+  it("go on to the next looks at the deep cut-off and at the flow cut-off", () => {
+    show({ active: true, seconds: SOLID_FROM_SECONDS })
     expect(colours()).toEqual([PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[2], PALETTE[2]])
     show({ active: true, seconds: DEEP_FROM_SECONDS })
-    wait(BG_BLEND_MS)
     expect(colours()).toEqual([PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[3], PALETTE[3]])
     show({ active: true, seconds: FLOW_FROM_SECONDS })
-    wait(BG_BLEND_MS)
     expect(colours()).toEqual([...PALETTE])
   })
 
-  it("leave no timer behind when the screen goes away in the middle of a colour step", () => {
-    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
-    show({ active: true, seconds: SOLID_FROM_SECONDS })
+  it("do not jump at a cut-off: one second before and one second after each of them the colours are within one level of each other", () => {
+    for (const cutOff of [SOLID_FROM_SECONDS, DEEP_FROM_SECONDS, FLOW_FROM_SECONDS]) {
+      show({ active: true, seconds: cutOff - 1 })
+      const before = [...colours()]
+      show({ active: true, seconds: cutOff + 1 })
+      const after = [...colours()]
+      before.forEach((colour, i) => {
+        const a = channels(colour)
+        const b = channels(after[i])
+        for (let c = 0; c < 3; c++) expect(Math.abs(a[c] - b[c])).toBeLessThanOrEqual(1)
+      })
+    }
+  })
+
+  it("leave no timer behind when the screen goes away", () => {
+    show({ active: true, seconds: 300 })
     wait(500)
     dispose()
     expect(vi.getTimerCount()).toBe(0)
@@ -470,20 +431,13 @@ describe("TimerBackground: lighting and fading", () => {
     expect(colours()).toEqual(kept)
   })
 
-  it("does not turn back while it fades after a colour step was on its way: it goes on to the colours it was moving to", () => {
-    const target = [...bgRamp(SOLID_FROM_SECONDS, bgPaletteIndex(SEED))]
-    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
-    show({ active: true, seconds: SOLID_FROM_SECONDS })
-    wait(3000)
+  it("keeps its colours while it fades, also in the middle of the way between two cut-offs, and does not jump to black", () => {
+    show({ active: true, seconds: 1200 })
+    const kept = [...colours()]
+    expect(kept).toEqual([...bgRamp(1200, bgPaletteIndex(SEED))])
     show({ active: false, seconds: 0, seed: "" })
-    let before = away(colours(), target)
-    expect(before).toBeGreaterThan(0)
-    for (let i = 0; i < 4; i++) {
-      wait(150)
-      const now = away(colours(), target)
-      expect(now).toBeLessThan(before)
-      before = now
-    }
+    wait(BG_FADE_MS - 100)
+    expect(colours()).toEqual(kept)
   })
 
   it("lights a new background for every new session", () => {
