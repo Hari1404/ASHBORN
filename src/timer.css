@@ -701,7 +701,7 @@
 /* AB:TIMER.LINE-TEXT:END */
 
 /* AB:TIMER.BG:START */
-/* The moving background (TimerBackground.tsx): it fills the whole screen, sits at the very bottom, is dimmed so that the white digits stay easy to read, and never catches a tap. It has its own black, so that the tint layer below colours only the rays and not the clear parts of the animation (CONNECTIONS.md C37). It fades in when a session starts and out when it ends. The fade time is the same as BG_FADE_MS in backgroundLook.ts (CONNECTIONS.md C38). */
+/* The moving background (TimerBackground.tsx): it fills the whole screen, sits at the very bottom, is dimmed so that the white digits stay easy to read, and never catches a tap. It has its own black, so that the screen is black before the library animation is made and while it fades (CONNECTIONS.md C37). It fades in when a session starts and out when it ends. The fade time is the same as BG_FADE_MS in backgroundLook.ts (CONNECTIONS.md C38). The opacity of 0.5 is the one number that decides how bright the whole background is: a higher number gives brighter colours and harder-to-read digits. */
 .ab-timer-bg {
   position: absolute;
   inset: 0;
@@ -719,12 +719,13 @@
   display: block;
 }
 
-/* The box of the library animation: TimerBackground.tsx gives it BG_RENDER_SCALE of the screen as its width and height and the stretch that brings it back to the whole screen (transform: scale). The library draws one pixel for every pixel of its box, so a half-size box draws a quarter of the pixels, and the browser stretches the soft rays over the screen. It starts in the top left corner and stretches from there (CONNECTIONS.md C38). */
-.ab-timer-bg-rays {
+/* The bottom of the screen is kept a little darker, so that the message that comes up from the bottom is easy to read: 45 percent black at the very bottom, gone at 60 percent of the height. It lies over the library animation and never catches a tap (CONNECTIONS.md C37). */
+.ab-timer-bg::after {
+  content: "";
   position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: 0 0;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0) 60%);
 }
 
 .ab-timer-bg[data-out="yes"] {
@@ -733,23 +734,6 @@
 
 .ab-timer[data-state="paused"] .ab-timer-bg {
   opacity: 0.2;
-}
-
-/* The tint layer over the library's white rays: white times a colour is that colour, black stays black (CONNECTIONS.md C37). Its z-index is higher than the z-index of the library's own box (z-[3]), or the white rays would be drawn over it. The colour is set by TimerBackground.tsx on this layer. */
-.ab-timer-bg-tint {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  mix-blend-mode: multiply;
-}
-
-/* The black layer that makes the light of the rays grow with the session (CONNECTIONS.md C37). It lies over the tint layer and over the whole box, plain black, and TimerBackground.tsx sets its opacity to 1 minus the light of the session (bgLight in backgroundLook.ts): mostly black at the start, gone when the light is full. Its z-index must stay higher than the tint's (4). */
-.ab-timer-bg-dim {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  background: #000;
-  pointer-events: none;
 }
 
 @keyframes ab-timer-bg-in {

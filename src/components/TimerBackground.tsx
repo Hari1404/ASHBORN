@@ -1,19 +1,19 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from "react"
-import SideRays from "@/components/SideRays"
-import { BG_COLOUR, BG_FADE_MS, BG_MOUNT_DELAY_MS, BG_RENDER_SCALE, BG_SETTINGS, bgDrawn, bgLight } from "@/lib/backgroundLook"
-import { BALL_BLEND_MS, ballTargetColour, blendHex } from "@/lib/ballLook"
+import Grainient from "@/components/Grainient"
+import { BG_BLEND_MS, BG_FADE_MS, BG_MOUNT_DELAY_MS, BG_SETTINGS, bgBlendRamp, bgDrawn, bgPaletteIndex, bgRamp } from "@/lib/backgroundLook"
 import { LITE_LEVEL } from "@/lib/lite"
 import { canDrawWebgl2, useMountDelay } from "@/lib/timerWarmup"
 
 // AB:TIMER.BG:START
 // The moving background of the Pro Timer screen. It is shown while a session runs or is paused, and it is plain black (nothing is drawn) when there is no session.
-// Library: src/components/SideRays.tsx (React Bits, never edited). It draws white rays on a clear background (the black behind it is the box of the background, see timer.css). This file lays a tint layer over it that multiplies the white with the colour of the session, so the rays get that colour (see CONNECTIONS.md C37). The library is never given a colour: a new colour would make it build its whole drawing again, many times a second.
-// The colour is the colour of the glowing ball at every moment: the same functions (ballTargetColour, blendHex) and the same time to move to the next colour (BALL_BLEND_MS) as TimerBall.tsx. It starts white and moves on at the quality steps of the session.
-// A new session lights a new background, like the ball: it is made again and starts white. When the session ends the background fades out for BG_FADE_MS and is then taken away. While it fades its colour stays where it was.
+// Library: src/components/Grainient.tsx (React Bits, never edited). It draws a slow flowing gradient with a little grain from a ramp of five colours (its `colors`). This file hands it the ramp of the session and nothing else changes: the ramp starts all black and gets its colours at 10, 30 and 90 minutes, moving to each new colour in BG_BLEND_MS (backgroundLook.ts, CONNECTIONS.md C37).
+// The library reads its `colors` again on its own while it runs and never builds its drawing again for them, so the ramp is simply given as a new list of five colours many times a second while it moves (useBlendedRamp). Every other setting is the same all the time (BG_SETTINGS).
+// The palette is the one of the glowing ball (bgPaletteIndex gives the same number as the ball for the same session), so the ball and the background are of the same colour family.
+// A new session lights a new background, like the ball: it is made again and starts black. When the session ends the background fades out for BG_FADE_MS and is then taken away. While it fades its colours stay where they were.
 // The background needs WebGL 2, like the ball. Without it, or when the library throws, or at lite level 2, nothing is drawn and the clocks still work (see CONNECTIONS.md C38).
 // Whether this browser can draw it (WebGL 2) is asked by canDrawWebgl2 (src/lib/timerWarmup.ts), once for the whole page and shared with the ball, and only when a session is shown: opening the screen does not ask the browser anything (see CONNECTIONS.md C38 and C44).
 // The background is not made in the same moment as the press of Start, and not in the same moment as the ball: its box and the library animation are made BG_MOUNT_DELAY_MS after the session lights it (useMountDelay in src/lib/timerWarmup.ts), before the glowing ball (BALL_MOUNT_DELAY_MS in src/lib/ballLook.ts), because the ball is the heavy one and is made last. The box has the fade in, so the fade in starts when the box is made. A session that ends during the wait never makes the background (see CONNECTIONS.md C47).
-// A person who asked their device for less motion gets the rays standing still. Read once, when the screen is made.
+// A person who asked their device for less motion gets the flow standing still (speed 0). Read once, when the screen is made.
 function wantsStillness(): boolean {
   try {
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -33,55 +33,33 @@ class BackgroundGuard extends Component<{ children: ReactNode }, { failed: boole
   }
 }
 
-// The colour on the way from the colour it has to the colour it should have. The first colour is taken at once (a page opened in the middle of a session shows the right colour at once). The same steps as in TimerBall.tsx.
-function useBlendedColour(target: string): string {
-  const [colour, setColour] = useState(target)
-  const current = useRef(target)
+// The five colours on the way from the ramp they have to the ramp they should have. The first ramp is taken at once (a page opened in the middle of a session shows the right colours at once). A new target in the middle of a blend starts from the colours the blend has reached, so nothing jumps.
+function useBlendedRamp(target: readonly string[]): readonly string[] {
+  const key = target.join(",")
+  const [ramp, setRamp] = useState<readonly string[]>(target)
+  const current = useRef<readonly string[]>(target)
   useEffect(() => {
-    if (current.current === target) return undefined
+    if (current.current.join(",") === key) return undefined
     const from = current.current
+    const to = key.split(",")
     const startedAt = performance.now()
     let frame = 0
     const step = (now: number) => {
-      const t = Math.min(1, (now - startedAt) / BALL_BLEND_MS)
-      current.current = blendHex(from, target, t)
-      setColour(current.current)
-      if (t < 1) frame = requestAnimationFrame(step)
+      const progress = Math.min(1, (now - startedAt) / BG_BLEND_MS)
+      current.current = bgBlendRamp(from, to, progress)
+      setRamp(current.current)
+      if (progress < 1) frame = requestAnimationFrame(step)
     }
     frame = requestAnimationFrame(step)
     return () => cancelAnimationFrame(frame)
-  }, [target])
-  return colour
+  }, [key])
+  return ramp
 }
 
-// The tint layer. The colour lives in this small part, so the library part above it is not drawn again while the colour moves.
-function Tint({ target }: { target: string }) {
-  const colour = useBlendedColour(target)
-  return <div className="ab-timer-bg-tint" style={{ backgroundColor: colour }} />
-}
-
-// One lit background. The screen makes it again for every new session, so its colour always starts at the colour of the first moment.
-function LitBackground({ target, light, still }: { target: string; light: number; still: boolean }) {
-  return (
-    <>
-      {/* The animation lives in a box that is only BG_RENDER_SCALE of the screen in width and height, and the css stretches the box back over the whole screen (ab-timer-bg-rays, CONNECTIONS.md C38). The library reads the size of its box, so it draws a quarter of the pixels. */}
-      <div
-        className="ab-timer-bg-rays"
-        style={{ width: (BG_RENDER_SCALE * 100).toFixed(2) + "%", height: (BG_RENDER_SCALE * 100).toFixed(2) + "%", transform: "scale(" + 1 / BG_RENDER_SCALE + ")" }}
-      >
-        <SideRays
-          rayColor1={BG_COLOUR}
-          rayColor2={BG_COLOUR}
-          speed={still ? 0 : BG_SETTINGS.speed}
-          tilt={BG_SETTINGS.tilt}
-          intensity={BG_SETTINGS.intensity}
-        />
-      </div>
-      <Tint target={target} />
-      {/* The black layer that makes the light grow with the session: thick at the start, thinner and thinner, gone when the light is full (bgLight in backgroundLook.ts, CONNECTIONS.md C37). Its opacity is set here and never on the library animation. */}
-      <div className="ab-timer-bg-dim" style={{ opacity: 1 - light }} />
-    </>
-  )
+// One lit background. The screen makes it again for every new session, so its colours always start at the ramp of the first moment.
+function LitBackground({ target, still }: { target: readonly string[]; still: boolean }) {
+  const colours = useBlendedRamp(target)
+  return <Grainient {...BG_SETTINGS} speed={still ? 0 : BG_SETTINGS.speed} colors={[...colours]} />
 }
 
 export default function TimerBackground({
@@ -99,15 +77,10 @@ export default function TimerBackground({
   const wasActive = useRef(active)
   const litSeed = useRef(seed)
 
-  // The colour the background moves towards. When the session ends the seconds and the seed are gone while the background is still fading: the colour of the last moment is kept, so it does not start to move towards white in the middle of the fade.
-  const target = ballTargetColour(seconds, seed)
+  // The ramp the background moves towards. When the session ends the seconds and the seed are gone while the background is still fading: the ramp of the last moment is kept, so it does not start to move towards black in the middle of the fade.
+  const target = bgRamp(seconds, bgPaletteIndex(seed))
   const [held, setHeld] = useState(target)
-  if (active && held !== target) setHeld(target)
-
-  // The light of the rays (bgLight in backgroundLook.ts, CONNECTIONS.md C37) follows the seconds of the session. Like the colour, the light of the last moment is kept while the background fades out: the seconds are 0 then, and without this the black layer would jump to its thickest in the middle of the fade.
-  const light = bgLight(seconds)
-  const [heldLight, setHeldLight] = useState(light)
-  if (active && heldLight !== light) setHeldLight(light)
+  if (active && held.join(",") !== target.join(",")) setHeld(target)
 
   // A new background is lit when a session starts, and also when the seed changes while a session is shown (another device ended the session and started a new one between two readings): the same rule as the glowing ball, so the two always start together.
   useEffect(() => {
@@ -129,7 +102,7 @@ export default function TimerBackground({
   return (
     <div className="ab-timer-bg" data-out={active ? undefined : "yes"} aria-hidden="true">
       <BackgroundGuard>
-        <LitBackground key={lit} target={active ? target : held} light={active ? light : heldLight} still={still} />
+        <LitBackground key={lit} target={active ? target : held} still={still} />
       </BackgroundGuard>
     </div>
   )

@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // The library files and the lite level are replaced by stand-ins: this file only tests what TimerBackground decides and what it hands to the library.
-// A real Side Rays needs WebGL 2, which the test browser (jsdom) does not have; the test that the real animation draws is the look in a real browser (see the owner's look at the end of the packet).
+// A real Grainient needs WebGL 2, which the test browser (jsdom) does not have; the test that the real animation draws is the look in a real browser (see the owner's look at the end of the packet).
 const state = vi.hoisted(() => ({
   lite: 0 as 0 | 1 | 2,
   props: [] as Record<string, unknown>[],
@@ -45,10 +45,10 @@ vi.mock("@/lib/ballLook", async (importOriginal) => {
   }
 })
 
-vi.mock("@/components/SideRays", async () => {
+vi.mock("@/components/Grainient", async () => {
   const { createElement: h, useEffect } = await import("react")
   return {
-    default: function RaysStandIn(props: Record<string, unknown>) {
+    default: function GrainientStandIn(props: Record<string, unknown>) {
       state.props.push(props)
       if (state.broken) throw new Error("the animation broke")
       useEffect(() => {
@@ -57,12 +57,12 @@ vi.mock("@/components/SideRays", async () => {
           state.unmounts++
         }
       }, [])
-      return h("div", { id: "siderays-stub" })
+      return h("div", { id: "grainient-stub" })
     },
   }
 })
 
-// The glowing ball is replaced too: it is only used to check that the background has the colour of the ball at every moment.
+// The glowing ball is replaced too: it is only used to check that the background has the colour family of the ball.
 vi.mock("@/components/CrystalizedBall", async () => {
   const { createElement: h } = await import("react")
   return {
@@ -73,8 +73,8 @@ vi.mock("@/components/CrystalizedBall", async () => {
   }
 })
 
-import { BG_FADE_MS, BG_RENDER_SCALE, BG_SETTINGS } from "@/lib/backgroundLook"
-import { BALL_BLEND_MS, BALL_FADE_MS, BALL_PALETTES, BALL_WHITE, ballPaletteIndex } from "@/lib/ballLook"
+import { BG_BLEND_MS, BG_FADE_MS, BG_PALETTES, BG_SETTINGS, bgPaletteIndex, bgRamp } from "@/lib/backgroundLook"
+import { BALL_FADE_MS, BALL_PALETTES, BALL_WHITE, ballPaletteIndex } from "@/lib/ballLook"
 import { DEEP_FROM_SECONDS, FLOW_FROM_SECONDS, SOLID_FROM_SECONDS } from "@/lib/timerMaths"
 import { forgetWarmup } from "@/lib/timerWarmup"
 import TimerBackground from "./TimerBackground"
@@ -87,7 +87,8 @@ const REAL_BALL_DELAY = (await vi.importActual<typeof import("@/lib/ballLook")>(
 // AB:TIMER.TESTS:START
 const timerCss = readFileSync("src/timer.css", "utf8")
 const SEED = "2026-10-07T10:00:00.123456+00:00"
-const PALETTE = BALL_PALETTES[ballPaletteIndex(SEED)]
+const OTHER_SEED = "2026-10-08T07:00:00.000001+00:00"
+const PALETTE = BG_PALETTES[bgPaletteIndex(SEED)]
 
 type BgProps = { active: boolean; seconds: number; seed: string }
 
@@ -149,15 +150,6 @@ function box(): HTMLElement {
   return found
 }
 
-function tintHex(): string {
-  const tint = container?.querySelector<HTMLElement>(".ab-timer-bg-tint") ?? null
-  if (tint === null) throw new Error("no tint layer")
-  const raw = tint.style.backgroundColor
-  const rgb = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(raw)
-  if (rgb === null) return raw
-  return "#" + [rgb[1], rgb[2], rgb[3]].map((v) => Number(v).toString(16).padStart(2, "0")).join("")
-}
-
 // How many times the page asked the browser for a context of any kind (the test context of the WebGL 2 check is the only reason to).
 function contextAsks(): number {
   return vi.mocked(HTMLCanvasElement.prototype.getContext).mock.calls.length
@@ -169,6 +161,11 @@ function lastProps(): Record<string, unknown> {
   return last
 }
 
+// The five colours the library was given the last time.
+function colours(): string[] {
+  return lastProps().colors as string[]
+}
+
 function lastBallColour(): string {
   const last = state.ballProps.at(-1)
   if (last === undefined) throw new Error("the ball was never drawn")
@@ -177,6 +174,17 @@ function lastBallColour(): string {
 
 function channels(hex: string): [number, number, number] {
   return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)]
+}
+
+// How far two ramps are from each other: the distance of all their channels together.
+function away(a: readonly string[], b: readonly string[]): number {
+  let sum = 0
+  a.forEach((colour, i) => {
+    const x = channels(colour)
+    const y = channels(b[i])
+    sum += (x[0] - y[0]) ** 2 + (x[1] - y[1]) ** 2 + (x[2] - y[2]) ** 2
+  })
+  return Math.sqrt(sum)
 }
 
 beforeEach(() => {
@@ -216,22 +224,19 @@ describe("TimerBackground: when it draws", () => {
     expect(state.props).toHaveLength(0)
   })
 
-  it("draws the animation and the tint layer in its box while a session runs, hidden from screen readers", () => {
+  it("draws the animation in its box while a session runs, hidden from screen readers", () => {
     show({ active: true })
     expect(box().getAttribute("aria-hidden")).toBe("true")
     expect(box().hasAttribute("data-out")).toBe(false)
-    expect(has("#siderays-stub")).toBe(true)
-    expect(has(".ab-timer-bg-tint")).toBe(true)
+    expect(box().querySelector("#grainient-stub")).not.toBeNull()
     expect(state.mounts).toBe(1)
   })
 
-  it("puts the tint layer after the animation, so that it is drawn over it", () => {
+  it("has no tint layer, no black layer and no stretched box any more: the library animation is all there is in its box", () => {
     show({ active: true })
-    const stub = container?.querySelector("#siderays-stub") ?? null
-    const tint = container?.querySelector(".ab-timer-bg-tint") ?? null
-    expect(stub).not.toBeNull()
-    expect(tint).not.toBeNull()
-    expect((stub as Element).compareDocumentPosition(tint as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    for (const old of [".ab-timer-bg-tint", ".ab-timer-bg-dim", ".ab-timer-bg-rays"]) expect(has(old)).toBe(false)
+    expect(box().children).toHaveLength(1)
+    expect(box().firstElementChild?.id).toBe("grainient-stub")
   })
 
   it("draws nothing when the browser cannot give WebGL 2, and the rest of the page stays", () => {
@@ -284,146 +289,159 @@ describe("TimerBackground: when it draws", () => {
 })
 
 describe("TimerBackground: what it hands to the library", () => {
-  it("uses the settings the owner chose (speed, tilt, intensity) and leaves every other setting of the library at its own default", () => {
+  it("gives it the studio settings of the owner and its five colours, and nothing else", () => {
     show({ active: true })
     const props = lastProps()
-    expect(props.speed).toBe(BG_SETTINGS.speed)
-    expect(props.tilt).toBe(13)
-    expect(props.intensity).toBe(2.8)
-    expect(Object.keys(props).sort()).toEqual(["intensity", "rayColor1", "rayColor2", "speed", "tilt"])
+    expect(Object.keys(props).sort()).toEqual([...Object.keys(BG_SETTINGS), "colors"].sort())
+    for (const [name, value] of Object.entries(BG_SETTINGS)) expect(props[name], name).toBe(value)
+    expect(props.colors).toHaveLength(5)
   })
 
-  it("gives the library white for both of its ray colours, so that the tint layer can colour them", () => {
-    show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
-    expect(lastProps().rayColor1).toBe("#ffffff")
-    expect(lastProps().rayColor2).toBe("#ffffff")
-  })
-
-  it("draws the rays on the laptop and on a phone (lite level 0 and 1)", () => {
+  it("draws the animation on the laptop and on a phone (lite level 0 and 1)", () => {
     show({ active: true })
-    expect(has("#siderays-stub")).toBe(true)
+    expect(has("#grainient-stub")).toBe(true)
     dispose()
     state.lite = 1
     show({ active: true })
-    expect(has("#siderays-stub")).toBe(true)
+    expect(has("#grainient-stub")).toBe(true)
   })
 
-  it("puts the animation in a box that is only BG_RENDER_SCALE of the screen, stretched back over the whole screen, so that it draws fewer pixels", () => {
+  it("lets the flow move at the chosen speed, and never lets the cursor or the start of the library in", () => {
     show({ active: true })
-    const rays = container?.querySelector<HTMLElement>(".ab-timer-bg-rays") ?? null
-    expect(rays).not.toBeNull()
-    expect(rays?.parentElement?.classList.contains("ab-timer-bg")).toBe(true)
-    expect(rays?.querySelector("#siderays-stub")).not.toBeNull()
-    expect(parseFloat(rays?.style.width ?? "")).toBeCloseTo(BG_RENDER_SCALE * 100, 5)
-    expect(parseFloat(rays?.style.height ?? "")).toBeCloseTo(BG_RENDER_SCALE * 100, 5)
-    expect(rays?.style.width.endsWith("%")).toBe(true)
-    expect(rays?.style.height.endsWith("%")).toBe(true)
-    const stretch = Number(/^scale\(([0-9.]+)\)$/.exec(rays?.style.transform ?? "")?.[1])
-    expect(stretch).toBeCloseTo(1 / BG_RENDER_SCALE, 5)
-    // The box shrunk by the scale and then stretched by 1 / scale covers the screen exactly.
-    expect((BG_RENDER_SCALE * 100 * stretch) / 100).toBeCloseTo(1, 5)
+    expect(lastProps().speed).toBe(BG_SETTINGS.speed)
+    expect(lastProps().interactive).toBe(false)
+    expect(lastProps().clickSwirl).toBe(false)
+    expect(lastProps().intro).toBe(false)
   })
 
-  it("lets the rays move at the chosen speed", () => {
-    show({ active: true })
-    expect(lastProps().speed).toBe(2.9)
-  })
-
-  it("lets the rays stand still for a person who asked their device for less motion", () => {
+  it("lets the flow stand still for a person who asked their device for less motion, and still gives it the colours", () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("prefers-reduced-motion"), media: query }))
-    show({ active: true })
+    show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
     expect(lastProps().speed).toBe(0)
+    expect(colours()).toEqual([...bgRamp(DEEP_FROM_SECONDS + 5, bgPaletteIndex(SEED))])
   })
 
-  it("never gives the library another colour or another setting while the colour moves, and does not make it again", () => {
+  it("never gives the library another setting while the colours move, and does not make it again", () => {
     show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
     show({ active: true, seconds: SOLID_FROM_SECONDS })
-    wait(BALL_BLEND_MS)
+    wait(BG_BLEND_MS)
     show({ active: true, seconds: DEEP_FROM_SECONDS })
-    wait(BALL_BLEND_MS)
+    wait(BG_BLEND_MS)
     show({ active: true, seconds: FLOW_FROM_SECONDS })
-    wait(BALL_BLEND_MS)
-    const written = new Set(state.props.map((p) => JSON.stringify(p)))
-    expect(written.size).toBe(1)
+    wait(BG_BLEND_MS)
+    const settingsOnly = new Set(state.props.map((p) => JSON.stringify({ ...p, colors: 0 })))
+    expect(settingsOnly.size).toBe(1)
     expect(state.mounts).toBe(1)
     expect(state.unmounts).toBe(0)
   })
 
-  it("does not draw the library part again while the colour moves (only the tint layer changes)", () => {
+  it("gives the library new colours while they move, and nothing more once they have arrived", () => {
     show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
     show({ active: true, seconds: SOLID_FROM_SECONDS })
     const before = state.props.length
-    wait(BALL_BLEND_MS)
-    expect(state.props.length).toBe(before)
+    wait(1000)
+    expect(state.props.length).toBeGreaterThan(before)
+    wait(BG_BLEND_MS)
+    const arrived = state.props.length
+    wait(5000)
+    expect(state.props.length).toBe(arrived)
+  })
+
+  it("always gives it five colours", () => {
+    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
+    show({ active: true, seconds: SOLID_FROM_SECONDS })
+    wait(BG_BLEND_MS)
+    for (const p of state.props) expect(p.colors).toHaveLength(5)
   })
 })
 
-describe("TimerBackground: the colour of the tint layer", () => {
-  it("is white at the start of a session", () => {
+describe("TimerBackground: the colours of the ramp", () => {
+  it("are all the black of the palette at the start of a session, so the screen is black", () => {
     show({ active: true, seconds: 0 })
-    expect(tintHex()).toBe(BALL_WHITE)
+    expect(colours()).toEqual([PALETTE[0], PALETTE[0], PALETTE[0], PALETTE[0], PALETTE[0]])
   })
 
-  it("shows the right colour at once when the page is opened in the middle of a session", () => {
+  it("show the right colours at once when the page is opened in the middle of a session", () => {
     show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
-    expect(tintHex()).toBe(PALETTE[1])
+    expect(colours()).toEqual([...bgRamp(DEEP_FROM_SECONDS + 5, bgPaletteIndex(SEED))])
+    expect(colours()).toEqual([PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[3], PALETTE[3]])
     expect(state.mounts).toBe(1)
   })
 
-  it("stays white until the solid cut-off", () => {
+  it("stay black until the solid cut-off", () => {
     show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
     wait(5000)
-    expect(tintHex()).toBe(BALL_WHITE)
+    expect(colours()).toEqual([...bgRamp(0, bgPaletteIndex(SEED))])
   })
 
-  it("moves from white to the first colour of the palette in exactly BALL_BLEND_MS, not at once", () => {
+  it("move from black to the first ramp in exactly BG_BLEND_MS, not at once", () => {
+    const start = [...bgRamp(0, bgPaletteIndex(SEED))]
+    const target = [...bgRamp(SOLID_FROM_SECONDS, bgPaletteIndex(SEED))]
     show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
     show({ active: true, seconds: SOLID_FROM_SECONDS })
-    expect(tintHex()).toBe(BALL_WHITE)
-    wait(BALL_BLEND_MS / 2)
-    const half = tintHex()
-    expect(half).not.toBe(BALL_WHITE)
-    expect(half).not.toBe(PALETTE[0])
-    const from = channels(BALL_WHITE)
-    const to = channels(PALETTE[0])
-    channels(half).forEach((value, i) => {
-      expect(value).toBeGreaterThanOrEqual(Math.min(from[i], to[i]))
-      expect(value).toBeLessThanOrEqual(Math.max(from[i], to[i]))
+    expect(colours()).toEqual(start)
+    wait(BG_BLEND_MS / 2)
+    const half = colours()
+    expect(half).not.toEqual(start)
+    expect(half).not.toEqual(target)
+    half.forEach((colour, i) => {
+      const from = channels(start[i])
+      const to = channels(target[i])
+      channels(colour).forEach((value, c) => {
+        expect(value).toBeGreaterThanOrEqual(Math.min(from[c], to[c]))
+        expect(value).toBeLessThanOrEqual(Math.max(from[c], to[c]))
+      })
     })
-    wait(BALL_BLEND_MS / 2 - 100)
-    expect(tintHex()).not.toBe(PALETTE[0])
-    wait(100)
-    expect(tintHex()).toBe(PALETTE[0])
+    // The smooth end of the blend is within one step of a channel of its target in the last moments, so the check "not there yet" is made two seconds before the end.
+    wait(BG_BLEND_MS / 2 - 2000)
+    expect(colours()).not.toEqual(target)
+    wait(2000)
+    expect(colours()).toEqual(target)
     wait(3000)
-    expect(tintHex()).toBe(PALETTE[0])
+    expect(colours()).toEqual(target)
   })
 
-  it("comes steadily closer to the new colour while it moves", () => {
-    const away = (hex: string): number => {
-      const a = channels(hex)
-      const b = channels(PALETTE[0])
-      return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
-    }
+  it("start slowly and end slowly: a quarter of the way in a colour has moved about 16 percent of the way, not 25", () => {
+    const start = [...bgRamp(0, bgPaletteIndex(SEED))]
+    const target = [...bgRamp(SOLID_FROM_SECONDS, bgPaletteIndex(SEED))]
     show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
     show({ active: true, seconds: SOLID_FROM_SECONDS })
-    const seen: number[] = [away(tintHex())]
+    wait(BG_BLEND_MS / 4)
+    // The main colour (the third of the ramp) goes from black to its colour: how far has it come?
+    const moved = away([colours()[2]], [start[2]]) / away([target[2]], [start[2]])
+    expect(moved).toBeGreaterThan(0.1)
+    expect(moved).toBeLessThan(0.2)
+    wait(BG_BLEND_MS / 2)
+    const movedThree = away([colours()[2]], [start[2]]) / away([target[2]], [start[2]])
+    expect(movedThree).toBeGreaterThan(0.8)
+    expect(movedThree).toBeLessThan(0.9)
+  })
+
+  it("come steadily closer to the new colours while they move", () => {
+    const target = [...bgRamp(SOLID_FROM_SECONDS, bgPaletteIndex(SEED))]
+    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
+    show({ active: true, seconds: SOLID_FROM_SECONDS })
+    const seen: number[] = [away(colours(), target)]
     for (let i = 0; i < 4; i++) {
-      wait(BALL_BLEND_MS / 4)
-      seen.push(away(tintHex()))
+      wait(BG_BLEND_MS / 4)
+      seen.push(away(colours(), target))
     }
     for (let i = 1; i < seen.length; i++) expect(seen[i]).toBeLessThan(seen[i - 1])
     expect(seen.at(-1)).toBe(0)
   })
 
-  it("goes on from the first colour to the second at the deep cut-off", () => {
+  it("go on at the deep cut-off, and again at the flow cut-off", () => {
     show({ active: true, seconds: SOLID_FROM_SECONDS + 5 })
-    expect(tintHex()).toBe(PALETTE[0])
+    expect(colours()).toEqual([PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[2], PALETTE[2]])
     show({ active: true, seconds: DEEP_FROM_SECONDS })
-    wait(BALL_BLEND_MS)
-    expect(tintHex()).toBe(PALETTE[1])
+    wait(BG_BLEND_MS)
+    expect(colours()).toEqual([PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[3], PALETTE[3]])
+    show({ active: true, seconds: FLOW_FROM_SECONDS })
+    wait(BG_BLEND_MS)
+    expect(colours()).toEqual([...PALETTE])
   })
 
-  it("leaves no timer behind when the screen goes away in the middle of a colour step", () => {
+  it("leave no timer behind when the screen goes away in the middle of a colour step", () => {
     show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
     show({ active: true, seconds: SOLID_FROM_SECONDS })
     wait(500)
@@ -444,29 +462,25 @@ describe("TimerBackground: lighting and fading", () => {
     expect(state.unmounts).toBe(1)
   })
 
-  it("keeps its colour while it fades, and does not start to move towards white", () => {
+  it("keeps its colours while it fades, and does not start to move towards black", () => {
     show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
-    expect(tintHex()).toBe(PALETTE[1])
+    const kept = [...colours()]
     show({ active: false, seconds: 0, seed: "" })
     wait(BG_FADE_MS - 100)
-    expect(tintHex()).toBe(PALETTE[1])
+    expect(colours()).toEqual(kept)
   })
 
-  it("does not turn back towards white while it fades after a colour step was on its way: it goes on to the colour it was moving to", () => {
-    const away = (hex: string): number => {
-      const a = channels(hex)
-      const b = channels(PALETTE[0])
-      return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
-    }
+  it("does not turn back while it fades after a colour step was on its way: it goes on to the colours it was moving to", () => {
+    const target = [...bgRamp(SOLID_FROM_SECONDS, bgPaletteIndex(SEED))]
     show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
     show({ active: true, seconds: SOLID_FROM_SECONDS })
-    wait(1000)
+    wait(3000)
     show({ active: false, seconds: 0, seed: "" })
-    let before = away(tintHex())
+    let before = away(colours(), target)
     expect(before).toBeGreaterThan(0)
     for (let i = 0; i < 4; i++) {
       wait(150)
-      const now = away(tintHex())
+      const now = away(colours(), target)
       expect(now).toBeLessThan(before)
       before = now
     }
@@ -492,12 +506,11 @@ describe("TimerBackground: lighting and fading", () => {
     expect(box().hasAttribute("data-out")).toBe(false)
   })
 
-  it("lights a new background when the seed changes while a session is shown, and it starts white", () => {
+  it("lights a new background when the seed changes while a session is shown, and it starts black", () => {
     show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
-    expect(tintHex()).toBe(PALETTE[1])
-    show({ active: true, seconds: 0, seed: "2026-10-08T07:00:00.000001+00:00" })
+    show({ active: true, seconds: 0, seed: OTHER_SEED })
     expect(state.mounts).toBe(2)
-    expect(tintHex()).toBe(BALL_WHITE)
+    expect(colours()).toEqual([...bgRamp(0, bgPaletteIndex(OTHER_SEED))])
   })
 
   it("does not light a new background when only the seed text is gone for a moment of a running session", () => {
@@ -506,13 +519,14 @@ describe("TimerBackground: lighting and fading", () => {
     expect(state.mounts).toBe(1)
   })
 
-  it("starts a new session white, also after a long one", () => {
-    show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
-    expect(tintHex()).toBe(PALETTE[1])
+  it("starts a new session black, also after a long one", () => {
+    show({ active: true, seconds: FLOW_FROM_SECONDS + 5 })
+    expect(colours()).toEqual([...PALETTE])
     show({ active: false, seconds: 0, seed: "" })
     wait(BG_FADE_MS)
-    show({ active: true, seconds: 0, seed: "2026-10-08T07:00:00.000001+00:00" })
-    expect(tintHex()).toBe(BALL_WHITE)
+    show({ active: true, seconds: 0, seed: OTHER_SEED })
+    const black = BG_PALETTES[bgPaletteIndex(OTHER_SEED)][0]
+    expect(colours()).toEqual([black, black, black, black, black])
   })
 })
 
@@ -546,7 +560,7 @@ describe("TimerBackground: the wait before the library animation is made", () =>
     expect(has(".ab-timer-bg")).toBe(false)
     wait(1)
     expect(has(".ab-timer-bg")).toBe(true)
-    expect(has("#siderays-stub")).toBe(true)
+    expect(has("#grainient-stub")).toBe(true)
     expect(state.mounts).toBe(1)
     expect(contextAsks()).toBe(1)
   })
@@ -564,10 +578,10 @@ describe("TimerBackground: the wait before the library animation is made", () =>
     expect(state.ballProps.length).toBeGreaterThan(0)
   })
 
-  it("makes the background with the right colour and light at once, also for a page opened in the middle of a session", () => {
+  it("makes the background with the right colours at once, also for a page opened in the middle of a session", () => {
     show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
     wait(REAL_BG_DELAY)
-    expect(tintHex()).toBe(PALETTE[1])
+    expect(colours()).toEqual([...bgRamp(DEEP_FROM_SECONDS + 5, bgPaletteIndex(SEED))])
     expect(state.mounts).toBe(1)
   })
 
@@ -598,7 +612,7 @@ describe("TimerBackground: the wait before the library animation is made", () =>
     wait(REAL_BG_DELAY - 1)
     expect(has(".ab-timer-bg")).toBe(false)
     wait(1)
-    expect(has("#siderays-stub")).toBe(true)
+    expect(has("#grainient-stub")).toBe(true)
     expect(state.mounts).toBe(2)
   })
 
@@ -609,7 +623,7 @@ describe("TimerBackground: the wait before the library animation is made", () =>
     show({ active: true, seconds: SOLID_FROM_SECONDS + 1 })
     expect(state.mounts).toBe(1)
     expect(state.unmounts).toBe(0)
-    expect(has("#siderays-stub")).toBe(true)
+    expect(has("#grainient-stub")).toBe(true)
   })
 
   it("asks the browser for WebGL 2 once the wait is over, and draws nothing when the answer is no", () => {
@@ -628,47 +642,36 @@ describe("TimerBackground: when the library breaks", () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {})
     state.broken = true
     show({ active: true })
-    expect(has("#siderays-stub")).toBe(false)
-    expect(has(".ab-timer-bg-tint")).toBe(false)
+    expect(has("#grainient-stub")).toBe(false)
     expect(has("#after")).toBe(true)
     quiet.mockRestore()
   })
 })
 
-describe("TimerBackground: the same colour as the glowing ball", () => {
-  it("has the colour of the ball at every moment of a long session, also in the middle of every colour step", () => {
-    showBoth({ active: true, seconds: 0 })
-    expect(tintHex()).toBe(lastBallColour())
-    for (const seconds of [0, SOLID_FROM_SECONDS - 1, SOLID_FROM_SECONDS, SOLID_FROM_SECONDS + 30, DEEP_FROM_SECONDS - 1, DEEP_FROM_SECONDS, FLOW_FROM_SECONDS - 1, FLOW_FROM_SECONDS, FLOW_FROM_SECONDS * 2]) {
-      showBoth({ active: true, seconds })
-      expect(tintHex()).toBe(lastBallColour())
-      for (let i = 0; i < 18; i++) {
-        wait(250)
-        expect(tintHex()).toBe(lastBallColour())
-      }
+describe("TimerBackground: the same colour family as the glowing ball", () => {
+  it("uses the palette of the ball for the same session: the ball's last colour and the background's last ramp come from the palette with the same number", () => {
+    for (const seed of [SEED, OTHER_SEED, "2026-10-09T18:30:12.987654+00:00", "2026-10-10T03:15:45.555555+00:00"]) {
+      const index = ballPaletteIndex(seed)
+      expect(bgPaletteIndex(seed)).toBe(index)
+      showBoth({ active: true, seconds: FLOW_FROM_SECONDS + 5, seed })
+      expect(colours()).toEqual([...BG_PALETTES[index]])
+      expect(lastBallColour()).toBe(BALL_PALETTES[index][2])
+      dispose()
+      state.props = []
+      state.ballProps = []
     }
-    expect(tintHex()).toBe(PALETTE[2])
   })
 
-  it("has the colour of the ball when the page is opened in the middle of a session", () => {
-    showBoth({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
-    expect(tintHex()).toBe(PALETTE[1])
-    expect(lastBallColour()).toBe(PALETTE[1])
-  })
-
-  it("starts white together with a new ball for the next session, also after a long one", () => {
+  it("starts a new session together with a new ball: the background black, the ball white", () => {
     showBoth({ active: true, seconds: FLOW_FROM_SECONDS + 5 })
     showBoth({ active: false, seconds: 0, seed: "" })
     wait(Math.max(BG_FADE_MS, BALL_FADE_MS))
     expect(has(".ab-timer-bg")).toBe(false)
     expect(has(".ab-timer-ball")).toBe(false)
-    showBoth({ active: true, seconds: 0, seed: "2026-10-08T07:00:00.000001+00:00" })
-    expect(tintHex()).toBe(BALL_WHITE)
+    showBoth({ active: true, seconds: 0, seed: OTHER_SEED })
+    const black = BG_PALETTES[ballPaletteIndex(OTHER_SEED)][0]
+    expect(colours()).toEqual([black, black, black, black, black])
     expect(lastBallColour()).toBe(BALL_WHITE)
-    for (let i = 0; i < 4; i++) {
-      wait(500)
-      expect(tintHex()).toBe(lastBallColour())
-    }
   })
 })
 
@@ -713,31 +716,21 @@ describe("the css of the background", () => {
     expect(quiet).toContain("animation: none;")
   })
 
-  it("has a tint layer that multiplies the white rays with its colour, over the whole box", () => {
-    const tint = block(".ab-timer-bg-tint")
-    expect(tint).toContain("mix-blend-mode: multiply;")
-    expect(tint).toContain("position: absolute;")
-    expect(tint).toContain("inset: 0;")
-  })
-
-  it("has a plain black behind the rays, so that the tint layer colours only the rays and not the empty parts of the canvas", () => {
+  it("has its own plain black, so the screen is black before the animation is made and while it fades", () => {
     expect(block(".ab-timer-bg")).toContain("background: #000;")
   })
 
-  it("draws the tint layer above the library's own box, which has a z-index of its own", () => {
-    const library = readFileSync("src/components/SideRays.tsx", "utf8")
-    const libraryZ = Number(/z-\[(\d+)\]/.exec(library)?.[1])
-    const tintZ = Number(/z-index:\s*(\d+);/.exec(block(".ab-timer-bg-tint"))?.[1])
-    expect(libraryZ).toBeGreaterThan(0)
-    expect(tintZ).toBeGreaterThan(libraryZ)
+  it("keeps the bottom a little darker, with a layer over the animation that never catches a tap", () => {
+    const shade = block(".ab-timer-bg::after")
+    expect(shade).toContain('content: "";')
+    expect(shade).toContain("position: absolute;")
+    expect(shade).toContain("inset: 0;")
+    expect(shade).toContain("pointer-events: none;")
+    expect(shade).toContain("linear-gradient(to top, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0) 60%)")
   })
 
-  it("has a box for the library animation that starts in the top left corner and stretches from there, so the stretched picture covers the screen", () => {
-    const rays = block(".ab-timer-bg-rays")
-    expect(rays).toContain("position: absolute;")
-    expect(rays).toContain("top: 0;")
-    expect(rays).toContain("left: 0;")
-    expect(rays).toContain("transform-origin: 0 0;")
+  it("has no rule left for the tint layer, the black layer or the stretched box of the old rays", () => {
+    for (const old of [".ab-timer-bg-tint", ".ab-timer-bg-dim", ".ab-timer-bg-rays", "mix-blend-mode"]) expect(timerCss).not.toContain(old)
   })
 
   it("lets the canvas of the library fill its place without a gap under it", () => {
@@ -759,7 +752,7 @@ describe("the css of the background", () => {
     }
   })
 
-  it("gives the line under the dial a dark shadow, so that it can be read over a bright ray", () => {
+  it("gives the line under the dial a dark shadow, so that it can be read over a bright colour", () => {
     expect(block(".ab-timer-note")).toContain("text-shadow:")
   })
 })
