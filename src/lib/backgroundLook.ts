@@ -4,22 +4,21 @@ import { FLOW_FROM_SECONDS } from "@/lib/timerMaths"
 
 // AB:TIMER.BG-LOOK:START
 // The look of the moving background of the Pro Timer screen, as plain values and a few functions: no screen, no clock of its own.
-// The background is the React Bits animation Grainient: a slow flowing gradient with a little grain. It draws its picture from a ramp of five colours (its `colors`). The ramp of a session starts all black and grows from the dark end: the dark shade and the main colour come in at the first colour step, the lighter tint at the second, the lightest tint at the third (bgRamp below, and CONNECTIONS.md C37).
+// The background is a slow flowing gradient with a little grain, drawn by our own canvas (src/components/BackgroundCanvas.tsx and src/lib/backgroundRender.ts, from Packet 08C; before that it was the React Bits animation Grainient). It draws its picture from a ramp of five colours (its `colors`). The ramp of a session starts all black and grows from the dark end: the dark shade and the main colour come in at the first colour step, the lighter tint at the second, the lightest tint at the third (bgRamp below, and CONNECTIONS.md C37).
 // The colour steps (10, 30 and 90 minutes) and the choice of palette are the ones of the glowing ball (src/lib/ballLook.ts), so the background and the ball always have the same colour family.
-// The library reads its `colors` again on its own while it runs and does not build its drawing again for them, so a colour step is a smooth blend from the old ramp to the new one (bgBlendRamp), given to the library as a new list of five colours many times a second while it moves (see TimerBackground.tsx).
+// The canvas reads its `colors` again on its own while it runs and does not build its drawing again for them, so a colour step is a smooth blend from the old ramp to the new one (bgBlendRamp), given to the canvas as a new list of five colours many times a second while it moves (see TimerBackground.tsx).
 // The automated tests are in src/lib/backgroundLook.test.ts. Run them with: npm test
 
 // How long the background takes to fade out when the session ends, in milliseconds. The css fades for the same time (see CONNECTIONS.md C38).
 export const BG_FADE_MS = 700
 // How long the ramp takes to move from one colour step to the next, in milliseconds. It is slower than the glowing ball (BALL_BLEND_MS in src/lib/ballLook.ts): the background is a big soft picture, and a slow change reads as light changing, not as a switch.
 export const BG_BLEND_MS = 12000
-// How long after a session lights the background the library animation is made, in milliseconds. It is shorter than BALL_MOUNT_DELAY_MS (src/lib/ballLook.ts): the background is made first because it is cheap to draw, and the heavy glowing ball is made after it, so the work of the two never lands in the same moment (see CONNECTIONS.md C47). The box of the background (its black and its fade in) appears when the animation is made, so the fade in starts then.
+// How long after a session lights the background its canvas is made, in milliseconds. It is shorter than BALL_MOUNT_DELAY_MS (src/lib/ballLook.ts): the background is made first because it is cheap to draw, and the heavy glowing ball is made after it, so the work of the two never lands in the same moment (see CONNECTIONS.md C47). The box of the background (its black and its fade in) appears when the canvas is made, so the fade in starts then.
 export const BG_MOUNT_DELAY_MS = 300
 
-// The settings of the animation, as chosen by the owner in the blend preview. Every other setting of the library keeps its own default. The colours are not here: they come from the ramp of the session.
-// The flow never stops (speed 1) and never answers the cursor, a click or the start of the library (a timer screen is not a toy). The grain stands still, so it does not flicker. The library draws one pixel for every pixel of the screen (dpr 1) and draws its picture at half of that size itself, so no half-size box is needed.
+// The settings of the animation, as chosen by the owner in the blend preview. The colours are not here: they come from the ramp of the session.
+// The flow never stops (speed 1) and never answers the cursor, a click or a touch (the canvas has no way to listen to them: a timer screen is not a toy). The grain stands still, so it does not flicker. The canvas draws one pixel for every pixel of the screen (dpr 1).
 export const BG_SETTINGS = {
-  type: "linear",
   angle: 55,
   speed: 1,
   flow: 0.8,
@@ -28,11 +27,6 @@ export const BG_SETTINGS = {
   silk: 0.35,
   grainAmount: 0.08,
   grainSize: 1.2,
-  grainAnimated: false,
-  interactive: false,
-  stir: 0,
-  clickSwirl: false,
-  intro: false,
   dpr: 1,
 } as const
 

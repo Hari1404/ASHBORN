@@ -701,7 +701,7 @@
 /* AB:TIMER.LINE-TEXT:END */
 
 /* AB:TIMER.BG:START */
-/* The moving background (TimerBackground.tsx): it fills the whole screen, sits at the very bottom, is dimmed so that the white digits stay easy to read, and never catches a tap. It has its own black, so that the screen is black before the library animation is made and while it fades (CONNECTIONS.md C37). It fades in when a session starts and out when it ends. The fade time is the same as BG_FADE_MS in backgroundLook.ts (CONNECTIONS.md C38). The opacity of 0.5 is the one number that decides how bright the whole background is: a higher number gives brighter colours and harder-to-read digits. */
+/* The moving background (TimerBackground.tsx): it fills the whole screen, sits at the very bottom, is dimmed so that the white digits stay easy to read, and never catches a tap. It has its own black, so that the screen is black before the canvas is made and while it fades (CONNECTIONS.md C37). It fades in when a session starts and out when it ends. The fade time is the same as BG_FADE_MS in backgroundLook.ts (CONNECTIONS.md C38). The opacity of 0.5 is the one number that decides how bright the whole background is: a higher number gives brighter colours and harder-to-read digits. */
 .ab-timer-bg {
   position: absolute;
   inset: 0;
@@ -719,7 +719,7 @@
   display: block;
 }
 
-/* The bottom of the screen is kept a little darker, so that the message that comes up from the bottom is easy to read: 45 percent black at the very bottom, gone at 60 percent of the height. It lies over the library animation and never catches a tap (CONNECTIONS.md C37). */
+/* The bottom of the screen is kept a little darker, so that the message that comes up from the bottom is easy to read: 45 percent black at the very bottom, gone at 60 percent of the height. It lies over the canvas and never catches a tap (CONNECTIONS.md C37). */
 .ab-timer-bg::after {
   content: "";
   position: absolute;

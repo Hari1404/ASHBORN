@@ -47,7 +47,6 @@ describe("the timing of the background", () => {
 
 describe("the settings of the animation", () => {
   it("are the ones the owner chose in the studio", () => {
-    expect(BG_SETTINGS.type).toBe("linear")
     expect(BG_SETTINGS.angle).toBe(55)
     expect(BG_SETTINGS.flow).toBe(0.8)
     expect(BG_SETTINGS.speed).toBe(1)
@@ -58,15 +57,11 @@ describe("the settings of the animation", () => {
     expect(BG_SETTINGS.grainSize).toBe(1.2)
   })
 
-  it("keep the grain still and switch the cursor and the start of the library off", () => {
-    expect(BG_SETTINGS.grainAnimated).toBe(false)
-    expect(BG_SETTINGS.interactive).toBe(false)
-    expect(BG_SETTINGS.stir).toBe(0)
-    expect(BG_SETTINGS.clickSwirl).toBe(false)
-    expect(BG_SETTINGS.intro).toBe(false)
+  it("are only the settings the background canvas has: nothing for the cursor, a click, a touch or a start (the canvas cannot listen to them, and its grain always stands still)", () => {
+    expect(Object.keys(BG_SETTINGS).sort()).toEqual(["angle", "dpr", "flow", "grainAmount", "grainSize", "scale", "silk", "softness", "speed"])
   })
 
-  it("draw one pixel for every pixel of the screen (the library draws its picture at half of that)", () => {
+  it("draw one pixel for every pixel of the screen", () => {
     expect(BG_SETTINGS.dpr).toBe(1)
   })
 })

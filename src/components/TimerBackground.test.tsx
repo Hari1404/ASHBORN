@@ -5,8 +5,8 @@ import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// The library files and the lite level are replaced by stand-ins: this file only tests what TimerBackground decides and what it hands to the library.
-// A real Grainient needs WebGL 2, which the test browser (jsdom) does not have; the test that the real animation draws is the look in a real browser (see the owner's look at the end of the packet).
+// The canvas of the background and the lite level are replaced by stand-ins: this file only tests what TimerBackground decides and what it hands to the canvas.
+// A real BackgroundCanvas needs WebGL 2, which the test browser (jsdom) does not have: its own tests (src/components/BackgroundCanvas.test.tsx) use a fake graphics context, and the test that the real animation draws is the look in a real browser (see the owner's look at the end of the packet).
 const state = vi.hoisted(() => ({
   lite: 0 as 0 | 1 | 2,
   props: [] as Record<string, unknown>[],
@@ -24,7 +24,7 @@ vi.mock("@/lib/lite", () => ({
   },
 }))
 
-// The waits before the library animations are made (BG_MOUNT_DELAY_MS and BALL_MOUNT_DELAY_MS) are 0 in every test but the ones of the describe "the wait before the library animation is made", which use the real waits.
+// The waits before the background canvas and the library ball are made (BG_MOUNT_DELAY_MS and BALL_MOUNT_DELAY_MS) are 0 in every test but the ones of the describe "the wait before the background canvas is made", which use the real waits.
 vi.mock("@/lib/backgroundLook", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/backgroundLook")>()
   return {
@@ -45,10 +45,10 @@ vi.mock("@/lib/ballLook", async (importOriginal) => {
   }
 })
 
-vi.mock("@/components/Grainient", async () => {
+vi.mock("@/components/BackgroundCanvas", async () => {
   const { createElement: h, useEffect } = await import("react")
   return {
-    default: function GrainientStandIn(props: Record<string, unknown>) {
+    default: function BackgroundCanvasStandIn(props: Record<string, unknown>) {
       state.props.push(props)
       if (state.broken) throw new Error("the animation broke")
       useEffect(() => {
@@ -57,7 +57,7 @@ vi.mock("@/components/Grainient", async () => {
           state.unmounts++
         }
       }, [])
-      return h("div", { id: "grainient-stub" })
+      return h("div", { id: "canvas-stub" })
     },
   }
 })
@@ -161,7 +161,7 @@ function lastProps(): Record<string, unknown> {
   return last
 }
 
-// The five colours the library was given the last time.
+// The five colours the canvas was given the last time.
 function colours(): string[] {
   return lastProps().colors as string[]
 }
@@ -228,15 +228,15 @@ describe("TimerBackground: when it draws", () => {
     show({ active: true })
     expect(box().getAttribute("aria-hidden")).toBe("true")
     expect(box().hasAttribute("data-out")).toBe(false)
-    expect(box().querySelector("#grainient-stub")).not.toBeNull()
+    expect(box().querySelector("#canvas-stub")).not.toBeNull()
     expect(state.mounts).toBe(1)
   })
 
-  it("has no tint layer, no black layer and no stretched box any more: the library animation is all there is in its box", () => {
+  it("has no tint layer, no black layer and no stretched box any more: the canvas is all there is in its box", () => {
     show({ active: true })
     for (const old of [".ab-timer-bg-tint", ".ab-timer-bg-dim", ".ab-timer-bg-rays"]) expect(has(old)).toBe(false)
     expect(box().children).toHaveLength(1)
-    expect(box().firstElementChild?.id).toBe("grainient-stub")
+    expect(box().firstElementChild?.id).toBe("canvas-stub")
   })
 
   it("draws nothing when the browser cannot give WebGL 2, and the rest of the page stays", () => {
@@ -288,7 +288,7 @@ describe("TimerBackground: when it draws", () => {
   })
 })
 
-describe("TimerBackground: what it hands to the library", () => {
+describe("TimerBackground: what it hands to the canvas", () => {
   it("gives it the studio settings of the owner and its five colours, and nothing else", () => {
     show({ active: true })
     const props = lastProps()
@@ -299,19 +299,17 @@ describe("TimerBackground: what it hands to the library", () => {
 
   it("draws the animation on the laptop and on a phone (lite level 0 and 1)", () => {
     show({ active: true })
-    expect(has("#grainient-stub")).toBe(true)
+    expect(has("#canvas-stub")).toBe(true)
     dispose()
     state.lite = 1
     show({ active: true })
-    expect(has("#grainient-stub")).toBe(true)
+    expect(has("#canvas-stub")).toBe(true)
   })
 
-  it("lets the flow move at the chosen speed, and never lets the cursor or the start of the library in", () => {
+  it("lets the flow move at the chosen speed, and gives the canvas nothing to listen to the cursor, a click or a touch with", () => {
     show({ active: true })
     expect(lastProps().speed).toBe(BG_SETTINGS.speed)
-    expect(lastProps().interactive).toBe(false)
-    expect(lastProps().clickSwirl).toBe(false)
-    expect(lastProps().intro).toBe(false)
+    for (const name of ["interactive", "clickSwirl", "intro", "stir"]) expect(name in lastProps()).toBe(false)
   })
 
   it("lets the flow stand still for a person who asked their device for less motion, and still gives it the colours", () => {
@@ -321,7 +319,7 @@ describe("TimerBackground: what it hands to the library", () => {
     expect(colours()).toEqual([...bgRamp(DEEP_FROM_SECONDS + 5, bgPaletteIndex(SEED))])
   })
 
-  it("never gives the library another setting while the colours move, and does not make it again", () => {
+  it("never gives the canvas another setting while the colours move, and does not make it again", () => {
     show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
     show({ active: true, seconds: SOLID_FROM_SECONDS })
     wait(BG_BLEND_MS)
@@ -335,7 +333,7 @@ describe("TimerBackground: what it hands to the library", () => {
     expect(state.unmounts).toBe(0)
   })
 
-  it("gives the library new colours while they move, and nothing more once they have arrived", () => {
+  it("gives the canvas new colours while they move, and nothing more once they have arrived", () => {
     show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
     show({ active: true, seconds: SOLID_FROM_SECONDS })
     const before = state.props.length
@@ -530,7 +528,7 @@ describe("TimerBackground: lighting and fading", () => {
   })
 })
 
-describe("TimerBackground: the wait before the library animation is made", () => {
+describe("TimerBackground: the wait before the background canvas is made", () => {
   beforeEach(() => {
     state.bgDelay = REAL_BG_DELAY
     state.ballDelay = REAL_BALL_DELAY
@@ -545,7 +543,7 @@ describe("TimerBackground: the wait before the library animation is made", () =>
     expect(REAL_BALL_DELAY - REAL_BG_DELAY).toBeGreaterThanOrEqual(300)
   })
 
-  it("makes no box and no library animation in the moment of the press of Start, and asks the browser nothing then", () => {
+  it("makes no box and no canvas in the moment of the press of Start, and asks the browser nothing then", () => {
     show({ active: true })
     expect(has(".ab-timer-bg")).toBe(false)
     expect(state.props).toHaveLength(0)
@@ -560,7 +558,7 @@ describe("TimerBackground: the wait before the library animation is made", () =>
     expect(has(".ab-timer-bg")).toBe(false)
     wait(1)
     expect(has(".ab-timer-bg")).toBe(true)
-    expect(has("#grainient-stub")).toBe(true)
+    expect(has("#canvas-stub")).toBe(true)
     expect(state.mounts).toBe(1)
     expect(contextAsks()).toBe(1)
   })
@@ -612,7 +610,7 @@ describe("TimerBackground: the wait before the library animation is made", () =>
     wait(REAL_BG_DELAY - 1)
     expect(has(".ab-timer-bg")).toBe(false)
     wait(1)
-    expect(has("#grainient-stub")).toBe(true)
+    expect(has("#canvas-stub")).toBe(true)
     expect(state.mounts).toBe(2)
   })
 
@@ -623,7 +621,7 @@ describe("TimerBackground: the wait before the library animation is made", () =>
     show({ active: true, seconds: SOLID_FROM_SECONDS + 1 })
     expect(state.mounts).toBe(1)
     expect(state.unmounts).toBe(0)
-    expect(has("#grainient-stub")).toBe(true)
+    expect(has("#canvas-stub")).toBe(true)
   })
 
   it("asks the browser for WebGL 2 once the wait is over, and draws nothing when the answer is no", () => {
@@ -637,12 +635,12 @@ describe("TimerBackground: the wait before the library animation is made", () =>
   })
 })
 
-describe("TimerBackground: when the library breaks", () => {
+describe("TimerBackground: when the canvas breaks", () => {
   it("leaves the background out and keeps the rest of the page", () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {})
     state.broken = true
     show({ active: true })
-    expect(has("#grainient-stub")).toBe(false)
+    expect(has("#canvas-stub")).toBe(false)
     expect(has("#after")).toBe(true)
     quiet.mockRestore()
   })
@@ -733,7 +731,7 @@ describe("the css of the background", () => {
     for (const old of [".ab-timer-bg-tint", ".ab-timer-bg-dim", ".ab-timer-bg-rays", "mix-blend-mode"]) expect(timerCss).not.toContain(old)
   })
 
-  it("lets the canvas of the library fill its place without a gap under it", () => {
+  it("lets the canvas fill its place without a gap under it", () => {
     expect(block(".ab-timer-bg canvas")).toContain("display: block;")
   })
 
