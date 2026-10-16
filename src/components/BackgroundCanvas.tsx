@@ -115,6 +115,7 @@ export default function BackgroundCanvas(props: BackgroundCanvasProps) {
     let phase = 0
     let ratio = 1
     let rampKey = ""
+    let drawn = false
 
     const draw = () => {
       if (pipeline === null || gl.isContextLost()) return
@@ -143,6 +144,7 @@ export default function BackgroundCanvas(props: BackgroundCanvasProps) {
       gl.uniform2f(at.uGrain, u.grain[0], u.grain[1])
       gl.uniform1f(at.uShade, u.shade)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
+      drawn = true
     }
 
     const frame = (now: number) => {
@@ -164,8 +166,11 @@ export default function BackgroundCanvas(props: BackgroundCanvasProps) {
       const box = host.getBoundingClientRect()
       ratio = latest.current.dpr ?? Math.min(window.devicePixelRatio || 1, 1.5)
       const [width, height] = canvasPixels(box.width, box.height, ratio)
+      const changed = canvas.width !== width || canvas.height !== height
       if (canvas.width !== width) canvas.width = width
       if (canvas.height !== height) canvas.height = height
+      // Setting the width or the height empties the canvas, and the browser paints right after the resize observers have run, before the next frame: without a picture drawn here, that paint is an empty (black) picture, once for every size step. The first picture of a canvas still waits for the first frame.
+      if (changed && drawn) draw()
       wakeUp()
     }
 

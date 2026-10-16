@@ -811,6 +811,36 @@ describe("BackgroundCanvas: the size of the canvas", () => {
     expect(lastFrame().uRes).toEqual([1000, 500])
   })
 
+  it("draws at the new size at once when the box changes after a picture was drawn (a resize empties the canvas, and the browser paints before the next frame)", () => {
+    render()
+    nextFrame()
+    const before = ctx().frames.length
+    sizeObservedBox(400, 300)
+    expect(ctx().frames).toHaveLength(before + 1)
+    expect(lastFrame().uRes).toEqual([400, 300])
+    expect(called(ctx(), "viewport").at(-1)).toEqual([0, 0, 400, 300])
+    nextFrame()
+    expect(lastFrame().uRes).toEqual([400, 300])
+  })
+
+  it("draws at once also when only the height changes, and when the picture stands still (speed 0)", () => {
+    render({ speed: 0 })
+    nextFrame()
+    const before = ctx().frames.length
+    sizeObservedBox(800, 500)
+    expect(ctx().frames).toHaveLength(before + 1)
+    expect(lastFrame().uRes).toEqual([800, 500])
+  })
+
+  it("draws nothing extra when the box is measured again at the same size, and waits for the first frame for its very first picture", () => {
+    render()
+    expect(ctx().frames).toHaveLength(0)
+    nextFrame()
+    const before = ctx().frames.length
+    sizeObservedBox(800, 600)
+    expect(ctx().frames).toHaveLength(before)
+  })
+
   it("does not touch the canvas again when the box has not changed size (that would clear it)", () => {
     render()
     const widthSet = vi.spyOn(HTMLCanvasElement.prototype, "width", "set")
