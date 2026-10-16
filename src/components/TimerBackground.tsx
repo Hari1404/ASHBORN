@@ -13,6 +13,7 @@ import { canDrawWebgl2, useMountDelay } from "@/lib/timerWarmup"
 // The background needs WebGL 2, like the ball. Without it, or when the canvas throws, or at lite level 2, nothing is drawn and the clocks still work (see CONNECTIONS.md C38).
 // Whether this browser can draw it (WebGL 2) is asked by canDrawWebgl2 (src/lib/timerWarmup.ts), once for the whole page and shared with the ball, and only when a session is shown: opening the screen does not ask the browser anything (see CONNECTIONS.md C38 and C44).
 // The background is not made in the same moment as the press of Start, and not in the same moment as the ball: its box and its canvas are made BG_MOUNT_DELAY_MS after the session lights it (useMountDelay in src/lib/timerWarmup.ts), before the glowing ball (BALL_MOUNT_DELAY_MS in src/lib/ballLook.ts), because the ball is the heavy one and is made last. The box has the fade in, so the fade in starts when the box is made. A session that ends during the wait never makes the background (see CONNECTIONS.md C47).
+// While the session is paused (`paused`, given by the screen, as it is given to the glowing ball) the flow stands still too: a still picture costs no frames, so a paused session, with the stop alert left open or the phone left on the table, does not keep the graphics chip busy. At Resume the flow goes on from the same place (the canvas does not jump, see CONNECTIONS.md C52). The paused screen is also dimmed, in the css (CONNECTIONS.md C37).
 // A person who asked their device for less motion gets the flow standing still (speed 0). Read once, when the screen is made.
 function wantsStillness(): boolean {
   try {
@@ -56,7 +57,7 @@ function useBlendedRamp(target: readonly string[]): readonly string[] {
   return ramp
 }
 
-// One lit background. The screen makes it again for every new session, so its colours always start at the ramp of the first moment.
+// One lit background. The screen makes it again for every new session, so its colours always start at the ramp of the first moment. `still` is true when the flow has to stand still: less motion was asked for, or the session is paused.
 function LitBackground({ target, still }: { target: readonly string[]; still: boolean }) {
   const colours = useBlendedRamp(target)
   return <BackgroundCanvas {...BG_SETTINGS} speed={still ? 0 : BG_SETTINGS.speed} colors={colours} />
@@ -64,10 +65,12 @@ function LitBackground({ target, still }: { target: readonly string[]; still: bo
 
 export default function TimerBackground({
   active,
+  paused,
   seconds,
   seed,
 }: {
   active: boolean
+  paused: boolean
   seconds: number
   seed: string
 }) {
@@ -102,7 +105,7 @@ export default function TimerBackground({
   return (
     <div className="ab-timer-bg" data-out={active ? undefined : "yes"} aria-hidden="true">
       <BackgroundGuard>
-        <LitBackground key={lit} target={active ? target : held} still={still} />
+        <LitBackground key={lit} target={active ? target : held} still={still || paused} />
       </BackgroundGuard>
     </div>
   )

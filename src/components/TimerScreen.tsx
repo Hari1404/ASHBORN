@@ -16,7 +16,7 @@ import "../timer.css"
 // The Pro Timer screen. It is shown at the page address #timer (SignedInStub.tsx chooses it, see CONNECTIONS.md C30).
 // Big clock: the seconds of the running session. Small clock under it: the total of the day, saved sessions plus the running one.
 // Behind the big clock sits the glowing ball (TimerBall.tsx). It lights when a session starts, changes colour as the session gets deeper, stops and dims when paused, and fades when the session ends.
-// Behind everything, over the whole screen, sits the moving background (TimerBackground.tsx, drawn by our own canvas). It is the first thing inside the main element, it has a colour of the same family as the ball (the same palette number) and starts black, and the screen is black without a session (see CONNECTIONS.md C37 and C38).
+// Behind everything, over the whole screen, sits the moving background (TimerBackground.tsx, drawn by our own canvas). It is the first thing inside the main element, it has a colour of the same family as the ball (the same palette number) and starts black, and the screen is black without a session (see CONNECTIONS.md C37 and C38). It is told when the session is paused, and then its flow stands still, as the ball does.
 // Start and Pause / Resume are normal taps. End Session is the library Hold Button (src/components/HoldButton.tsx, never edited): hold it until it is full. It does not end the session: it opens the stop alert (StopAlert.tsx, the last thing inside the main element), which pauses the session and offers I'M DONE and GO BACK IN (see CONNECTIONS.md C43).
 // After GO BACK IN the comeback message (Comeback.tsx) floats over the screen for a few seconds, while the hook has one (see CONNECTIONS.md C48). The milestone message (Milestone.tsx) floats at the bottom for 30 seconds, while the hook has one (see CONNECTIONS.md C51). Both sit just before the stop alert, so the stop alert stays the last thing inside the main element.
 // The ball sits in a box that is larger than the dial, and the ball is a share of that box (see CONNECTIONS.md C31).
@@ -47,7 +47,7 @@ export default function TimerScreen() {
 
   return (
     <main className="ab-timer" data-state={timer.status} data-link={timer.link}>
-      <TimerBackground active={timer.status !== "idle"} seconds={timer.seconds} seed={timer.ringSeed} />
+      <TimerBackground active={timer.status !== "idle"} paused={timer.status === "paused"} seconds={timer.seconds} seed={timer.ringSeed} />
       <div className="ab-timer-dial">
         <TimerBall
           active={timer.status !== "idle"}

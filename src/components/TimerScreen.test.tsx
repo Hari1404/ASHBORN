@@ -261,16 +261,17 @@ describe("TimerScreen: the background", () => {
   it("tells the background that no session is running when idle", () => {
     show({ status: "idle", seconds: 0 })
     expect(lastBackground().active).toBe(false)
+    expect(lastBackground().paused).toBe(false)
   })
 
-  it("hands the seconds and the seed of a running session to the background, and nothing else", () => {
+  it("hands the seconds and the seed of a running session to the background, and that it is not paused, and nothing else", () => {
     show({ status: "running", seconds: 3725, ringSeed: SEED })
-    expect(lastBackground()).toEqual({ active: true, seconds: 3725, seed: SEED })
+    expect(lastBackground()).toEqual({ active: true, paused: false, seconds: 3725, seed: SEED })
   })
 
-  it("keeps the background lit while the session is paused", () => {
+  it("keeps the background lit while the session is paused, and tells it that the session is paused (its flow stands still then)", () => {
     show({ status: "paused", seconds: 1800, ringSeed: SEED })
-    expect(lastBackground()).toEqual({ active: true, seconds: 1800, seed: SEED })
+    expect(lastBackground()).toEqual({ active: true, paused: true, seconds: 1800, seed: SEED })
   })
 
   it("puts the background first inside the screen, before the dial, so that everything else is drawn over it", () => {

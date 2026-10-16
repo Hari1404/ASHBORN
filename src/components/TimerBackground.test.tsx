@@ -90,7 +90,7 @@ const SEED = "2026-10-07T10:00:00.123456+00:00"
 const OTHER_SEED = "2026-10-08T07:00:00.000001+00:00"
 const PALETTE = BG_PALETTES[bgPaletteIndex(SEED)]
 
-type BgProps = { active: boolean; seconds: number; seed: string }
+type BgProps = { active: boolean; paused: boolean; seconds: number; seed: string }
 
 let root: Root | null = null
 let container: HTMLElement | null = null
@@ -106,14 +106,14 @@ function mountPoint(): void {
 }
 
 function show(over: Partial<BgProps> = {}): void {
-  const props: BgProps = { active: true, seconds: 0, seed: SEED, ...over }
+  const props: BgProps = { active: true, paused: false, seconds: 0, seed: SEED, ...over }
   mountPoint()
   act(() => root?.render(createElement("div", null, createElement(TimerBackground, props), createElement("p", { id: "after" }, "after"))))
 }
 
 // The background and the glowing ball side by side, given the same seconds and the same seed, as the screen does.
 function showBoth(over: Partial<BgProps> = {}): void {
-  const props: BgProps = { active: true, seconds: 0, seed: SEED, ...over }
+  const props: BgProps = { active: true, paused: false, seconds: 0, seed: SEED, ...over }
   mountPoint()
   act(() =>
     root?.render(
@@ -317,6 +317,43 @@ describe("TimerBackground: what it hands to the canvas", () => {
     show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
     expect(lastProps().speed).toBe(0)
     expect(colours()).toEqual([...bgRamp(DEEP_FROM_SECONDS + 5, bgPaletteIndex(SEED))])
+  })
+
+  it("stands the flow still while the session is paused and lets it go on at Resume, without making the canvas again", () => {
+    show({ active: true, seconds: DEEP_FROM_SECONDS + 5 })
+    const running = lastProps()
+    expect(running.speed).toBe(BG_SETTINGS.speed)
+    show({ active: true, paused: true, seconds: DEEP_FROM_SECONDS + 5 })
+    expect(lastProps()).toEqual({ ...running, speed: 0 })
+    expect(colours()).toEqual([...bgRamp(DEEP_FROM_SECONDS + 5, bgPaletteIndex(SEED))])
+    show({ active: true, paused: false, seconds: DEEP_FROM_SECONDS + 5 })
+    expect(lastProps()).toEqual(running)
+    expect(state.mounts).toBe(1)
+    expect(state.unmounts).toBe(0)
+  })
+
+  it("stands still from the first picture when the page is opened in the middle of a paused session", () => {
+    show({ active: true, paused: true, seconds: 1800 })
+    expect(state.props.length).toBeGreaterThan(0)
+    expect(state.props.every((p) => p.speed === 0)).toBe(true)
+  })
+
+  it("keeps the flow still after Resume for a person who asked their device for less motion", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("prefers-reduced-motion"), media: query }))
+    show({ active: true, paused: true, seconds: 600 })
+    expect(lastProps().speed).toBe(0)
+    show({ active: true, paused: false, seconds: 600 })
+    expect(lastProps().speed).toBe(0)
+  })
+
+  it("keeps moving the colours while the session is paused, so a colour step that was on its way still arrives", () => {
+    show({ active: true, seconds: SOLID_FROM_SECONDS - 1 })
+    show({ active: true, seconds: SOLID_FROM_SECONDS })
+    wait(BG_BLEND_MS / 2)
+    show({ active: true, paused: true, seconds: SOLID_FROM_SECONDS })
+    wait(BG_BLEND_MS)
+    expect(colours()).toEqual([...bgRamp(SOLID_FROM_SECONDS, bgPaletteIndex(SEED))])
+    expect(lastProps().speed).toBe(0)
   })
 
   it("never gives the canvas another setting while the colours move, and does not make it again", () => {
