@@ -201,7 +201,7 @@ export function earlierMinutes(lateSeconds: number): number | null {
   return late >= MILESTONE_EARLIER_FROM_SECONDS ? Math.floor(late / 60) : null
 }
 
-// True when the message is shown within one normal step of its milestone. Only then are the lines about the glowing ball and the rays of light true (they speak of the moment of the milestone).
+// True when the message is shown within one normal step of its milestone. Only then is the line about the glowing ball true (it speaks of the moment of the milestone).
 export function milestoneOnTime(lateSeconds: number): boolean {
   return wholeSeconds(lateSeconds) <= MAX_LIVE_STEP_SECONDS
 }

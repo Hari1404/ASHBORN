@@ -1,6 +1,5 @@
 import { blendHex, ballPaletteIndex, ballStep } from "@/lib/ballLook"
 import type { LiteLevel } from "@/lib/lite"
-import { FLOW_FROM_SECONDS } from "@/lib/timerMaths"
 
 // AB:TIMER.BG-LOOK:START
 // The look of the moving background of the Pro Timer screen, as plain values and a few functions: no screen, no clock of its own.
@@ -66,15 +65,6 @@ export function bgEase(progress: number): number {
 export function bgBlendRamp(from: readonly string[], to: readonly string[], progress: number): readonly string[] {
   const moved = bgEase(progress)
   return to.map((colour, i) => (moved >= 1 || from[i] === undefined ? colour : blendHex(from[i], colour, moved)))
-}
-
-// The light of the old rays. The screen does not use it any more; the tests of the stop alert lines and of the milestone lines still check what some lines say about it, until the lines are rewritten (Packet 08B) and this part is removed.
-export const BG_LIGHT_START = 0.3
-export const BG_LIGHT_FULL_AT_SECONDS = FLOW_FROM_SECONDS
-export function bgLight(seconds: number): number {
-  if (!(seconds > 0)) return BG_LIGHT_START
-  if (seconds >= BG_LIGHT_FULL_AT_SECONDS) return 1
-  return BG_LIGHT_START + (1 - BG_LIGHT_START) * (seconds / BG_LIGHT_FULL_AT_SECONDS)
 }
 
 // Whether the background is drawn: the full look (laptop) and lite level 1 (phones) draw it, lite level 2 draws nothing (the screen stays plain black, see src/lib/lite.ts).

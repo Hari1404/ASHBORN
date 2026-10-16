@@ -33,7 +33,7 @@ import {
 // The stop alert: Hold to end session does NOT end the session. stop pauses it (so the minutes of the line stay true while the alert is on the screen), picks one line for the seconds it stopped at, and opens the alert. end (I'M DONE) then ends it, goBack (GO BACK IN) resumes it. The time spent on the alert is never counted, because the session is paused. See CONNECTIONS.md C43.
 // GO BACK IN does NOT resume the session: it closes the alert and the session stays paused as it is. The person presses Resume when he is ready (Packet 06E). goBack only remembers that the next Resume of THIS pause is a comeback (pendingRef: the seconds it stopped at, the session and the pause).
 // The comeback message: when that Resume really runs the session again, resume picks one comeback line for the seconds the session stopped at (pickComebackLine) and keeps it as long as that session runs. A Resume that is not the one after GO BACK IN (or after any other pause) gets none. The screen shows it for a few seconds (Comeback.tsx) and then calls clearComeback. See CONNECTIONS.md C48.
-// The milestone message (Packet 07B): when the session reaches 15, 25, 45, 60, 90, 120, 150 or 180 minutes the message WAITS until the person is looking (the page is visible), the session is running and no other milestone message is on the screen, and is then shown at once. A message that nobody saw is shown the moment the person looks again, up to 10 minutes after its milestone (timerMaths.ts, milestoneWaiting), with the number of minutes it is late when that is 5 or more (earlier); after 10 minutes it is given up for good. Only the newest milestone is shown, and each is shown at most once per session. The lines about the glowing ball and the rays are only picked when the message is on time (milestoneOnTime) and the screen draws them (the option drawn, given by TimerScreen.tsx); a late message gets the general lines only. The screen shows it for 30 seconds (Milestone.tsx) and then calls clearMilestone.
+// The milestone message (Packet 07B): when the session reaches 15, 25, 45, 60, 90, 120, 150 or 180 minutes the message WAITS until the person is looking (the page is visible), the session is running and no other milestone message is on the screen, and is then shown at once. A message that nobody saw is shown the moment the person looks again, up to 10 minutes after its milestone (timerMaths.ts, milestoneWaiting), with the number of minutes it is late when that is 5 or more (earlier); after 10 minutes it is given up for good. Only the newest milestone is shown, and each is shown at most once per session. The line about the glowing ball is only picked when the message is on time (milestoneOnTime) and the screen draws the ball (the option drawn, given by TimerScreen.tsx); a late message gets the general lines only. The screen shows it for 30 seconds (Milestone.tsx) and then calls clearMilestone.
 // What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43, C45, C48 and C51. The names used by the screen are in TimerView.
 
 export const POLL_ONLINE_MS = 30000
@@ -75,10 +75,10 @@ type ComebackState = { line: string; startedAt: string }
 // The comeback message as the screen sees it.
 export type ComebackView = { line: string }
 
-// What the screen tells the hook about what it draws. The hook never asks the browser itself (the ball and the rays need WebGL 2 and a lite level, which only the screen knows, see CONNECTIONS.md C51). Without it nothing counts as drawn.
+// What the screen tells the hook about what it draws. The hook never asks the browser itself (the ball needs WebGL 2, which only the screen knows, see CONNECTIONS.md C51). Without it nothing counts as drawn.
 export type TimerOptions = { drawn?: () => MilestoneVisuals }
 
-const NOTHING_DRAWN: MilestoneVisuals = { ball: false, rays: false }
+const NOTHING_DRAWN: MilestoneVisuals = { ball: false }
 
 // The milestone message as the hook keeps it: the line (its [effect:words] marks still in it), how many minutes late it is when that is 5 or more (null for no tag), and the one session it belongs to (started_at).
 type MilestoneState = { line: string; earlier: number | null; startedAt: string }

@@ -12,7 +12,7 @@ import {
 // The lines the stop alert shows after Hold to end session, the comeback lines (shown for a few seconds after GO BACK IN), and the choice of one line of each kind. Pure functions: no screen, no clock of its own (the random numbers are handed in, so the tests can fix them).
 // Both kinds of lines are grouped in banks by the length of the session when it was stopped. The banks are named by their minutes (from5 = 5 minutes and more), never by the quality words of the timer, because the cut-offs are not the same (see CONNECTIONS.md C41). The stop alert has eight banks. The comeback lines have six: only the banks of sessions shorter than 45 minutes, because only those sessions can go back in.
 // Every line uses the marks of lineMarkup.ts (see CONNECTIONS.md C42): {n}, {time} and {left} are filled with the real numbers of the session, and [effect:words] marks the keywords that get an effect when the line is shown.
-// Rules that every line follows (the tests of stopAlertLines.test.ts check them): a number written in a line is a cut-off and is true for the bank it sits in; "flow" is only said from 90 minutes; the word "milestone" is never used (it is the name of the messages of MILESTONE_MINUTES); a line about the glowing ball or the rays of light is true for every second of its bank (the tests ask ballStep and bgLight); a line never says the time of day, how many sessions there were before, or that a saved session counted for nothing; no line of a bank without GO BACK IN says "go back in"; every line has one to three marked keywords.
+// Rules that every line follows (the tests of stopAlertLines.test.ts check them): a number written in a line is a cut-off and is true for the bank it sits in; "flow" is only said from 90 minutes; the word "milestone" is never used (it is the name of the messages of MILESTONE_MINUTES); a line about the glowing ball is true for every second of its bank (the tests ask ballStep); no line talks about rays of light (the moving background has none); a line never says the time of day, how many sessions there were before, or that a saved session counted for nothing; no line of a bank without GO BACK IN says "go back in"; every line has one to three marked keywords.
 // The automated tests are in src/lib/stopAlertLines.test.ts. Run them with: npm test
 
 export type BankId = "under1" | "from1" | "from5" | "from10" | "from20" | "from30" | "from45" | "from90"
@@ -240,7 +240,7 @@ export const STOP_ALERT_BANKS: Readonly<Record<BankId, readonly string[]>> = {
     "{time}. At this point your chair deserves [glow:a pension]. Go outside and look at something far away.",
     "{time}. You stayed, and the [glow:flow] stayed with you. It doesn't do that for everyone.",
     "The ball changed colour three times for you. That's not decoration, that's a [glow:standing ovation].",
-    "The rays reached full strength. The only other thing at full strength right now is probably your [heat:focus].",
+    "{time} at full strength. Even the [glow:sun] gets cloudy days. You just [heat:skipped them].",
     "{time} in [glow:flow]. Your phone filed a missing person report and then [ghost:gave up].",
     "You've been gone from everything for {time}. That used to be called [heat:concentration].",
     "If focus were a currency, you'd now be [rise:insufferable] at parties.",

@@ -3,15 +3,15 @@ import { MILESTONE_MINUTES } from "@/lib/timerMaths"
 
 // AB:TIMER.MILESTONE-LINES:START
 // The lines of the milestone messages of the Pro Timer (shown while a session runs, when it reaches 15, 25, 45, 60, 90, 120, 150 and 180 minutes) and the choice of one line. Pure functions: no screen, no clock of its own (the random numbers are handed in, so the tests can fix them).
-// Every milestone has a bank of 36 lines: 34 general lines and two lines about the glowing ball and the rays of light (ballLine and raysLine). The two are kept apart because a line about the ball is false when no ball is drawn (a browser without WebGL 2) and a line about the rays is false when no rays are drawn (a browser without WebGL 2, and lite level 2, see src/lib/backgroundLook.ts). The choice only takes them when the caller says they are drawn (MilestoneVisuals).
+// Every milestone has a bank of 36 lines: 35 general lines and one line about the glowing ball (ballLine). The ball line is kept apart because a line about the ball is false when no ball is drawn (a browser without WebGL 2). The choice only takes it when the caller says the ball is drawn (MilestoneVisuals). Until Packet 08B every bank also had a line about rays of light; the moving background has no rays any more (Packets 08A and 08C), so those eight lines were rewritten as general lines and no line may talk about rays.
 // Every line uses the marks of lineMarkup.ts (see CONNECTIONS.md C42): [effect:words] marks the keywords that get an effect when the line is shown. There are NO slots ({n}, {time}, {left}): a milestone is at an exact minute, so a line writes its number out.
-// Rules that every line follows (the tests of milestoneLines.test.ts check them, see CONNECTIONS.md C50): one to three marked keywords; no number is written that is not true at that milestone (the tests keep a list of the numbers each bank may use); "flow" is only said from 90 minutes and never the quality words solid and deep; the word "milestone" is never used; no time of day and nothing about sessions before this one; a line about the ball or the rays is true for every second the message can be on the screen.
+// Rules that every line follows (the tests of milestoneLines.test.ts check them, see CONNECTIONS.md C50): one to three marked keywords; no number is written that is not true at that milestone (the tests keep a list of the numbers each bank may use); "flow" is only said from 90 minutes and never the quality words solid and deep; the word "milestone" is never used; no time of day and nothing about sessions before this one; a line about the ball is true for every second the message can be on the screen; no line talks about rays of light.
 // The choice is shuffled like the stop alert lines (stopAlertLines.ts, nextIndex): no line comes twice before all lines of the pool have been shown, and a new round never starts with the line that ended the old one. The queues are kept by the hook for as long as the screen lives.
 // The words were written by the planner with the owner and are kept in ASHBORN_MILESTONE_LINES.md (the same words, 36 per milestone).
 // The automated tests are in src/lib/milestoneLines.test.ts. Run them with: npm test
 
 export type MilestoneMinute = (typeof MILESTONE_MINUTES)[number]
-export type MilestoneBank = { lines: readonly string[]; ballLine: string; raysLine: string }
+export type MilestoneBank = { lines: readonly string[]; ballLine: string }
 
 // How long a milestone message stays on the screen, and how long its fade out takes, in milliseconds. The fade time is the same number as the transition of .ab-milestone in timer.css (see CONNECTIONS.md C51). It stays 30 seconds (the person may be reading at the edge of the screen, and the message is only worth anything if it is seen), from the moment the person is looking at it. The same message can be shown late (up to 10 minutes after its milestone, with a tag), see CONNECTIONS.md C51.
 export const MILESTONE_SHOW_MS = 30000
@@ -55,9 +55,9 @@ export const MILESTONE_BANKS: Readonly<Record<MilestoneMinute, MilestoneBank>> =
       "15 minutes of making beats 15 minutes of scrolling every time. You [rise:chose right].",
       "Fifteen minutes. A fridge somewhere is [shake:calling your name]. It will still be a fridge in half an hour.",
       "Plot twist: the thing you were avoiding is [rise:15 minutes] smaller than it was.",
+      "Fifteen minutes in, the task already looks [rise:clearer] than it did at the start. Work does that to a problem.",
     ],
     ballLine: "The ball has changed colour once since you started. It's [heat:warming up], and so are you.",
-    raysLine: "The rays are brighter than when you started, and they're still [rise:growing].",
   },
   // 25 minutes: the middle.
   25: {
@@ -96,9 +96,9 @@ export const MILESTONE_BANKS: Readonly<Record<MilestoneMinute, MilestoneBank>> =
       "A 'quick look' would have swallowed these 25 minutes whole, and burped. You have [glow:work] instead.",
       "Somewhere between minute 20 and minute 30 the work stops being a chore and starts being [rise:yours].",
       "A sip of water, a slow breath, then back to it. The next 20 minutes buy you a [glow:real session].",
+      "Around minute 25 the work stops being a pile and starts to have a [rise:shape]. Stay and see what it turns into.",
     ],
     ballLine: "About five minutes until the ball changes colour again. [heat:Go and earn it].",
-    raysLine: "The rays are at about half of their full light, and still [rise:climbing].",
   },
   // 45 minutes: it counts.
   45: {
@@ -137,9 +137,9 @@ export const MILESTONE_BANKS: Readonly<Record<MilestoneMinute, MilestoneBank>> =
       "Somewhere a feed is refreshing itself for an audience of nobody. [ghost:Tragic.] Unrelated to you.",
       "First half done. Sip some water, unclench your jaw, and play the [heat:second half].",
       "These 45 minutes didn't need a speech. They needed [heat:you].",
+      "At 45 minutes the work tends to start [glow:paying you back]. Ideas come easier, and the noise gets quieter.",
     ],
     ballLine: "The ball is on its second colour, with one change left, 45 minutes away. [rise:Keep climbing].",
-    raysLine: "The rays are about two-thirds of the way to full light. The room is [glow:filling up] around you.",
   },
   // 60 minutes: one hour.
   60: {
@@ -178,9 +178,9 @@ export const MILESTONE_BANKS: Readonly<Record<MilestoneMinute, MilestoneBank>> =
       "Your to-do list has asked for a moment. It wants to say [rise:thank you]. It's a bit emotional.",
       "Breathe out slowly. There's a deeper, [rise:better] version of this session waiting at 90.",
       "60 minutes in: everything you add now sits on top of something [rise:sturdy].",
+      "An hour in, the work has gone from cold start to [heat:warm room]. Don't open the window now.",
     ],
     ballLine: "One colour change left for the ball, 30 minutes away. You're in the [heat:long game] now.",
-    raysLine: "The rays are about three-quarters of the way to full light. Another half hour and they [glow:blaze].",
   },
   // 90 minutes: flow begins.
   90: {
@@ -219,9 +219,9 @@ export const MILESTONE_BANKS: Readonly<Record<MilestoneMinute, MilestoneBank>> =
       "The best part of focus is that nobody can see it. The second best part is what it [rise:leaves behind].",
       "Meanwhile, the world kept all of its notifications on. You were somewhere [glow:better].",
       "Thirty more minutes would make this a [glow:two-hour] session. You don't have to decide that now. Just [heat:keep going].",
+      "No motivation needed at this point. The work is running on [glow:you] now, and you're running on [heat:habit].",
     ],
     ballLine: "The ball just took its last colour. There's nothing after this one, only more of it. [glow:Stay in it].",
-    raysLine: "The rays have reached full strength. Whatever is lighting this room now, it's [glow:you].",
   },
   // 120 minutes: two hours.
   120: {
@@ -260,9 +260,9 @@ export const MILESTONE_BANKS: Readonly<Record<MilestoneMinute, MilestoneBank>> =
       "Breaking: two hours of sustained attention reported at one desk. A nearby sofa declined to comment, but looked [shake:jealous].",
       "Be [glow:glad] you started. Two hours later, it's still the best decision on the table.",
       "Thirty minutes of [glow:flow] behind you, and the body is still on board. Keep it that way with a sip and a [heat:slow breath].",
+      "The work has no shoulders, wrists or lower back to look after. You do, and they [shake:keep score].",
     ],
     ballLine: "The ball has held its last colour for 30 minutes. It looks [glow:right] in it.",
-    raysLine: "The rays have been at full strength for 30 minutes. They have no shoulders to roll. [heat:You do].",
   },
   // 150 minutes: the long haul.
   150: {
@@ -301,9 +301,9 @@ export const MILESTONE_BANKS: Readonly<Record<MilestoneMinute, MilestoneBank>> =
       "Think of the hours as laps. This one's a long [rise:lap], and you're taking it [glow:smoothly].",
       "There's a stage of focus where you stop pushing and start [rise:carrying]. Notice that it's gentler.",
       "A nearby clock would like it known that 150 minutes went by without a single [strike:complaint]. It's suspicious.",
+      "Machines never ask for a break. You're allowed to, and the work will be [rise:better] for it. Ask for a stretch.",
     ],
     ballLine: "The ball has held its last colour for an hour now. A whole hour of [glow:glowing], and it isn't tired.",
-    raysLine: "The rays have been at full strength for an hour. They never ask for a break. You're allowed to [glow:ask for a stretch].",
   },
   // 180 minutes: the peak.
   180: {
@@ -342,16 +342,16 @@ export const MILESTONE_BANKS: Readonly<Record<MilestoneMinute, MilestoneBank>> =
       "Three hours is the top of this particular hill. The view from here is [glow:very good]. Look at it for a moment.",
       "There's a quiet pride in having used three hours on purpose. Hold it for a moment, then [rise:rest into it].",
       "Your calendar would like it noted that three hours were [glow:very well spent]. It doesn't often get to say that.",
+      "Even the brightest lamp gets a dimmer switch. Three hours in, a little [ghost:dimming] is design, not defeat.",
     ],
     ballLine: "The ball has held its last colour for 90 minutes. It's built for this. You're [rise:built for it too].",
-    raysLine: "The rays have been at full strength for 90 minutes. Even light is allowed a [ghost:dimmer switch].",
   },
 }
 
-// What is drawn on the screen right now. A line about the ball is only chosen when the ball is drawn, a line about the rays only when the rays are drawn.
-export type MilestoneVisuals = { ball: boolean; rays: boolean }
+// What is drawn on the screen right now. The line about the ball is only chosen when the ball is drawn.
+export type MilestoneVisuals = { ball: boolean }
 
-// The shuffled queues of the milestone lines. One queue for every milestone and every combination of drawn things (the pool of lines is a different list for each combination, so a queue is never used for another pool).
+// The shuffled queues of the milestone lines. One queue for every milestone and for the ball drawn or not (the pool of lines is a different list for each, so a queue is never used for another pool).
 export type MilestoneQueues = Partial<Record<string, BankQueue>>
 export type PickedMilestone = { minute: MilestoneMinute; index: number; line: string; queues: MilestoneQueues }
 
@@ -359,12 +359,11 @@ export function isMilestoneMinute(minute: number): minute is MilestoneMinute {
   return (MILESTONE_MINUTES as readonly number[]).includes(minute)
 }
 
-// The lines that may be shown at this milestone: the 34 general lines, then the ball line and the rays line when they are drawn (34, 35 or 36 lines).
+// The lines that may be shown at this milestone: the 35 general lines, then the ball line when the ball is drawn (35 or 36 lines).
 export function milestonePool(minute: MilestoneMinute, visuals: MilestoneVisuals): readonly string[] {
   const bank = MILESTONE_BANKS[minute]
   const pool = [...bank.lines]
   if (visuals.ball) pool.push(bank.ballLine)
-  if (visuals.rays) pool.push(bank.raysLine)
   return pool
 }
 
@@ -377,7 +376,7 @@ export function pickMilestoneLine(
 ): PickedMilestone | null {
   if (!isMilestoneMinute(minute)) return null
   const pool = milestonePool(minute, visuals)
-  const key = minute + ":" + (visuals.ball ? "b" : "-") + (visuals.rays ? "r" : "-")
+  const key = minute + ":" + (visuals.ball ? "b" : "-")
   const { index, queue } = nextIndex(pool.length, queues[key], random)
   return { minute, index, line: pool[index], queues: { ...queues, [key]: queue } }
 }

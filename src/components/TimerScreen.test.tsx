@@ -655,7 +655,7 @@ describe("TimerScreen: the milestone message", () => {
 })
 
 describe("TimerScreen: what it tells the hook that it draws", () => {
-  type Drawn = () => { ball: boolean; rays: boolean }
+  type Drawn = () => { ball: boolean }
   const drawn = (): Drawn => {
     const given = (hook.options as { drawn?: Drawn } | null)?.drawn
     if (given === undefined) throw new Error("the screen gave the hook no drawn option")
@@ -680,26 +680,19 @@ describe("TimerScreen: what it tells the hook that it draws", () => {
     expect(typeof drawn()).toBe("function")
   })
 
-  it("says the ball and the rays are drawn when the browser can draw WebGL 2 and the lite level is 0 or 1", () => {
+  it("says the ball is drawn when the browser can draw WebGL 2, at every lite level (the ball does not depend on the lite level)", () => {
     browserCanDrawWebgl2(true)
-    for (const level of [0, 1]) {
+    for (const level of [0, 1, 2]) {
       lite.level = level
       show()
-      expect(drawn()(), "lite " + level).toEqual({ ball: true, rays: true })
+      expect(drawn()(), "lite " + level).toEqual({ ball: true })
     }
   })
 
-  it("says the ball is drawn but the rays are not at lite level 2", () => {
-    browserCanDrawWebgl2(true)
-    lite.level = 2
-    show()
-    expect(drawn()()).toEqual({ ball: true, rays: false })
-  })
-
-  it("says nothing is drawn when the browser cannot draw WebGL 2", () => {
+  it("says the ball is not drawn when the browser cannot draw WebGL 2", () => {
     browserCanDrawWebgl2(false)
     show()
-    expect(drawn()()).toEqual({ ball: false, rays: false })
+    expect(drawn()()).toEqual({ ball: false })
   })
 
   it("asks the browser nothing when it only opens (the question is asked only when a milestone is picked)", () => {

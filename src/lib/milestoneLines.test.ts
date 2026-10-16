@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest"
-import { BG_LIGHT_FULL_AT_SECONDS, BG_LIGHT_START, bgLight } from "./backgroundLook"
 import { ballStep } from "./ballLook"
 import { EFFECTS, parseMarkup, plainText } from "./lineMarkup"
 import {
@@ -17,15 +16,14 @@ import { DEEP_FROM_SECONDS, FLOW_FROM_SECONDS, MAX_LIVE_STEP_SECONDS, MILESTONE_
 // AB:TIMER.TESTS:START
 
 // Tests of the milestone lines and of the choice of one line. Run them with: npm test
-// The minutes come from MILESTONE_MINUTES of timerMaths.ts and the cut-offs of the ball and the rays from the timer files, never written again here, see CONNECTIONS.md C50. If one of them is changed, the tests of the numbers and of the lines about the ball and the rays show which lines to read again.
+// The minutes come from MILESTONE_MINUTES of timerMaths.ts and the cut-offs of the ball from the timer files, never written again here, see CONNECTIONS.md C50. If one of them is changed, the tests of the numbers and of the lines about the ball show which lines to read again.
 
-type Entry = { minute: MilestoneMinute; kind: "general" | "ball" | "rays"; line: string; label: string }
+type Entry = { minute: MilestoneMinute; kind: "general" | "ball"; line: string; label: string }
 const ENTRIES: Entry[] = MILESTONE_MINUTES.flatMap((minute) => {
   const bank = MILESTONE_BANKS[minute]
   return [
     ...bank.lines.map((line, i): Entry => ({ minute, kind: "general", line, label: minute + " general " + (i + 1) + ": " + line })),
     { minute, kind: "ball", line: bank.ballLine, label: minute + " ball: " + bank.ballLine },
-    { minute, kind: "rays", line: bank.raysLine, label: minute + " rays: " + bank.raysLine },
   ]
 })
 
@@ -38,8 +36,8 @@ function seeded(seed: number): () => number {
   }
 }
 
-const BOTH = { ball: true, rays: true } as const
-const NEITHER = { ball: false, rays: false } as const
+const BALL = { ball: true } as const
+const NO_BALL = { ball: false } as const
 
 describe("the banks", () => {
   it("are one bank for every milestone of the timer, in the order of the milestones", () => {
@@ -47,11 +45,10 @@ describe("the banks", () => {
     expect([...MILESTONE_MINUTES]).toEqual([15, 25, 45, 60, 90, 120, 150, 180])
   })
 
-  it("have 34 general lines, one line about the ball and one line about the rays in every bank, 288 lines in all, and no line twice", () => {
+  it("have 35 general lines and one line about the ball in every bank, 288 lines in all, and no line twice", () => {
     for (const minute of MILESTONE_MINUTES) {
-      expect(MILESTONE_BANKS[minute].lines.length, String(minute)).toBe(34)
+      expect(MILESTONE_BANKS[minute].lines.length, String(minute)).toBe(35)
       expect(MILESTONE_BANKS[minute].ballLine.length, String(minute)).toBeGreaterThan(0)
-      expect(MILESTONE_BANKS[minute].raysLine.length, String(minute)).toBeGreaterThan(0)
     }
     expect(ENTRIES.length).toBe(288)
     expect(new Set(ENTRIES.map((e) => e.line.trim().toLowerCase())).size).toBe(288)
@@ -172,88 +169,65 @@ describe("the numbers and words written in the lines", () => {
   })
 })
 
-describe("the lines about the ball and the rays", () => {
-  it("are only the line 35 and the line 36 of a bank: no general line talks about the ball or the rays (it would be false when they are not drawn)", () => {
+describe("the lines about the ball", () => {
+  it("are only the line 36 of a bank: no general line talks about the ball (it would be false when it is not drawn), and no line at all talks about rays of light (the moving background has none)", () => {
     for (const { label, kind, line } of ENTRIES) {
       const text = plainText(line)
-      if (kind === "general") expect(text, label).not.toMatch(/\b(ball|rays?)\b/i)
-      if (kind === "ball") {
-        expect(text, label).toMatch(/\bball\b/i)
-        expect(text, label).not.toMatch(/\brays?\b/i)
-      }
-      if (kind === "rays") {
-        expect(text, label).toMatch(/\brays\b/i)
-        expect(text, label).not.toMatch(/\bball\b/i)
-      }
+      expect(text, label).not.toMatch(/\brays?\b/i)
+      if (kind === "general") expect(text, label).not.toMatch(/\bball\b/i)
+      if (kind === "ball") expect(text, label).toMatch(/\bball\b/i)
     }
   })
 
-  // The message is on the screen from the milestone second to the end of its fade, and it can start up to MAX_LIVE_STEP_SECONDS late (a message that is shown later than that never gets the lines about the ball and the rays, see milestoneOnTime in timerMaths.ts and CONNECTIONS.md C51). A claim must hold for all of those seconds, to within a little less than the length of that window (TOLERANCE_MINUTES).
+  // The message is on the screen from the milestone second to the end of its fade, and it can start up to MAX_LIVE_STEP_SECONDS late (a message that is shown later than that never gets the line about the ball, see milestoneOnTime in timerMaths.ts and CONNECTIONS.md C51). A claim must hold for all of those seconds, to within a little less than the length of that window (TOLERANCE_MINUTES).
   const WINDOW = MAX_LIVE_STEP_SECONDS + (MILESTONE_SHOW_MS + MILESTONE_FADE_MS) / 1000
   const TOLERANCE_MINUTES = 0.7
   expect(WINDOW / 60).toBeLessThan(TOLERANCE_MINUTES)
   const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tolerance
   const minutesToFlow = (s: number) => (FLOW_FROM_SECONDS - s) / 60
   const minutesSinceFlow = (s: number) => (s - FLOW_FROM_SECONDS) / 60
-  const minutesSinceFull = (s: number) => (s - BG_LIGHT_FULL_AT_SECONDS) / 60
 
-  type Claim = { minute: MilestoneMinute; ball: RegExp; ballHolds: (s: number) => boolean; rays: RegExp; raysHolds: (s: number) => boolean }
+  type Claim = { minute: MilestoneMinute; ball: RegExp; ballHolds: (s: number) => boolean }
   const CLAIMS: readonly Claim[] = [
     {
       minute: 15,
       ball: /changed colour once/i,
       ballHolds: (s) => ballStep(s) === 1,
-      rays: /brighter than when you started.*still growing/i,
-      raysHolds: (s) => bgLight(s) > BG_LIGHT_START && bgLight(s) < 1,
     },
     {
       minute: 25,
       ball: /five minutes until the ball changes colour again/i,
       ballHolds: (s) => ballStep(s) === 1 && near((DEEP_FROM_SECONDS - s) / 60, 5, TOLERANCE_MINUTES),
-      rays: /about half of their full light/i,
-      raysHolds: (s) => near(bgLight(s), 0.5, 0.05) && bgLight(s) < 1,
     },
     {
       minute: 45,
       ball: /second colour, with one change left, 45 minutes away/i,
       ballHolds: (s) => ballStep(s) === 2 && near(minutesToFlow(s), 45, TOLERANCE_MINUTES),
-      rays: /about two-thirds of the way to full light/i,
-      raysHolds: (s) => near(bgLight(s), 2 / 3, 0.03),
     },
     {
       minute: 60,
       ball: /one colour change left for the ball, 30 minutes away/i,
       ballHolds: (s) => ballStep(s) === 2 && near(minutesToFlow(s), 30, TOLERANCE_MINUTES),
-      rays: /about three-quarters of the way to full light. Another half hour/i,
-      raysHolds: (s) => near(bgLight(s), 0.75, 0.03) && near((BG_LIGHT_FULL_AT_SECONDS - s) / 60, 30, TOLERANCE_MINUTES),
     },
     {
       minute: 90,
       ball: /just took its last colour/i,
       ballHolds: (s) => ballStep(s) === 3 && minutesSinceFlow(s) < TOLERANCE_MINUTES,
-      rays: /reached full strength/i,
-      raysHolds: (s) => bgLight(s) === 1 && minutesSinceFull(s) < TOLERANCE_MINUTES,
     },
     {
       minute: 120,
       ball: /held its last colour for 30 minutes/i,
       ballHolds: (s) => ballStep(s) === 3 && near(minutesSinceFlow(s), 30, TOLERANCE_MINUTES),
-      rays: /at full strength for 30 minutes/i,
-      raysHolds: (s) => bgLight(s) === 1 && near(minutesSinceFull(s), 30, TOLERANCE_MINUTES),
     },
     {
       minute: 150,
       ball: /held its last colour for an hour/i,
       ballHolds: (s) => ballStep(s) === 3 && near(minutesSinceFlow(s), 60, TOLERANCE_MINUTES),
-      rays: /at full strength for an hour/i,
-      raysHolds: (s) => bgLight(s) === 1 && near(minutesSinceFull(s), 60, TOLERANCE_MINUTES),
     },
     {
       minute: 180,
       ball: /held its last colour for 90 minutes/i,
       ballHolds: (s) => ballStep(s) === 3 && near(minutesSinceFlow(s), 90, TOLERANCE_MINUTES),
-      rays: /at full strength for 90 minutes/i,
-      raysHolds: (s) => bgLight(s) === 1 && near(minutesSinceFull(s), 90, TOLERANCE_MINUTES),
     },
   ]
 
@@ -264,29 +238,25 @@ describe("the lines about the ball and the rays", () => {
   it("say what the table says: the words of the line match the claim that is checked", () => {
     for (const c of CLAIMS) {
       expect(plainText(MILESTONE_BANKS[c.minute].ballLine), c.minute + " ball").toMatch(c.ball)
-      expect(plainText(MILESTONE_BANKS[c.minute].raysLine), c.minute + " rays").toMatch(c.rays)
     }
   })
 
-  it("are true for every second the message can be on the screen, asked from the real functions ballStep and bgLight", () => {
+  it("are true for every second the message can be on the screen, asked from the real function ballStep", () => {
     for (const c of CLAIMS) {
       for (let extra = 0; extra <= WINDOW; extra++) {
         const s = c.minute * 60 + extra
         expect(c.ballHolds(s), c.minute + " ball at " + s).toBe(true)
-        expect(c.raysHolds(s), c.minute + " rays at " + s).toBe(true)
       }
     }
   })
 })
 
 describe("milestonePool", () => {
-  it("is the 34 general lines, then the ball line when the ball is drawn, then the rays line when the rays are drawn", () => {
+  it("is the 35 general lines, then the ball line when the ball is drawn", () => {
     for (const minute of MILESTONE_MINUTES) {
       const bank = MILESTONE_BANKS[minute]
-      expect(milestonePool(minute, NEITHER)).toEqual(bank.lines)
-      expect(milestonePool(minute, { ball: true, rays: false })).toEqual([...bank.lines, bank.ballLine])
-      expect(milestonePool(minute, { ball: false, rays: true })).toEqual([...bank.lines, bank.raysLine])
-      expect(milestonePool(minute, BOTH)).toEqual([...bank.lines, bank.ballLine, bank.raysLine])
+      expect(milestonePool(minute, NO_BALL)).toEqual(bank.lines)
+      expect(milestonePool(minute, BALL)).toEqual([...bank.lines, bank.ballLine])
     }
   })
 })
@@ -296,22 +266,22 @@ describe("pickMilestoneLine", () => {
     for (const minute of MILESTONE_MINUTES) expect(isMilestoneMinute(minute), String(minute)).toBe(true)
     for (const other of [0, 1, 10, 16, 30, 59, 61, 91, 181, 360, -15, 15.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(isMilestoneMinute(other), String(other)).toBe(false)
-      expect(pickMilestoneLine(other, BOTH, {}), String(other)).toBeNull()
+      expect(pickMilestoneLine(other, BALL, {}), String(other)).toBeNull()
     }
   })
 
   it("gives a line of the pool of that milestone, with its marks still in it", () => {
     for (const minute of MILESTONE_MINUTES) {
-      const picked = pickMilestoneLine(minute, BOTH, {}, seeded(minute))
+      const picked = pickMilestoneLine(minute, BALL, {}, seeded(minute))
       expect(picked, String(minute)).not.toBeNull()
       expect(picked?.minute).toBe(minute)
-      expect(milestonePool(minute, BOTH)[picked?.index ?? -1]).toBe(picked?.line)
+      expect(milestonePool(minute, BALL)[picked?.index ?? -1]).toBe(picked?.line)
       expect(picked?.line).toMatch(/\[[a-z]+:/)
     }
   })
 
-  it("shows every line of the pool once before any line comes twice, for 34, 35 and 36 lines", () => {
-    for (const visuals of [NEITHER, { ball: true, rays: false }, { ball: false, rays: true }, BOTH]) {
+  it("shows every line of the pool once before any line comes twice, for 35 and 36 lines", () => {
+    for (const visuals of [NO_BALL, BALL]) {
       const size = milestonePool(60, visuals).length
       let queues: MilestoneQueues = {}
       const random = seeded(7)
@@ -330,28 +300,14 @@ describe("pickMilestoneLine", () => {
     }
   })
 
-  it("never takes the ball line when the ball is not drawn, and never the rays line when the rays are not drawn", () => {
+  it("never takes the ball line when the ball is not drawn", () => {
     const bank = MILESTONE_BANKS[90]
     const random = seeded(3)
     let queues: MilestoneQueues = {}
     for (let i = 0; i < 100; i++) {
-      const picked = pickMilestoneLine(90, { ball: false, rays: true }, queues, random)
+      const picked = pickMilestoneLine(90, NO_BALL, queues, random)
       if (picked === null) return
       expect(picked.line).not.toBe(bank.ballLine)
-      queues = picked.queues
-    }
-    queues = {}
-    for (let i = 0; i < 100; i++) {
-      const picked = pickMilestoneLine(90, { ball: true, rays: false }, queues, random)
-      if (picked === null) return
-      expect(picked.line).not.toBe(bank.raysLine)
-      queues = picked.queues
-    }
-    queues = {}
-    for (let i = 0; i < 100; i++) {
-      const picked = pickMilestoneLine(90, NEITHER, queues, random)
-      if (picked === null) return
-      expect([bank.ballLine, bank.raysLine]).not.toContain(picked.line)
       queues = picked.queues
     }
   })
@@ -360,27 +316,27 @@ describe("pickMilestoneLine", () => {
     let queues: MilestoneQueues = {}
     const random = seeded(11)
     let last = ""
-    for (let i = 0; i < 34 * 6; i++) {
-      const picked = pickMilestoneLine(25, NEITHER, queues, random)
+    for (let i = 0; i < 35 * 6; i++) {
+      const picked = pickMilestoneLine(25, NO_BALL, queues, random)
       if (picked === null) return
-      if (i > 0 && i % 34 === 0) expect(picked.line).not.toBe(last)
+      if (i > 0 && i % 35 === 0) expect(picked.line).not.toBe(last)
       last = picked.line
       queues = picked.queues
     }
   })
 
   it("keeps a queue of its own for every milestone and every set of drawn things, and does not change the queues that come in", () => {
-    const first = pickMilestoneLine(15, BOTH, {}, seeded(5))
+    const first = pickMilestoneLine(15, BALL, {}, seeded(5))
     expect(first).not.toBeNull()
     if (first === null) return
     const before = JSON.stringify(first.queues)
-    const second = pickMilestoneLine(25, BOTH, first.queues, seeded(5))
+    const second = pickMilestoneLine(25, BALL, first.queues, seeded(5))
     expect(JSON.stringify(first.queues)).toBe(before)
     expect(second).not.toBeNull()
     if (second === null) return
-    expect(Object.keys(second.queues).sort()).toEqual(["15:br", "25:br"])
-    const third = pickMilestoneLine(15, NEITHER, second.queues, seeded(5))
-    expect(Object.keys(third?.queues ?? {}).sort()).toEqual(["15:--", "15:br", "25:br"])
+    expect(Object.keys(second.queues).sort()).toEqual(["15:b", "25:b"])
+    const third = pickMilestoneLine(15, NO_BALL, second.queues, seeded(5))
+    expect(Object.keys(third?.queues ?? {}).sort()).toEqual(["15:-", "15:b", "25:b"])
   })
 
   it("gives the same lines for the same series of random numbers", () => {
@@ -389,7 +345,7 @@ describe("pickMilestoneLine", () => {
       const random = seeded(99)
       const out: string[] = []
       for (let i = 0; i < 40; i++) {
-        const picked = pickMilestoneLine(120, BOTH, queues, random)
+        const picked = pickMilestoneLine(120, BALL, queues, random)
         if (picked === null) break
         out.push(picked.line)
         queues = picked.queues

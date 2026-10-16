@@ -4,8 +4,6 @@ import Milestone from "@/components/Milestone"
 import StopAlert from "@/components/StopAlert"
 import TimerBackground from "@/components/TimerBackground"
 import TimerBall from "@/components/TimerBall"
-import { bgDrawn } from "@/lib/backgroundLook"
-import { LITE_LEVEL } from "@/lib/lite"
 import type { MilestoneVisuals } from "@/lib/milestoneLines"
 import { canDrawWebgl2 } from "@/lib/timerWarmup"
 import { formatClock, qualityOf } from "@/lib/timerMaths"
@@ -24,10 +22,9 @@ import "../timer.css"
 // While the first reading is on its way (the link is loading) the screen does not show zeros that would jump to the real numbers: the two clocks are invisible, and where the buttons will be there is a faint blank pill (ab-timer-wait) that is not a button. When the reading is there, the clocks and the buttons fade in together (timer.css, CONNECTIONS.md C46).
 // On a phone the screen is one column: the dial, then the line, then the buttons. On a wide screen (a laptop) the dial is a big circle on the left and the line and the buttons stand on the right, inside the box ab-timer-side (see CONNECTIONS.md C39). The tags and the rest that come later go into that box too.
 
-// What the screen really draws, told to the hook when it picks a milestone line (a line about the ball is only true when the ball is drawn, a line about the rays only when the rays are drawn: the same conditions as TimerBall.tsx and TimerBackground.tsx, see CONNECTIONS.md C51). It is asked only at a milestone, when a session is already shown.
+// What the screen really draws, told to the hook when it picks a milestone line (the line about the ball is only true when the ball is drawn: the same condition as TimerBall.tsx, see CONNECTIONS.md C51). It is asked only at a milestone, when a session is already shown.
 function drawnNow(): MilestoneVisuals {
-  const webgl = canDrawWebgl2()
-  return { ball: webgl, rays: webgl && bgDrawn(LITE_LEVEL) }
+  return { ball: canDrawWebgl2() }
 }
 
 function noticeText(notice: EndNotice): string {

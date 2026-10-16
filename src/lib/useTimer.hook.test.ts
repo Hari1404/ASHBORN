@@ -1421,10 +1421,10 @@ describe("useTimer: the time zone of the session", () => {
 })
 
 describe("useTimer: the milestone message", () => {
-  const BOTH = { ball: true, rays: true }
-  const NEITHER = { ball: false, rays: false }
+  const BALL = { ball: true }
+  const NO_BALL = { ball: false }
   // The lines that may be shown for a milestone, as the screen gets them (the marks are still in them).
-  const poolFor = (minute: 15 | 25 | 45 | 60 | 90 | 120 | 150 | 180, visuals = NEITHER) => [...milestonePool(minute, visuals)]
+  const poolFor = (minute: 15 | 25 | 45 | 60 | 90 | 120 | 150 | 180, visuals = NO_BALL) => [...milestonePool(minute, visuals)]
 
   function lookAway(): void {
     setVisible(false)
@@ -1450,7 +1450,7 @@ describe("useTimer: the milestone message", () => {
     expect(view.seconds).toBe(900)
     expect(view.milestone).not.toBeNull()
     expect(view.milestone?.earlier).toBeNull()
-    expect(poolFor(15, BOTH)).toContain(view.milestone?.line)
+    expect(poolFor(15, BALL)).toContain(view.milestone?.line)
   })
 
   it("keeps the same line while it is on the screen, and gives no second line for the same milestone", async () => {
@@ -1475,7 +1475,7 @@ describe("useTimer: the milestone message", () => {
   })
 
   it("asks the screen what it draws only when the message is on time, and picks a general line when nothing is drawn", async () => {
-    const drawn = vi.fn(() => NEITHER)
+    const drawn = vi.fn(() => NO_BALL)
     harnessOptions = { drawn }
     server.row = runningRow(899)
     await mount()
@@ -1485,8 +1485,8 @@ describe("useTimer: the milestone message", () => {
     expect([...MILESTONE_BANKS[15].lines]).toContain(view.milestone?.line)
   })
 
-  it("picks only from the lines that are true for what is drawn (ball only, rays only, both), over many sessions", async () => {
-    for (const visuals of [{ ball: true, rays: false }, { ball: false, rays: true }, BOTH]) {
+  it("picks only from the lines that are true for what is drawn (the ball drawn, the ball not drawn), over many sessions", async () => {
+    for (const visuals of [BALL, NO_BALL]) {
       harnessOptions = { drawn: () => visuals }
       const pool = poolFor(45, visuals)
       for (let i = 0; i < 8; i++) {
@@ -1540,8 +1540,8 @@ describe("useTimer: the milestone message", () => {
     }
   })
 
-  it("does not show the tag at 299 seconds late, and a late message never gets the ball or rays lines", async () => {
-    const drawn = vi.fn(() => BOTH)
+  it("does not show the tag at 299 seconds late, and a late message never gets the ball line", async () => {
+    const drawn = vi.fn(() => BALL)
     harnessOptions = { drawn }
     server.row = runningRow(800)
     await mount()
@@ -1581,7 +1581,7 @@ describe("useTimer: the milestone message", () => {
     expect(view.milestone).toBeNull()
     await settle(100_000)
     expect(view.seconds).toBe(2700)
-    expect(poolFor(45, BOTH)).toContain(view.milestone?.line)
+    expect(poolFor(45, BALL)).toContain(view.milestone?.line)
   })
 
   it("shows only the newest when two are waiting (15 is 10 minutes late when 25 is due), and the old one never comes", async () => {

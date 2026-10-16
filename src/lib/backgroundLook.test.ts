@@ -2,14 +2,11 @@ import { describe, expect, it } from "vitest"
 import {
   BG_BLEND_MS,
   BG_FADE_MS,
-  BG_LIGHT_FULL_AT_SECONDS,
-  BG_LIGHT_START,
   BG_PALETTES,
   BG_SETTINGS,
   bgBlendRamp,
   bgDrawn,
   bgEase,
-  bgLight,
   bgPaletteIndex,
   bgRamp,
 } from "./backgroundLook"
@@ -279,39 +276,6 @@ describe("where the background is drawn", () => {
   it("never draws at a lighter level what a heavier level does not draw", () => {
     for (const level of [1, 2] as const) {
       if (!bgDrawn((level - 1) as 0 | 1)) expect(bgDrawn(level)).toBe(false)
-    }
-  })
-})
-
-// The light of the old rays. The screen does not use it any more; the tests of the lines still check what some lines say about it, until the lines are rewritten (Packet 08B) and this part is removed.
-describe("the light of the old rays (kept only for the tests of the lines, until Packet 08B)", () => {
-  it("starts dim and not dark: the light at second 0 is the start light, which is between 0 and 1", () => {
-    expect(bgLight(0)).toBe(BG_LIGHT_START)
-    expect(BG_LIGHT_START).toBeGreaterThan(0)
-    expect(BG_LIGHT_START).toBeLessThan(1)
-  })
-
-  it("is full at the time of the last colour step and stays full after it", () => {
-    expect(BG_LIGHT_FULL_AT_SECONDS).toBe(FLOW_FROM_SECONDS)
-    expect(bgLight(FLOW_FROM_SECONDS)).toBe(1)
-    expect(bgLight(FLOW_FROM_SECONDS * 4)).toBe(1)
-  })
-
-  it("grows in a straight line and never gets dimmer", () => {
-    expect(bgLight(BG_LIGHT_FULL_AT_SECONDS / 2)).toBeCloseTo((BG_LIGHT_START + 1) / 2, 10)
-    let before = bgLight(0)
-    for (let s = 60; s <= BG_LIGHT_FULL_AT_SECONDS + 3600; s += 60) {
-      const now = bgLight(s)
-      expect(now).toBeGreaterThanOrEqual(before)
-      before = now
-    }
-  })
-
-  it("stays between the start light and 1 for every number, also for numbers that are not seconds", () => {
-    for (const odd of [Number.NaN, -1, -Infinity, 0.5, 1e12, Infinity]) {
-      const light = bgLight(odd)
-      expect(light).toBeGreaterThanOrEqual(BG_LIGHT_START)
-      expect(light).toBeLessThanOrEqual(1)
     }
   })
 })

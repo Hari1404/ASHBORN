@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest"
-import { bgLight } from "./backgroundLook"
 import { ballStep } from "./ballLook"
 import { EFFECTS, fillSlots, parseMarkup, plainText } from "./lineMarkup"
 import {
@@ -261,8 +260,8 @@ describe("the numbers and words written in the lines", () => {
   })
 })
 
-describe("the claims about the ball and the rays", () => {
-  // The ball and the rays of light change with the seconds of the session (ballStep of ballLook.ts, bgLight of backgroundLook.ts). A line that says something about them must be true for EVERY second of its bank. The minutes are not copied here: the claims ask the two functions.
+describe("the claims about the ball", () => {
+  // The ball changes with the seconds of the session (ballStep of ballLook.ts). A line that says something about it must be true for EVERY second of its bank. The minutes are not copied here: the claims ask the function.
   const LAST_SECOND = 3 * 3600
   const LAST_STEP = ballStep(LAST_SECOND)
   let firstColourAt = Number.POSITIVE_INFINITY
@@ -294,7 +293,6 @@ describe("the claims about the ball and the rays", () => {
       applies: (t) => /one colour behind it and two ahead/i.test(t),
       holds: (s) => ballStep(s) === 1 && LAST_STEP - ballStep(s) === 2,
     },
-    { what: "the rays are at full strength", applies: (t) => /\brays\b.*\bfull strength\b/i.test(t), holds: (s) => bgLight(s) === 1 },
   ]
 
   function secondsOf(id: BankId): number[] {
@@ -302,7 +300,7 @@ describe("the claims about the ball and the rays", () => {
     return Array.from({ length: last - first + 1 }, (_, i) => first + i)
   }
 
-  it("are checked against a ball that is white before the first colour step and has a colour from then on, and rays that are at full light from 90 minutes", () => {
+  it("are checked against a ball that is white before the first colour step and has a colour from then on", () => {
     expect(ballStep(0)).toBe(0)
     expect(firstColourAt).toBeGreaterThan(0)
     expect(firstColourAt).toBeLessThan(Number.POSITIVE_INFINITY)
@@ -316,9 +314,6 @@ describe("the claims about the ball and the rays", () => {
       if (s < firstColourAt) expect(step, String(s)).toBe(0)
     }
     expect(never_back).toBe(true)
-    expect(bgLight(FLOW_FROM_SECONDS - 1)).toBeLessThan(1)
-    expect(bgLight(FLOW_FROM_SECONDS)).toBe(1)
-    expect(bgLight(LAST_SECOND)).toBe(1)
   })
 
   it("hold for every second of the bank that the line sits in", () => {
@@ -333,10 +328,11 @@ describe("the claims about the ball and the rays", () => {
     }
   })
 
-  it("leave no line about the ball or the rays without a claim that is checked (a line that only says the ball is glowing is the one exception)", () => {
+  it("leave no line about the ball without a claim that is checked (a line that only says the ball is glowing is the one exception), and no line at all about rays of light (the moving background has none)", () => {
     for (const { label, line } of ALL) {
       const text = plainText(line)
-      if (!/\b(ball|rays?)\b/i.test(text)) continue
+      expect(text, label).not.toMatch(/\brays?\b/i)
+      if (!/\bball\b/i.test(text)) continue
       const checked = CLAIMS.some((claim) => claim.applies(text))
       expect(checked || /\bglowing\b/i.test(text), label).toBe(true)
     }
