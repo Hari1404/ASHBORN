@@ -1,5 +1,5 @@
 -- ASHBORN Pro Timer: check that the database was set up. Run in the Supabase SQL Editor AFTER timer_schema.sql.
--- Expected result: 5 rows, exactly as the "expect" column says.
+-- Expected result: 6 rows, exactly as the "expect" column says.
 select 'tables_exist' as check_name, (select count(*) from information_schema.tables where table_schema = 'public' and table_name in ('timer_sessions', 'timer_running'))::text as result, '2' as expect
 union all
 select 'row_level_security_on', (select count(*) from pg_tables where schemaname = 'public' and tablename in ('timer_sessions', 'timer_running') and rowsecurity)::text, '2'
@@ -8,4 +8,6 @@ select 'functions_exist', (select count(*) from pg_proc p join pg_namespace n on
 union all
 select 'anonymous_can_start', has_function_privilege('anon', 'public.timer_start(text)', 'execute')::text, 'false'
 union all
-select 'signed_in_can_start', has_function_privilege('authenticated', 'public.timer_start(text)', 'execute')::text, 'true';
+select 'signed_in_can_start', has_function_privilege('authenticated', 'public.timer_start(text)', 'execute')::text, 'true'
+union all
+select 'pause_log_columns', (select count(*) from information_schema.columns where table_schema = 'public' and ((table_name = 'timer_running' and column_name = 'pauses') or (table_name = 'timer_sessions' and column_name in ('pauses', 'tz'))))::text, '3';

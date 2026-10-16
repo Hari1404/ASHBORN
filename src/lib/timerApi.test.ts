@@ -485,4 +485,24 @@ describe("the SQL file says what the app expects (the text of supabase/timer_sch
     }
   })
 })
+
+describe("the pause log in the SQL file (Packet 09A)", () => {
+  it("has the columns pauses and tz, and old sessions keep NULL (not known) in them", () => {
+    expect(schemaSql).toContain("alter table public.timer_running add column if not exists pauses jsonb not null default '[]'::jsonb;")
+    expect(schemaSql).toContain("alter table public.timer_sessions add column if not exists pauses jsonb;")
+    expect(schemaSql).toContain("alter table public.timer_sessions add column if not exists tz text;")
+  })
+
+  it("writes one entry with from and to at every Resume, closes an open pause at End, and saves both with the session", () => {
+    expect(schemaSql).toContain("pauses = r.pauses || jsonb_build_array(jsonb_build_object('from', r.paused_at, 'to', now())),")
+    expect(schemaSql).toContain("v_pauses := v_pauses || jsonb_build_array(jsonb_build_object('from', r.paused_at, 'to', v_end));")
+    expect(schemaSql).toContain("insert into public.timer_sessions (user_id, day, started_at, ended_at, active_seconds, pauses, tz)")
+  })
+
+  it("does not send the pause log to the app: the running session keeps its six fields", () => {
+    const body = schemaSql.split("create or replace function public.timer_row_json")[1].split("$$;")[0]
+    expect(body).not.toContain("pauses")
+    expect(Object.keys(RUNNING)).toHaveLength(6)
+  })
+})
 // AB:TIMER.TESTS:END
