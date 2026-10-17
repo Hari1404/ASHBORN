@@ -711,7 +711,7 @@ describe("useTimer: what a button does with its answer", () => {
     },
   )
 
-  it.each(["NOT_SIGNED_IN", "BAD_TIMEZONE", "BAD_REPLY", "NOT_READY", "UNKNOWN"] as const)(
+  it.each(["NOT_SIGNED_IN", "BAD_TIMEZONE", "BAD_REPLY", "NOT_READY", "UNKNOWN", "BAD_TAG_NAME", "TAG_NAME_TAKEN", "TAG_LIMIT", "TAG_NOT_FOUND"] as const)(
     "%s is a problem of its own: its text is shown, nothing is read again, the screen stays as it was",
     async (kind) => {
       server.row = runningRow(100)

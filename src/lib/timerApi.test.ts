@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import dayScoreSql from "../../supabase/day_score.sql?raw"
 import schemaSql from "../../supabase/timer_schema.sql?raw"
+import dayScoreDecisions from "../../DECISIONS_DAY_SCORE.md?raw"
+import tagsDecisions from "../../DECISIONS_TAGS.md?raw"
 
 // The database client is replaced by a fake one, so no test ever calls the network.
 const holder = vi.hoisted(() => ({ client: null as null | { rpc: (...args: unknown[]) => unknown } }))
@@ -23,6 +25,8 @@ import {
   readEndReply,
   readRunningReply,
   readStateReply,
+  readTag,
+  readTagList,
   readTimerRow,
   timerDayScore,
   timerDayTotal,
@@ -31,6 +35,10 @@ import {
   timerResume,
   timerStart,
   timerState,
+  timerTagAdd,
+  timerTagArchive,
+  timerTagList,
+  timerTagRename,
   type TimerErrorKind,
 } from "./timerApi"
 
@@ -101,7 +109,7 @@ afterEach(() => {
 })
 
 describe("the error names", () => {
-  it("are the six names the database functions raise", () => {
+  it("are the ten names the database functions raise", () => {
     expect([...DATABASE_ERRORS]).toEqual(["ALREADY_RUNNING", "NOT_RUNNING", "NOT_PAUSED", "DAY_ENDED", "BAD_TIMEZONE", "NOT_SIGNED_IN", "BAD_TAG_NAME", "TAG_NAME_TAKEN", "TAG_LIMIT", "TAG_NOT_FOUND"])
   })
 
@@ -471,8 +479,8 @@ describe("the SQL file says what the app expects (the text of supabase/timer_sch
     expect([...raised].sort()).toEqual([...DATABASE_ERRORS].sort())
   })
 
-  it("has the six functions the app calls, with the argument names the app sends", () => {
-    for (const signature of ["timer_state()", "timer_day_total(p_day date)", "timer_start(p_tz text, p_tag_id uuid default null)", "timer_pause()", "timer_resume()", "timer_end()"]) {
+  it("has the ten functions the app calls, with the argument names the app sends", () => {
+    for (const signature of ["timer_state()", "timer_day_total(p_day date)", "timer_start(p_tz text, p_tag_id uuid default null)", "timer_pause()", "timer_resume()", "timer_end()", "timer_tag_list()", "timer_tag_add(p_name text)", "timer_tag_rename(p_id uuid, p_name text)", "timer_tag_archive(p_id uuid)"]) {
       expect(schemaSql).toContain("create or replace function public." + signature)
     }
   })
@@ -487,6 +495,119 @@ describe("the SQL file says what the app expects (the text of supabase/timer_sch
     for (const key of Object.keys(RUNNING)) {
       expect(schemaSql).toContain("'" + key + "'")
     }
+  })
+})
+
+const TAG_A = { id: "3f2b8c1e-5d4a-4b7e-9c10-2a6f8d9e0b11", name: "Python" }
+const TAG_B = { id: "9a1c7e44-0b52-4f3d-8e6a-5c2d1f7b3a90", name: "Book" }
+
+describe("the tags: the readers and the calls (Packet 10B)", () => {
+  it("reads one tag into its id and its name, and leaves out any other key", () => {
+    expect(readTag(TAG_A)).toEqual(TAG_A)
+    expect(readTag({ ...TAG_A, extra: 1 })).toEqual(TAG_A)
+  })
+
+  it("refuses a tag that is not an object, has no id like a uuid, or has no name", () => {
+    for (const value of [null, undefined, "Python", 5, [], [TAG_A]]) expect(kindOf(() => readTag(value))).toBe("BAD_REPLY")
+    for (const id of [undefined, null, 5, "", "abc", "3f2b8c1e-5d4a-4b7e-9c10-2a6f8d9e0b1", "3f2b8c1e-5d4a-4b7e-9c10-2a6f8d9e0b1g"]) {
+      expect(kindOf(() => readTag({ ...TAG_A, id }))).toBe("BAD_REPLY")
+    }
+    for (const name of [undefined, null, 5, "", ["Python"]]) expect(kindOf(() => readTag({ ...TAG_A, name }))).toBe("BAD_REPLY")
+  })
+
+  it("says in the reason which part of the tag is wrong", () => {
+    expect(() => readTag("Python")).toThrow("the tag is not an object")
+    expect(() => readTag({ ...TAG_A, id: "abc" })).toThrow("the tag id is not an id")
+    expect(() => readTag({ ...TAG_A, name: "" })).toThrow("the tag name is not text")
+  })
+
+  it("reads a list of tags in the order sent, and an empty list", () => {
+    expect(readTagList([TAG_A, TAG_B])).toEqual([TAG_A, TAG_B])
+    expect(readTagList([])).toEqual([])
+  })
+
+  it("refuses an answer that is not a list, a list with a wrong tag in it, and the same tag twice", () => {
+    for (const value of [null, undefined, {}, "[]", 0, TAG_A]) expect(kindOf(() => readTagList(value))).toBe("BAD_REPLY")
+    expect(kindOf(() => readTagList([TAG_A, { id: "x", name: "Book" }]))).toBe("BAD_REPLY")
+    expect(() => readTagList([TAG_A, TAG_A])).toThrow("the tag list holds the same tag twice")
+    expect(kindOf(() => readTagList([TAG_A, { ...TAG_A, id: TAG_A.id.toUpperCase() }]))).toBe("BAD_REPLY")
+  })
+
+  it("timerTagList calls timer_tag_list with no arguments and hands back the checked list", async () => {
+    const rpc = answer([TAG_A, TAG_B])
+    expect(await timerTagList()).toEqual([TAG_A, TAG_B])
+    expect(rpc).toHaveBeenCalledWith("timer_tag_list", undefined)
+  })
+
+  it("timerTagAdd sends the name as typed, by the argument name p_name", async () => {
+    const rpc = answer(TAG_A)
+    expect(await timerTagAdd("  Python ")).toEqual(TAG_A)
+    expect(rpc).toHaveBeenCalledWith("timer_tag_add", { p_name: "  Python " })
+  })
+
+  it("timerTagRename sends p_id and p_name, timerTagArchive sends p_id, and both hand back the tag", async () => {
+    let rpc = answer({ ...TAG_A, name: "Coding" })
+    expect(await timerTagRename(TAG_A.id, "Coding")).toEqual({ id: TAG_A.id, name: "Coding" })
+    expect(rpc).toHaveBeenCalledWith("timer_tag_rename", { p_id: TAG_A.id, p_name: "Coding" })
+    rpc = answer(TAG_A)
+    expect(await timerTagArchive(TAG_A.id)).toEqual(TAG_A)
+    expect(rpc).toHaveBeenCalledWith("timer_tag_archive", { p_id: TAG_A.id })
+  })
+
+  it("rename and archive refuse the answer of another tag, and an id in capitals is the same id", async () => {
+    answer(TAG_B)
+    expect(await kindOfAsync(() => timerTagRename(TAG_A.id, "Book"))).toBe("BAD_REPLY")
+    expect(await kindOfAsync(() => timerTagArchive(TAG_A.id))).toBe("BAD_REPLY")
+    answer(TAG_A)
+    expect(await timerTagArchive(TAG_A.id.toUpperCase())).toEqual(TAG_A)
+  })
+
+  it("every tag call: no client is NOT_READY, a lost connection is NO_CONNECTION, a wrong shape is BAD_REPLY", async () => {
+    const runs = [() => timerTagList(), () => timerTagAdd("Python"), () => timerTagRename(TAG_A.id, "Coding"), () => timerTagArchive(TAG_A.id)]
+    holder.client = null
+    for (const run of runs) expect(await kindOfAsync(run)).toBe("NOT_READY")
+    fail({ message: "Failed to fetch" })
+    for (const run of runs) expect(await kindOfAsync(run)).toBe("NO_CONNECTION")
+    answer({})
+    for (const run of runs) expect(await kindOfAsync(run)).toBe("BAD_REPLY")
+  })
+
+  it("each of the four tag errors comes back as its own name", async () => {
+    for (const name of ["BAD_TAG_NAME", "TAG_NAME_TAKEN", "TAG_LIMIT", "TAG_NOT_FOUND"] as const) {
+      fail({ message: name, code: "P0001" })
+      expect(await kindOfAsync(() => timerTagAdd("Python"))).toBe(name)
+    }
+  })
+
+  it("timerStart sends p_tag_id only when a tag is given: no tag, null or nothing sends exactly what was sent before tags", async () => {
+    const running = { server_now: SERVER_NOW, running: RUNNING }
+    let rpc = answer(running)
+    await timerStart("Asia/Kolkata", TAG_A.id)
+    expect(rpc).toHaveBeenCalledWith("timer_start", { p_tz: "Asia/Kolkata", p_tag_id: TAG_A.id })
+    rpc = answer(running)
+    await timerStart("Asia/Kolkata", null)
+    expect(Object.keys(rpc.mock.calls[0][1] as object)).toEqual(["p_tz"])
+    rpc = answer(running)
+    await timerStart("Asia/Kolkata")
+    expect(Object.keys(rpc.mock.calls[0][1] as object)).toEqual(["p_tz"])
+  })
+
+  it("a tag that is gone when the session starts is TAG_NOT_FOUND", async () => {
+    fail({ message: "TAG_NOT_FOUND", code: "P0001" })
+    expect(await kindOfAsync(() => timerStart("Asia/Kolkata", TAG_A.id))).toBe("TAG_NOT_FOUND")
+  })
+})
+
+describe("the decisions files are in the repository (Packet 10B)", () => {
+  it("DECISIONS_TAGS.md names the four tag errors and the rules the SQL file follows", () => {
+    for (const name of ["BAD_TAG_NAME", "TAG_NAME_TAKEN", "TAG_LIMIT", "TAG_NOT_FOUND"]) expect(tagsDecisions).toContain(name)
+    expect(tagsDecisions).toContain("At most 10 live tags.")
+    expect(tagsDecisions).toContain("1 to 20 characters")
+  })
+
+  it("DECISIONS_DAY_SCORE.md is there: the SQL files and their tests name it", () => {
+    expect(dayScoreDecisions.length).toBeGreaterThan(1000)
+    expect(dayScoreSql).toContain("DECISIONS_DAY_SCORE.md")
   })
 })
 

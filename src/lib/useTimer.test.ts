@@ -53,13 +53,13 @@ describe("keepTimeBase", () => {
 })
 
 describe("problemText", () => {
-  const SPECIAL: TimerErrorKind[] = ["NOT_SIGNED_IN", "BAD_TIMEZONE", "BAD_REPLY", "NOT_READY"]
+  const SPECIAL: TimerErrorKind[] = ["NOT_SIGNED_IN", "BAD_TIMEZONE", "BAD_REPLY", "NOT_READY", "BAD_TAG_NAME", "TAG_NAME_TAKEN", "TAG_LIMIT", "TAG_NOT_FOUND"]
   const OTHERS: TimerErrorKind[] = [...DATABASE_ERRORS.filter((name) => !SPECIAL.includes(name)), "NO_CONNECTION", "UNKNOWN"]
 
-  it("gives its own text to the four problems the person can understand", () => {
+  it("gives its own text to the eight problems the person can understand", () => {
     const texts = SPECIAL.map((kind) => problemText(kind))
     for (const text of texts) expect(text.length).toBeGreaterThan(10)
-    expect(new Set(texts).size).toBe(4)
+    expect(new Set(texts).size).toBe(8)
   })
 
   it("gives one general text to every other kind, and it is different from the four", () => {
@@ -67,6 +67,14 @@ describe("problemText", () => {
     expect(general.length).toBeGreaterThan(10)
     for (const kind of OTHERS) expect(problemText(kind)).toBe(general)
     for (const kind of SPECIAL) expect(problemText(kind)).not.toBe(general)
+  })
+
+  it("says what is wrong with a tag, in plain words", () => {
+    expect(problemText("BAD_TAG_NAME")).toBe("A tag name needs 1 to 20 characters, and cannot be Freestyle.")
+    expect(problemText("TAG_NAME_TAKEN")).toBe("You already have a tag with that name.")
+    expect(problemText("TAG_LIMIT")).toBe("You have the most tags allowed. Remove one to add another.")
+    expect(problemText("TAG_NOT_FOUND")).toBe("That tag is not there any more. Close the list and open it again.")
+    expect(problemText("TAG_LIMIT")).not.toMatch(/\d/)
   })
 
   it("says to sign in again when the sign in is gone", () => {

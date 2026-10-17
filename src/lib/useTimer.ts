@@ -122,6 +122,14 @@ export function problemText(kind: TimerErrorKind): string {
       return "The timer got an answer it could not read."
     case "NOT_READY":
       return "The app is not connected to the database."
+    case "BAD_TAG_NAME":
+      return "A tag name needs 1 to 20 characters, and cannot be Freestyle."
+    case "TAG_NAME_TAKEN":
+      return "You already have a tag with that name."
+    case "TAG_LIMIT":
+      return "You have the most tags allowed. Remove one to add another."
+    case "TAG_NOT_FOUND":
+      return "That tag is not there any more. Close the list and open it again."
     default:
       return "Something went wrong."
   }

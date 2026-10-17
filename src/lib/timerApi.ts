@@ -6,7 +6,7 @@ import { parseServerTimeMs, type TimerRow } from "@/lib/timerMaths"
 // Every function here either gives an answer that was checked, or throws a TimerError with a name that the screen understands.
 // What is tied to the SQL file: see CONNECTIONS.md C28 and C29. The tests are in src/lib/timerApi.test.ts.
 // The day score (supabase/day_score.sql): timerDayScore asks for the number, the word and the readouts of one day and readDayScore checks the answer (CONNECTIONS.md C29 and C54).
-// The last four names of DATABASE_ERRORS come from the tag functions (supabase/timer_schema.sql, Packet 10A). Nothing in the app asks for a tag yet (CONNECTIONS.md C28 and C55).
+// The tags (supabase/timer_schema.sql, Packets 10A and 10B): timerTagList, timerTagAdd, timerTagRename and timerTagArchive call the four tag functions, readTag and readTagList check their answers, and timerStart can send the tag chosen before Start. The last four names of DATABASE_ERRORS come from these functions. No screen uses the calls yet (CONNECTIONS.md C28, C29 and C55).
 
 // The error names that the database functions raise (raise exception 'NAME'). The screen reacts to each of them.
 export const DATABASE_ERRORS = [
@@ -203,6 +203,28 @@ export function readDayScore(json: unknown): DayScore {
   }
 }
 
+// One tag as the four tag functions send it: {id, name}. The id must look like an id (a uuid) and the name must be text that is not empty. Any other key is left out. The rules of a name (1 to 20 characters, not Freestyle) are checked by the database, not here.
+export type TimerTag = { id: string; name: string }
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function readTag(json: unknown): TimerTag {
+  if (!isRecord(json)) return bad("the tag is not an object")
+  const id = json.id
+  if (typeof id !== "string" || !UUID_SHAPE.test(id)) return bad("the tag id is not an id")
+  const name = json.name
+  if (typeof name !== "string" || name === "") return bad("the tag name is not text")
+  return { id, name }
+}
+
+// The answer of timer_tag_list: the live tags of the person, oldest first. The order is kept. An empty list is fine. The same tag twice is refused.
+export function readTagList(json: unknown): TimerTag[] {
+  if (!Array.isArray(json)) return bad("the tag list is not a list")
+  const tags = json.map((item) => readTag(item))
+  if (new Set(tags.map((tag) => tag.id.toLowerCase())).size !== tags.length) return bad("the tag list holds the same tag twice")
+  return tags
+}
+
 // ---- The calls ----
 function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -254,8 +276,10 @@ export async function timerDayScore(day: string): Promise<DayScore> {
   return score
 }
 
-export async function timerStart(zone: string): Promise<RunningReply> {
-  return readRunningReply(await call("timer_start", { p_tz: zone }))
+// The tag is the id of one of the person's live tags, or null for Freestyle (no tag). With null, or with the argument left out, nothing is sent for the tag: the call is the same as it was before tags.
+export async function timerStart(zone: string, tagId: string | null = null): Promise<RunningReply> {
+  if (tagId === null) return readRunningReply(await call("timer_start", { p_tz: zone }))
+  return readRunningReply(await call("timer_start", { p_tz: zone, p_tag_id: tagId }))
 }
 
 export async function timerPause(): Promise<RunningReply> {
@@ -268,5 +292,29 @@ export async function timerResume(): Promise<RunningReply> {
 
 export async function timerEnd(): Promise<EndReply> {
   return readEndReply(await call("timer_end"))
+}
+// ---- The tags (the four tag functions of supabase/timer_schema.sql, see CONNECTIONS.md C55) ----
+// The live tags of the signed-in person, oldest first.
+export async function timerTagList(): Promise<TimerTag[]> {
+  return readTagList(await call("timer_tag_list"))
+}
+
+// A new tag. The name is sent as typed: the database cuts the spaces at both ends and checks the rules (BAD_TAG_NAME, TAG_NAME_TAKEN, TAG_LIMIT). If an archived tag has that name, the newest one comes back with its old id.
+export async function timerTagAdd(name: string): Promise<TimerTag> {
+  return readTag(await call("timer_tag_add", { p_name: name }))
+}
+
+// A new name for a live tag (TAG_NOT_FOUND when it is not the person's own or is archived). The answer of another tag is refused.
+export async function timerTagRename(id: string, name: string): Promise<TimerTag> {
+  const tag = readTag(await call("timer_tag_rename", { p_id: id, p_name: name }))
+  if (tag.id.toLowerCase() !== id.toLowerCase()) return bad("the answer is for another tag")
+  return tag
+}
+
+// The tag leaves the list: it is archived, never deleted. The answer of another tag is refused.
+export async function timerTagArchive(id: string): Promise<TimerTag> {
+  const tag = readTag(await call("timer_tag_archive", { p_id: id }))
+  if (tag.id.toLowerCase() !== id.toLowerCase()) return bad("the answer is for another tag")
+  return tag
 }
 // AB:TIMER.API:END
