@@ -102,7 +102,7 @@ afterEach(() => {
 
 describe("the error names", () => {
   it("are the six names the database functions raise", () => {
-    expect([...DATABASE_ERRORS]).toEqual(["ALREADY_RUNNING", "NOT_RUNNING", "NOT_PAUSED", "DAY_ENDED", "BAD_TIMEZONE", "NOT_SIGNED_IN"])
+    expect([...DATABASE_ERRORS]).toEqual(["ALREADY_RUNNING", "NOT_RUNNING", "NOT_PAUSED", "DAY_ENDED", "BAD_TIMEZONE", "NOT_SIGNED_IN", "BAD_TAG_NAME", "TAG_NAME_TAKEN", "TAG_LIMIT", "TAG_NOT_FOUND"])
   })
 
   it("a TimerError carries its kind, and its message starts with the kind", () => {
@@ -472,7 +472,7 @@ describe("the SQL file says what the app expects (the text of supabase/timer_sch
   })
 
   it("has the six functions the app calls, with the argument names the app sends", () => {
-    for (const signature of ["timer_state()", "timer_day_total(p_day date)", "timer_start(p_tz text)", "timer_pause()", "timer_resume()", "timer_end()"]) {
+    for (const signature of ["timer_state()", "timer_day_total(p_day date)", "timer_start(p_tz text, p_tag_id uuid default null)", "timer_pause()", "timer_resume()", "timer_end()"]) {
       expect(schemaSql).toContain("create or replace function public." + signature)
     }
   })
@@ -500,7 +500,7 @@ describe("the pause log in the SQL file (Packet 09A)", () => {
   it("writes one entry with from and to at every Resume, closes an open pause at End, and saves both with the session", () => {
     expect(schemaSql).toContain("pauses = r.pauses || jsonb_build_array(jsonb_build_object('from', r.paused_at, 'to', now())),")
     expect(schemaSql).toContain("v_pauses := v_pauses || jsonb_build_array(jsonb_build_object('from', r.paused_at, 'to', v_end));")
-    expect(schemaSql).toContain("insert into public.timer_sessions (user_id, day, started_at, ended_at, active_seconds, pauses, tz)")
+    expect(schemaSql).toContain("insert into public.timer_sessions (user_id, day, started_at, ended_at, active_seconds, pauses, tz, tag_id)")
   })
 
   it("does not send the pause log to the app: the running session keeps its six fields", () => {

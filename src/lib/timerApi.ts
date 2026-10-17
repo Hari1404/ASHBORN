@@ -6,6 +6,7 @@ import { parseServerTimeMs, type TimerRow } from "@/lib/timerMaths"
 // Every function here either gives an answer that was checked, or throws a TimerError with a name that the screen understands.
 // What is tied to the SQL file: see CONNECTIONS.md C28 and C29. The tests are in src/lib/timerApi.test.ts.
 // The day score (supabase/day_score.sql): timerDayScore asks for the number, the word and the readouts of one day and readDayScore checks the answer (CONNECTIONS.md C29 and C54).
+// The last four names of DATABASE_ERRORS come from the tag functions (supabase/timer_schema.sql, Packet 10A). Nothing in the app asks for a tag yet (CONNECTIONS.md C28 and C55).
 
 // The error names that the database functions raise (raise exception 'NAME'). The screen reacts to each of them.
 export const DATABASE_ERRORS = [
@@ -15,6 +16,10 @@ export const DATABASE_ERRORS = [
   "DAY_ENDED",
   "BAD_TIMEZONE",
   "NOT_SIGNED_IN",
+  "BAD_TAG_NAME",
+  "TAG_NAME_TAKEN",
+  "TAG_LIMIT",
+  "TAG_NOT_FOUND",
 ] as const
 
 export type DatabaseError = (typeof DATABASE_ERRORS)[number]
