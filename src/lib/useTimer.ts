@@ -8,7 +8,9 @@ import {
   timerResume,
   timerStart,
   timerState,
+  timerTagList,
   type TimerErrorKind,
+  type TimerTag,
 } from "@/lib/timerApi"
 import { pickMilestoneLine, type MilestoneQueues, type MilestoneVisuals } from "@/lib/milestoneLines"
 import { pickComebackLine, pickStopLine, type ComebackQueues, type LineQueues } from "@/lib/stopAlertLines"
@@ -34,7 +36,8 @@ import {
 // GO BACK IN does NOT resume the session: it closes the alert and the session stays paused as it is. The person presses Resume when he is ready (Packet 06E). goBack only remembers that the next Resume of THIS pause is a comeback (pendingRef: the seconds it stopped at, the session and the pause).
 // The comeback message: when that Resume really runs the session again, resume picks one comeback line for the seconds the session stopped at (pickComebackLine) and keeps it as long as that session runs. A Resume that is not the one after GO BACK IN (or after any other pause) gets none. The screen shows it for a few seconds (Comeback.tsx) and then calls clearComeback. See CONNECTIONS.md C48.
 // The milestone message (Packet 07B): when the session reaches 15, 25, 45, 60, 90, 120, 150 or 180 minutes the message WAITS until the person is looking (the page is visible), the session is running and no other milestone message is on the screen, and is then shown at once. A message that nobody saw is shown the moment the person looks again, up to 10 minutes after its milestone (timerMaths.ts, milestoneWaiting), with the number of minutes it is late when that is 5 or more (earlier); after 10 minutes it is given up for good. Only the newest milestone is shown, and each is shown at most once per session. The line about the glowing ball is only picked when the message is on time (milestoneOnTime) and the screen draws the ball (the option drawn, given by TimerScreen.tsx); a late message gets the general lines only. The screen shows it for 30 seconds (Milestone.tsx) and then calls clearMilestone.
-// What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43, C45, C48 and C51. The names used by the screen are in TimerView.
+// The tags (Packet 10C2): the hook keeps the list of the person's live tags (read once when the screen opens and again each time the picker opens its list, never by the 30 second poll; a list that cannot be read never stops the timer) and the tag that was picked before Start (tagId: none at first, and back to none as soon as any session is running, so every session starts with no tag). Start sends the picked tag only when there is one: with no tag it is the same call as before tags. chooseTag only works while nothing runs and only for a tag that is in the list. A Start that the database refuses with TAG_NOT_FOUND (the tag was archived on another device) sets the pick back to no tag, reads the list again and shows the plain words of problemText. runningTag is the name of the tag of the running session as the database sends it (C55), or null for no tag. See CONNECTIONS.md C56.
+// What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43, C45, C48, C51 and C56. The names used by the screen are in TimerView.
 
 export const POLL_ONLINE_MS = 30000
 export const POLL_OFFLINE_MS = 3000
@@ -101,6 +104,9 @@ export type TimerView = {
   stopAlert: StopAlertView | null
   comeback: ComebackView | null
   milestone: MilestoneView | null
+  tags: TimerTag[]
+  tagId: string | null
+  runningTag: string | null
   start: () => void
   pause: () => void
   resume: () => void
@@ -109,6 +115,8 @@ export type TimerView = {
   goBack: () => void
   clearComeback: () => void
   clearMilestone: () => void
+  chooseTag: (id: string | null) => void
+  reloadTags: () => void
   retry: () => void
 }
 
@@ -172,6 +180,8 @@ export function useTimer(options: TimerOptions = {}): TimerView {
   const [alert, setAlert] = useState<AlertState | null>(null)
   const [comeback, setComeback] = useState<ComebackState | null>(null)
   const [milestone, setMilestone] = useState<MilestoneState | null>(null)
+  const [tags, setTags] = useState<TimerTag[]>([])
+  const [tagId, setTagId] = useState<string | null>(null)
   // True while the page is visible: only then is a waiting milestone message shown (a message nobody sees has no value).
   const [looking, setLooking] = useState(() => typeof document === "undefined" || document.visibilityState === "visible")
   const [now, setNow] = useState(() => Date.now())
@@ -188,6 +198,10 @@ export function useTimer(options: TimerOptions = {}): TimerView {
   const pendingRef = useRef<PendingComeback | null>(null)
   const milestoneRef = useRef<MilestoneState | null>(null)
   const doneRef = useRef<MilestonesDone | null>(null)
+  // The tags (Packet 10C2): the refs are what the buttons read, the state is what the screen draws. The ticket makes an old answer of the list lose against a newer one.
+  const tagsRef = useRef<TimerTag[]>([])
+  const tagIdRef = useRef<string | null>(null)
+  const tagTicketRef = useRef(0)
   const lookingRef = useRef(looking)
   const drawnRef = useRef(options.drawn)
   // The shuffled queues of the stop alert lines: no line comes twice before all lines of its bank were shown. They live as long as the screen does.
@@ -224,6 +238,36 @@ export function useTimer(options: TimerOptions = {}): TimerView {
   // The screen calls this when the milestone message has been shown for its time and has faded. It never changes anything but the message (the milestone stays done).
   const clearMilestone = useCallback(() => showMilestone(null), [showMilestone])
 
+  const showTagId = useCallback((next: string | null) => {
+    tagIdRef.current = next
+    setTagId(next)
+  }, [])
+
+  // Reads the person's live tags for the picker (Packet 10C2, CONNECTIONS.md C56): once when the screen opens and each time the picker opens its list, never in the poll. The list only serves the picker: when it cannot be read, the timer goes on working (Start with no tag always works) and the next opening of the list reads it again. A pick that is not in the list any more (the tag was archived on another device) goes back to no tag.
+  const loadTags = useCallback(async () => {
+    const ticket = ++tagTicketRef.current
+    try {
+      const list = await timerTagList()
+      if (!aliveRef.current || ticket !== tagTicketRef.current) return
+      tagsRef.current = list
+      setTags(list)
+      if (tagIdRef.current !== null && !list.some((tag) => tag.id === tagIdRef.current)) showTagId(null)
+    } catch {
+      // Left as it is on purpose, see above.
+    }
+  }, [showTagId])
+
+  // The two calls of the picker. chooseTag only counts while nothing runs (the database has no call to change the tag of a running session) and only for a tag that is in the list. reloadTags reads the list again when the picker opens it.
+  const chooseTag = useCallback(
+    (id: string | null) => {
+      if ((readingRef.current?.row ?? null) !== null) return
+      if (id !== null && !tagsRef.current.some((tag) => tag.id === id)) return
+      showTagId(id)
+    },
+    [showTagId],
+  )
+  const reloadTags = useCallback(() => void loadTags(), [loadTags])
+
   const adopt = useCallback(
     (next: Reading) => {
       const t = Date.now()
@@ -237,8 +281,10 @@ export function useTimer(options: TimerOptions = {}): TimerView {
       if (milestoneRef.current !== null && !milestoneMatches(milestoneRef.current, next.row)) showMilestone(null)
       // The same for the pending comeback (GO BACK IN was pressed, Resume not yet): it is forgotten when the pause it belongs to is over.
       if (pendingRef.current !== null && !pendingMatches(pendingRef.current, next.row)) pendingRef.current = null
+      // The pick made before Start is used up as soon as any session runs (started here or on another device), so the next session starts with no tag again.
+      if (next.row !== null && tagIdRef.current !== null) showTagId(null)
     },
-    [showComeback, showMilestone],
+    [showComeback, showMilestone, showTagId],
   )
 
   const fail = useCallback(
@@ -334,8 +380,14 @@ export function useTimer(options: TimerOptions = {}): TimerView {
         } else {
           // Read before adopt: adopting the running row forgets the pending comeback.
           const pending = kind === "resume" && pendingMatches(pendingRef.current, before?.row ?? null) ? pendingRef.current : null
+          // Start sends the tag picked before it. With no pick the call has one argument, exactly as before tags (CONNECTIONS.md C56).
+          const tagToSend = kind === "start" ? tagIdRef.current : null
           const reply =
-            kind === "start" ? await timerStart(deviceTimeZone()) : kind === "pause" ? await timerPause() : await timerResume()
+            kind === "start"
+              ? await (tagToSend === null ? timerStart(deviceTimeZone()) : timerStart(deviceTimeZone(), tagToSend))
+              : kind === "pause"
+                ? await timerPause()
+                : await timerResume()
           if (!aliveRef.current) return
           const time = { serverMs: reply.serverNowMs, localMs: (sentAt + Date.now()) / 2 }
           adopt({ row: reply.row, time, savedSeconds: before?.savedSeconds ?? 0, day: before?.day ?? "" })
@@ -353,18 +405,27 @@ export function useTimer(options: TimerOptions = {}): TimerView {
       } catch (error) {
         if (!aliveRef.current) return
         if (error instanceof TimerError && CONFLICTS.includes(error.kind)) void refresh()
-        else fail(error)
+        else {
+          // A tag that is gone (archived on another device) between the pick and Start: the pick goes back to no tag and the list is read again, then the plain words of problemText are shown (CONNECTIONS.md C56).
+          if (kind === "start" && error instanceof TimerError && error.kind === "TAG_NOT_FOUND") {
+            showTagId(null)
+            void loadTags()
+          }
+          fail(error)
+        }
       } finally {
         busyRef.current = false
         if (aliveRef.current) setBusy(false)
       }
     },
-    [adopt, fail, refresh, showAlert, showComeback],
+    [adopt, fail, loadTags, refresh, showAlert, showComeback, showTagId],
   )
 
   // Reading again: at the start, every 30 seconds (every 3 seconds while there is no connection), when the page comes back, and when the connection comes back.
   useEffect(() => {
     aliveRef.current = true
+    // The list of tags is read once when the screen opens (loadTags). The picker reads it again each time it opens its list; the 30 second poll never does.
+    void loadTags()
     void refresh()
     const onVisible = () => {
       if (document.visibilityState === "visible") void refresh()
@@ -390,7 +451,7 @@ export function useTimer(options: TimerOptions = {}): TimerView {
       window.removeEventListener("offline", onOffline)
       window.clearInterval(poll)
     }
-  }, [refresh, showLink])
+  }, [loadTags, refresh, showLink])
 
   // The clock: look four times a second, show a new value only when the whole second changes.
   useEffect(() => {
@@ -480,6 +541,9 @@ export function useTimer(options: TimerOptions = {}): TimerView {
     stopAlert: alertMatches(alert, row) ? { line: alert.line, canGoBack: alert.canGoBack } : null,
     comeback: comebackMatches(comeback, row) ? { line: comeback.line } : null,
     milestone: milestoneMatches(milestone, row) ? { line: milestone.line, earlier: milestone.earlier } : null,
+    tags,
+    tagId,
+    runningTag: row === null ? null : (row.tag?.name ?? null),
     start: () => void act("start"),
     pause: () => void act("pause"),
     resume: () => void act("resume"),
@@ -488,6 +552,8 @@ export function useTimer(options: TimerOptions = {}): TimerView {
     goBack: () => void act("goback"),
     clearComeback,
     clearMilestone,
+    chooseTag,
+    reloadTags,
     retry: () => void refresh(),
   }
 }

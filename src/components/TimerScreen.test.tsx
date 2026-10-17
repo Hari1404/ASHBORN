@@ -52,6 +52,7 @@ import { MILESTONE_FADE_MS, MILESTONE_SHOW_MS } from "@/lib/milestoneLines"
 import { COMEBACK_FADE_MS, COMEBACK_SHOW_MS } from "@/lib/stopAlertLines"
 import { forgetWarmup } from "@/lib/timerWarmup"
 import { formatClock, qualityOf } from "@/lib/timerMaths"
+import type { TimerTag } from "@/lib/timerApi"
 import type { TimerView } from "@/lib/useTimer"
 import TimerScreen from "./TimerScreen"
 
@@ -75,6 +76,9 @@ function makeView(over: Partial<TimerView> = {}): TimerView {
     stopAlert: null,
     comeback: null,
     milestone: null,
+    tags: [],
+    tagId: null,
+    runningTag: null,
     start: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
@@ -83,6 +87,8 @@ function makeView(over: Partial<TimerView> = {}): TimerView {
     goBack: vi.fn(),
     clearComeback: vi.fn(),
     clearMilestone: vi.fn(),
+    chooseTag: vi.fn(),
+    reloadTags: vi.fn(),
     retry: vi.fn(),
     ...over,
   }
@@ -961,6 +967,330 @@ describe("the css of the screen: the phone fits the window", () => {
     expect(block(".ab-timer-readout")).toContain("container-type: inline-size;")
     expect(block(".ab-timer-big")).toContain("font-size: min(clamp(2.4rem, 13vw, 4.25rem), 17cqw);")
     expect(block(".ab-timer-small")).toContain("font-size: min(clamp(1.05rem, 4.6vw, 1.5rem), 6cqw);")
+  })
+})
+describe("TimerScreen: the tag picker (Packet 10C2)", () => {
+  const WORK: TimerTag = { id: "t-work", name: "Work" }
+  const STUDY: TimerTag = { id: "t-study", name: "Study" }
+  const kidsOfMain = (): string[] => Array.from(q(".ab-timer").children).map((k) => k.id || k.className)
+
+  it("stands first inside the buttons box, directly before Start, while no session runs", () => {
+    show({ status: "idle", tags: [WORK, STUDY] })
+    const actions = q(".ab-timer-actions")
+    expect(actions.firstElementChild).toBe(q(".ab-tag-picker"))
+    expect(q(".ab-tag-picker").nextElementSibling).toBe(q(".ab-timer-pill"))
+    expect(q(".ab-timer-pill").textContent).toBe("Start")
+    expect(q(".ab-timer-pill").parentElement).toBe(actions)
+    expect(actions.contains(q(".ab-tag-pill"))).toBe(true)
+  })
+
+  it("hands the picker the list, the pick, and the two calls of the hook", () => {
+    const view = show({ status: "idle", tags: [WORK, STUDY], tagId: STUDY.id })
+    expect(q(".ab-tag-pill").textContent).toBe("Study")
+    expect(Array.from(document.querySelectorAll(".ab-tag-chip")).map((c) => c.textContent)).toEqual(["No tag", "Work", "Study"])
+    act(() => q(".ab-tag-pill").click())
+    expect(view.reloadTags).toHaveBeenCalledTimes(1)
+    act(() => Array.from(document.querySelectorAll<HTMLElement>(".ab-tag-row"))[1].click())
+    expect(view.chooseTag).toHaveBeenCalledWith(WORK.id)
+    act(() => Array.from(document.querySelectorAll<HTMLElement>(".ab-tag-chip"))[0].click())
+    expect(view.chooseTag).toHaveBeenLastCalledWith(null)
+  })
+
+  it("is as ready as the Start button: off while the screen is busy, offline or has a problem", () => {
+    show({ status: "idle", busy: true })
+    expect((q(".ab-tag-pill") as HTMLButtonElement).disabled).toBe(true)
+    expect((q(".ab-timer-pill") as HTMLButtonElement).disabled).toBe(true)
+    show({ status: "idle", busy: false, link: "offline" })
+    expect((q(".ab-tag-pill") as HTMLButtonElement).disabled).toBe(true)
+    show({ status: "idle", link: "problem", problem: "Something went wrong." })
+    expect((q(".ab-tag-pill") as HTMLButtonElement).disabled).toBe(true)
+    show({ status: "idle", link: "online", busy: false })
+    expect((q(".ab-tag-pill") as HTMLButtonElement).disabled).toBe(false)
+    expect((q(".ab-timer-pill") as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("is not there while a session runs or is paused", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED, tags: [WORK] })
+    expect(has(".ab-tag-picker")).toBe(false)
+    expect(has(".ab-tag-pill")).toBe(false)
+    expect(has(".ab-tag-chip")).toBe(false)
+    show({ status: "paused", seconds: 100, ringSeed: SEED, tags: [WORK] })
+    expect(has(".ab-tag-picker")).toBe(false)
+  })
+
+  it("is not there while loading: a faint blank pill stands in its place, before the blank Start pill", () => {
+    show({ link: "loading", tags: [WORK] })
+    expect(has(".ab-tag-picker")).toBe(false)
+    const wait = q(".ab-timer-actions .ab-tag-wait")
+    expect(wait.textContent).toBe("")
+    expect(wait.getAttribute("aria-hidden")).toBe("true")
+    expect(wait.tagName).toBe("DIV")
+    expect(wait.nextElementSibling).toBe(q(".ab-timer-wait"))
+    expect(q(".ab-timer-actions").firstElementChild).toBe(wait)
+    expect(has("button")).toBe(false)
+  })
+
+  it("takes the blank tag pill away when the reading is there, and never shows it without a connection or with a problem", () => {
+    show({ link: "loading" })
+    expect(has(".ab-tag-wait")).toBe(true)
+    show({ link: "online", status: "idle" })
+    expect(has(".ab-tag-wait")).toBe(false)
+    expect(has(".ab-tag-pill")).toBe(true)
+    show({ link: "offline", status: "idle" })
+    expect(has(".ab-tag-wait")).toBe(false)
+    show({ link: "problem", problem: "Something went wrong.", status: "idle" })
+    expect(has(".ab-tag-wait")).toBe(false)
+  })
+
+  it("keeps the children of the screen as they were, also while the sheet is open: the sheet lives inside the picker", () => {
+    show({ status: "idle", tags: [WORK] })
+    expect(kidsOfMain()).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side"])
+    act(() => q(".ab-tag-pill").click())
+    expect(has(".ab-tag-sheet")).toBe(true)
+    expect(kidsOfMain()).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side"])
+    expect(q(".ab-tag-sheet").closest(".ab-timer-actions")).toBe(q(".ab-timer-actions"))
+    expect(q(".ab-tag-sheet").closest(".ab-timer-side")).toBe(q(".ab-timer-side"))
+  })
+
+  it("loses the open sheet when a session starts (the picker is taken away)", () => {
+    show({ status: "idle", tags: [WORK] })
+    act(() => q(".ab-tag-pill").click())
+    expect(has(".ab-tag-sheet")).toBe(true)
+    show({ status: "running", seconds: 5, ringSeed: SEED, tags: [WORK] })
+    expect(has(".ab-tag-sheet")).toBe(false)
+    expect(has(".ab-tag-picker")).toBe(false)
+  })
+
+  it("keeps the buttons as they were: Start is the only white pill, and Pause or Resume and the Hold Button stay in the buttons box", () => {
+    show({ status: "running", seconds: 5, ringSeed: SEED })
+    expect(q(".ab-timer-pill").parentElement).toBe(q(".ab-timer-actions"))
+    expect(q(".ab-timer-end").closest(".ab-timer-actions")).toBe(q(".ab-timer-actions"))
+    expect(Array.from(q(".ab-timer-actions").children).some((k) => k.className.includes("ab-tag"))).toBe(false)
+  })
+})
+
+describe("TimerScreen: the tag of the running session (Packet 10C2)", () => {
+  it("shows the name as one small line inside the dial, in the readout, after the day total", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED, dayTotal: 4000, runningTag: "Deep work" })
+    const line = q(".ab-tag-line")
+    expect(line.textContent).toBe("Deep work")
+    expect(line.tagName).toBe("P")
+    expect(line.getAttribute("role")).toBe("note")
+    expect(line.getAttribute("aria-label")).toBe("Tag: Deep work")
+    expect(line.parentElement).toBe(q(".ab-timer-readout"))
+    expect(q(".ab-timer-dial").contains(line)).toBe(true)
+    expect(q(".ab-timer-small").nextElementSibling).toBe(line)
+    expect(line.nextElementSibling).toBeNull()
+  })
+
+  it("shows it also while the session is paused", () => {
+    show({ status: "paused", seconds: 100, ringSeed: SEED, runningTag: "Study" })
+    expect(q(".ab-tag-line").textContent).toBe("Study")
+  })
+
+  it("shows nothing for a session with no tag, and nothing while idle", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED, runningTag: null })
+    expect(has(".ab-tag-line")).toBe(false)
+    show({ status: "idle", runningTag: null })
+    expect(has(".ab-tag-line")).toBe(false)
+    expect(q(".ab-timer-readout").children.length).toBe(2)
+  })
+
+  it("keeps the two clocks as they were: the big clock, then the day total, nothing else in front of them", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED, runningTag: "Work" })
+    const kids = Array.from(q(".ab-timer-readout").children).map((k) => k.className)
+    expect(kids).toEqual(["ab-timer-big", "ab-timer-small", "ab-tag-line"])
+    expect(q(".ab-timer-big").textContent).toBe(formatClock(100))
+  })
+
+  it("shows a name as plain text, never as markup", () => {
+    show({ status: "running", seconds: 100, ringSeed: SEED, runningTag: "<b>Work</b>" })
+    expect(q(".ab-tag-line").textContent).toBe("<b>Work</b>")
+    expect(has(".ab-tag-line b")).toBe(false)
+  })
+})
+describe("the css of the tag picker (Packet 10C2)", () => {
+  // The marker lines are written in two pieces, so that the tag checker does not take them for markers of this test file.
+  const marker = (part: string, edge: string): string => "/* A" + "B:" + part + ":" + edge + " */"
+  const SCREEN_HEADER = "@media (min-width: 1000px) and (min-height: 560px), (min-width: 600px) and (min-aspect-ratio: 5/4) {"
+  const TAGS_HEADER = "@media (min-width: 600px) and (min-aspect-ratio: 5/4), (min-width: 1000px) and (min-height: 560px) {"
+  const part = (): string => {
+    const start = timerCss.indexOf(marker("TIMER.TAGS", "START"))
+    const end = timerCss.indexOf(marker("TIMER.TAGS", "END"))
+    return start < 0 || end < start ? "" : timerCss.slice(start, end)
+  }
+  // The text between the braces of a media rule, found by counting braces.
+  const inside = (text: string, header: string): string => {
+    const start = text.indexOf(header)
+    if (start < 0) return ""
+    let depth = 0
+    for (let i = start + header.length - 1; i < text.length; i++) {
+      if (text[i] === "{") depth++
+      else if (text[i] === "}") {
+        depth--
+        if (depth === 0) return text.slice(start + header.length, i)
+      }
+    }
+    return ""
+  }
+  const rule = (selector: string): string => new RegExp("\\n" + selector.replace(/[.[\]="]/g, "\\$&") + " \\{([^}]*)\\}").exec("\n" + part())?.[1] ?? ""
+  // A rule of the whole css file (the screen's own rules), not only of the tag part.
+  const screenRule = (selector: string): string => new RegExp("\\n" + selector.replace(/[.[\]="]/g, "\\$&") + " \\{([^}]*)\\}").exec("\n" + timerCss)?.[1] ?? ""
+  const px = (text: string, pattern: RegExp): number => Number(pattern.exec(text)?.[1])
+  const conditions = (header: string): string[] =>
+    header
+      .replace(/^@media /, "")
+      .replace(/ \{$/, "")
+      .split(", ")
+      .sort()
+
+  it("is one tagged part that stands after the screen's part and before the part of the moving background", () => {
+    expect(part()).not.toBe("")
+    expect(timerCss.split(marker("TIMER.TAGS", "START")).length - 1).toBe(1)
+    expect(timerCss.indexOf(marker("TIMER.TAGS", "START"))).toBeGreaterThan(timerCss.indexOf(marker("TIMER.SCREEN", "END")))
+    expect(timerCss.indexOf(marker("TIMER.TAGS", "END"))).toBeLessThan(timerCss.indexOf(marker("TIMER.BG", "START")))
+  })
+
+  it("leaves the last motion rule of the file to the moving background", () => {
+    const last = timerCss.lastIndexOf("@media (prefers-reduced-motion: reduce) {")
+    expect(last).toBeGreaterThan(timerCss.indexOf(marker("TIMER.BG", "START")))
+  })
+
+  it("has its own wide-screen rule with the SAME two conditions as the screen's, written in the other order so the screen's header stays unique", () => {
+    expect(timerCss.split(TAGS_HEADER).length - 1).toBe(1)
+    expect(timerCss.split(SCREEN_HEADER).length - 1).toBe(1)
+    expect(TAGS_HEADER).not.toBe(SCREEN_HEADER)
+    expect(conditions(TAGS_HEADER)).toEqual(conditions(SCREEN_HEADER))
+    expect(conditions(TAGS_HEADER)).toEqual(["(min-width: 1000px) and (min-height: 560px)", "(min-width: 600px) and (min-aspect-ratio: 5/4)"])
+    expect(part()).toContain(TAGS_HEADER)
+  })
+
+  it("switches the pill, the blank pill and the sheet off on a wide screen and the chips on, and touches nothing else", () => {
+    const wide = inside(part(), TAGS_HEADER)
+    expect(wide).toMatch(/\.ab-tag-pill,\s*\.ab-tag-wait,\s*\.ab-tag-sheet \{\s*display: none;\s*\}/)
+    expect(wide).toMatch(/\.ab-tag-chips \{[^}]*display: flex;/)
+    for (const word of ["overflow", "z-index", "pointer-events", "position:", "isolation", "mix-blend-mode", "--ab-timer-reserve"]) {
+      expect(wide, word).not.toContain(word)
+    }
+  })
+
+  it("hides the chips on a phone, and the wide rule comes after every phone rule it replaces", () => {
+    expect(rule(".ab-tag-chips")).toContain("display: none;")
+    const at = part().indexOf(TAGS_HEADER)
+    for (const selector of [".ab-tag-pill", ".ab-tag-wait", ".ab-tag-sheet", ".ab-tag-chips"]) {
+      const first = part().indexOf("\n" + selector + " {")
+      expect(first, selector).toBeGreaterThan(-1)
+      expect(first, selector).toBeLessThan(at)
+    }
+  })
+
+  it("makes the pill and the blank pill 44 px high and as wide as the buttons, with round ends", () => {
+    for (const selector of [".ab-tag-pill", ".ab-tag-wait"]) {
+      expect(rule(selector), selector).toContain("height: 44px;")
+      expect(rule(selector), selector).toContain("width: 100%;")
+      expect(rule(selector), selector).toContain("border-radius: 999px;")
+    }
+    expect(rule(".ab-tag-wait")).not.toContain("cursor:")
+  })
+
+  it("lets the blank tag pill breathe like the blank Start pill, so that the two look like one family", () => {
+    expect(px(rule(".ab-tag-wait"), /opacity:\s*([0-9.]+);/)).toBe(px(screenRule(".ab-timer-wait"), /opacity:\s*([0-9.]+);/))
+    expect(rule(".ab-tag-wait")).toMatch(/animation:\s*ab-tag-wait\s+1\.4s/)
+    expect(part()).toContain("@keyframes ab-tag-wait {")
+  })
+
+  it("fits above Start inside the buttons box, so that the reserve of the dial on the phone does not change (C40)", () => {
+    const actions = timerCss.slice(timerCss.indexOf("\n.ab-timer-actions {"), timerCss.indexOf("}", timerCss.indexOf("\n.ab-timer-actions {")))
+    const room = px(actions, /min-height:\s*(\d+)px;/)
+    const gap = px(actions, /gap:\s*(\d+)px;/)
+    const start = px(timerCss.slice(timerCss.indexOf("\n.ab-timer-pill {")), /height:\s*(\d+)px;/)
+    const pill = px(rule(".ab-tag-pill"), /height:\s*(\d+)px;/)
+    expect(start).toBe(58)
+    expect(pill + gap + start).toBeLessThanOrEqual(room)
+  })
+
+  it("draws the wrapper of the picker as no box at all, so that the pill and Start are laid out by the same buttons box", () => {
+    expect(rule(".ab-tag-picker")).toMatch(/display:\s*contents;/)
+  })
+
+  it("is outlined, so that Start stays the one white solid button, and has a disabled look and a press look like Start", () => {
+    expect(rule(".ab-tag-pill")).toContain("background: transparent;")
+    expect(rule(".ab-tag-pill")).toMatch(/border:\s*1px solid/)
+    expect(rule(".ab-tag-pill:disabled")).toContain("opacity: 0.4;")
+    expect(rule(".ab-tag-pill:active:enabled")).toContain("transform: scale(0.98);")
+  })
+
+  it("cuts a long name with an ellipsis instead of growing", () => {
+    for (const selector of [".ab-tag-pill-text", ".ab-tag-chip", ".ab-tag-line"]) {
+      expect(rule(selector), selector).toContain("overflow: hidden;")
+      expect(rule(selector), selector).toContain("text-overflow: ellipsis;")
+      expect(rule(selector), selector).toContain("white-space: nowrap;")
+    }
+    expect(rule(".ab-tag-pill-text")).toContain("min-width: 0;")
+  })
+
+  it("makes the sheet a fixed, plain dim layer over the whole window with no blur, and the panel sits at the bottom", () => {
+    expect(rule(".ab-tag-sheet")).toContain("position: fixed;")
+    expect(rule(".ab-tag-sheet")).toContain("inset: 0;")
+    expect(rule(".ab-tag-scrim")).toContain("position: absolute;")
+    expect(rule(".ab-tag-scrim")).toContain("inset: 0;")
+    expect(rule(".ab-tag-scrim")).toMatch(/background:\s*rgba\(0, 0, 0, 0\.\d+\);/)
+    expect(part()).not.toContain("blur(")
+    expect(part()).not.toContain("backdrop-filter")
+    expect(rule(".ab-tag-panel")).toContain("position: absolute;")
+    expect(rule(".ab-tag-panel")).toMatch(/bottom: 0;/)
+    expect(rule(".ab-tag-panel")).toContain("overflow-y: auto;")
+    expect(rule(".ab-tag-panel")).toMatch(/max-height:\s*\d+dvh;/)
+  })
+
+  it("keeps the sheet above the dial and the buttons (z-index 1) and below the menu button (z-index 40 in menu.css)", () => {
+    const z = px(rule(".ab-tag-sheet"), /z-index:\s*(\d+);/)
+    expect(z).toBeGreaterThan(1)
+    expect(z).toBeLessThan(40)
+  })
+
+  it("gives the rows at least 44 px to tap, and the chips 40 px", () => {
+    expect(px(rule(".ab-tag-row"), /min-height:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
+    expect(rule(".ab-tag-row")).toContain("width: 100%;")
+    expect(px(rule(".ab-tag-chip"), /height:\s*(\d+)px;/)).toBe(40)
+  })
+
+  it("fills the chosen row and the chosen chip white, as Start is", () => {
+    for (const selector of ['.ab-tag-row[aria-pressed="true"]', '.ab-tag-chip[aria-pressed="true"]']) {
+      expect(rule(selector), selector).toContain("background: #fff;")
+      expect(rule(selector), selector).toContain("color: #000;")
+    }
+  })
+
+  it("lets a person who wants less motion have no sliding, no fading and no breathing, and the switch-off comes after the rules it switches off", () => {
+    const at = part().indexOf("@media (prefers-reduced-motion: reduce) {")
+    expect(at).toBeGreaterThan(-1)
+    const off = inside(part(), "@media (prefers-reduced-motion: reduce) {")
+    for (const selector of [".ab-tag-wait", ".ab-tag-scrim", ".ab-tag-panel"]) {
+      expect(off, selector).toContain(selector)
+      expect(part().indexOf("\n" + selector + " {"), selector).toBeLessThan(at)
+    }
+    expect(off).toContain("animation: none;")
+  })
+
+  it("makes the line of the running tag take no height: its own line is 1.2em and the bottom margin takes back that line and the gap of the readout", () => {
+    const line = rule(".ab-tag-line")
+    const readout = timerCss.slice(timerCss.indexOf("\n.ab-timer-readout {"), timerCss.indexOf("}", timerCss.indexOf("\n.ab-timer-readout {")))
+    const gap = px(readout, /\n\s*gap:\s*(\d+)px;/)
+    const lineHeight = px(line, /line-height:\s*([0-9.]+);/)
+    const margin = /margin:\s*0 0 calc\(-([0-9.]+)em - (\d+)px\);/.exec(line)
+    expect(margin).not.toBeNull()
+    expect(Number(margin?.[1])).toBe(lineHeight)
+    expect(Number(margin?.[2])).toBe(gap)
+    expect(line).toContain("max-width: 84cqw;")
+    expect(line).toMatch(/font-size:\s*max\(12px,/)
+  })
+
+  it("never uses a css variable of its own and never touches the rules of the screen", () => {
+    expect(part()).not.toContain("--ab-")
+    for (const selector of [".ab-timer-actions", ".ab-timer-pill", ".ab-timer-wait", ".ab-timer-readout", ".ab-timer-small"]) {
+      expect(part(), selector).not.toContain(selector + " ")
+    }
   })
 })
 // AB:TIMER.TESTS:END

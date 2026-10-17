@@ -2,6 +2,7 @@ import Comeback from "@/components/Comeback"
 import HoldButton from "@/components/HoldButton"
 import Milestone from "@/components/Milestone"
 import StopAlert from "@/components/StopAlert"
+import TagPicker from "@/components/TagPicker"
 import TimerBackground from "@/components/TimerBackground"
 import TimerBall from "@/components/TimerBall"
 import type { MilestoneVisuals } from "@/lib/milestoneLines"
@@ -20,7 +21,7 @@ import "../timer.css"
 // The ball sits in a box that is larger than the dial, and the ball is a share of that box (see CONNECTIONS.md C31).
 // The look of the clock digits (Space Grotesk, fixed width) is in timer.css (see CONNECTIONS.md C32).
 // While the first reading is on its way (the link is loading) the screen does not show zeros that would jump to the real numbers: the two clocks are invisible, and where the buttons will be there is a faint blank pill (ab-timer-wait) that is not a button. When the reading is there, the clocks and the buttons fade in together (timer.css, CONNECTIONS.md C46).
-// On a phone the screen is one column: the dial, then the line, then the buttons. On a wide screen (a laptop) the dial is a big circle on the left and the line and the buttons stand on the right, inside the box ab-timer-side (see CONNECTIONS.md C39). The tags and the rest that come later go into that box too.
+// On a phone the screen is one column: the dial, then the line, then the buttons. On a wide screen (a laptop) the dial is a big circle on the left and the line and the buttons stand on the right, inside the box ab-timer-side (see CONNECTIONS.md C39). While no session runs, the tag picker (TagPicker.tsx, Packet 10C2) is the first thing inside the buttons box, above Start: a blank pill while the first reading is on its way, the pill (phone) or the chips (wide screen) after it. While a session runs there is no picker; the name of its tag is one small line inside the dial under the day total (ab-tag-line), and nothing for a session with no tag (see CONNECTIONS.md C56). The rest that comes later goes into the side box too.
 
 // What the screen really draws, told to the hook when it picks a milestone line (the line about the ball is only true when the ball is drawn: the same condition as TimerBall.tsx, see CONNECTIONS.md C51). It is asked only at a milestone, when a session is already shown.
 function drawnNow(): MilestoneVisuals {
@@ -57,6 +58,11 @@ export default function TimerScreen() {
             {formatClock(timer.seconds)}
           </p>
           <p className="ab-timer-small">{formatClock(timer.dayTotal)}</p>
+          {timer.runningTag === null ? null : (
+            <p className="ab-tag-line" role="note" aria-label={"Tag: " + timer.runningTag}>
+              {timer.runningTag}
+            </p>
+          )}
         </div>
       </div>
       <div className="ab-timer-side" inert={timer.stopAlert !== null}>
@@ -69,6 +75,10 @@ export default function TimerScreen() {
           </button>
         ) : null}
         <div className="ab-timer-actions">
+          {timer.link === "loading" ? <div className="ab-tag-wait" aria-hidden="true" /> : null}
+          {timer.link !== "loading" && timer.status === "idle" ? (
+            <TagPicker tags={timer.tags} tagId={timer.tagId} disabled={!ready} onChoose={timer.chooseTag} onOpen={timer.reloadTags} />
+          ) : null}
           {timer.link === "loading" ? (
             <div className="ab-timer-wait" aria-hidden="true" />
           ) : timer.status === "idle" ? (

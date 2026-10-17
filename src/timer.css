@@ -700,6 +700,227 @@
 }
 /* AB:TIMER.LINE-TEXT:END */
 
+/* AB:TIMER.TAGS:START */
+/* The tag picker (TagPicker.tsx, Packet 10C2, CONNECTIONS.md C56). It stands inside the buttons box, above Start, only while no session runs. On a phone: one outlined pill (44 px) that shows the choice, and the slide-up sheet. On a wide screen: the pill and the sheet are not drawn and the chips are. The pill (44 px) and the gap (14 px) fit into the 124 px of the buttons box next to the 58 px Start pill, so the phone reserve of the dial does not change (C40). The wrapper is no box at all, so its children are laid out by the buttons box. */
+.ab-tag-picker {
+  display: contents;
+}
+
+/* The blank pill that stands where the tag pill will be while the first reading is on its way: the size of the tag pill, faint, breathing slowly like the blank Start pill (C46). It is not a button and has no text. */
+.ab-tag-wait {
+  width: 100%;
+  height: 44px;
+  border-radius: 999px;
+  background: #fff;
+  opacity: 0.18;
+  animation: ab-tag-wait 1.4s ease-in-out infinite;
+}
+
+@keyframes ab-tag-wait {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* The pill: outlined, so that Start stays the one white solid button. The name is cut with an ellipsis when it is long. */
+.ab-tag-pill {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 44px;
+  padding: 0 20px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ab-tag-pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ab-tag-pill:active:enabled {
+  transform: scale(0.98);
+}
+
+.ab-tag-pill-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A small arrow made of two borders that points up, to say that the list slides up. */
+.ab-tag-chevron {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 3px;
+  border-top: 2px solid currentColor;
+  border-left: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+/* The chips are only for the wide screen (see the rule at the end of this part). */
+.ab-tag-chips {
+  display: none;
+}
+
+/* The sheet: a plain dim layer over the whole screen (no blur behind it: a blur over the moving background made the phone laggy, C25) and the panel at the bottom. It is fixed to the window, so that it covers the screen whatever the buttons box does. */
+.ab-tag-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+}
+
+.ab-tag-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  animation: ab-tag-fade 200ms ease;
+}
+
+.ab-tag-panel {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 70dvh;
+  padding: 16px 20px max(20px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+  background: #111114;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 20px 20px 0 0;
+  outline: none;
+  animation: ab-tag-up 240ms ease;
+}
+
+.ab-tag-row {
+  box-sizing: border-box;
+  flex: none;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 20px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: left;
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 14px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.ab-tag-row[aria-pressed="true"] {
+  color: #000;
+  background: #fff;
+  border-color: #fff;
+}
+
+.ab-tag-row:active {
+  transform: scale(0.99);
+}
+
+@keyframes ab-tag-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes ab-tag-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+/* The chips of the wide screen: they wrap, 40 px high, the chosen one is filled white like Start. */
+.ab-tag-chip {
+  box-sizing: border-box;
+  flex: none;
+  max-width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ab-tag-chip[aria-pressed="true"] {
+  color: #000;
+  background: #fff;
+  border-color: #fff;
+}
+
+.ab-tag-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The name of the tag of the running session: one small line INSIDE the dial, under the day total (TimerScreen.tsx). It takes no height in the centred stack: its line is 1.2em high and the negative bottom margin takes back that line and the 8 px gap above it, so the two clocks stay exactly where they are. The line is cut with an ellipsis when the name is long. */
+.ab-tag-line {
+  box-sizing: border-box;
+  max-width: 84cqw;
+  margin: 0 0 calc(-1.2em - 8px);
+  overflow: hidden;
+  font-size: max(12px, min(1rem, 4.6cqw));
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.6);
+  text-shadow: 0 0 14px rgba(0, 0, 0, 0.75), 0 0 4px rgba(0, 0, 0, 0.6);
+}
+
+/* A person who asked their device for less motion gets no sliding and no breathing. It is written AFTER the rules it switches off. */
+@media (prefers-reduced-motion: reduce) {
+  .ab-tag-wait,
+  .ab-tag-scrim,
+  .ab-tag-panel {
+    animation: none;
+  }
+}
+
+/* The wide screen: the same two conditions as the wide rule of the screen (C39), written in the other order on purpose, so that the one test that counts the wide rule of the screen finds it exactly once. This rule only switches things on and off (display); it must stay AFTER the rules above. */
+@media (min-width: 600px) and (min-aspect-ratio: 5/4), (min-width: 1000px) and (min-height: 560px) {
+  .ab-tag-pill,
+  .ab-tag-wait,
+  .ab-tag-sheet {
+    display: none;
+  }
+
+  .ab-tag-chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+  }
+}
+/* AB:TIMER.TAGS:END */
+
 /* AB:TIMER.BG:START */
 /* The moving background (TimerBackground.tsx): it fills the whole screen, sits at the very bottom, is dimmed so that the white digits stay easy to read, and never catches a tap. It has its own black, so that the screen is black before the canvas is made and while it fades (CONNECTIONS.md C37). It fades in when a session starts and out when it ends. The fade time is the same as BG_FADE_MS in backgroundLook.ts (CONNECTIONS.md C38). The opacity of 0.5 is the one number that decides how bright the whole background is: a higher number gives brighter colours and harder-to-read digits. */
 .ab-timer-bg {

@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   timerPause: vi.fn(),
   timerResume: vi.fn(),
   timerEnd: vi.fn(),
+  timerTagList: vi.fn(),
 }))
 vi.mock("@/lib/supabase", () => ({ supabase: null }))
 vi.mock("@/lib/timerApi", async (importOriginal) => {
@@ -19,7 +20,7 @@ vi.mock("@/lib/timerApi", async (importOriginal) => {
   return { ...actual, ...api, deviceTimeZone: () => "Asia/Kolkata" }
 })
 
-import { TimerError } from "@/lib/timerApi"
+import { TimerError, type TimerTag } from "@/lib/timerApi"
 import { fillSlots } from "@/lib/lineMarkup"
 import { COMEBACK_BANKS, STOP_ALERT_BANKS, bankIdFor, isComebackBank } from "@/lib/stopAlertLines"
 import { activeSeconds, canGoBackIn, type TimerRow } from "@/lib/timerMaths"
@@ -31,7 +32,14 @@ import { POLL_OFFLINE_MS, POLL_ONLINE_MS, problemText, useTimer, type TimerOptio
 const T0 = Date.parse("2026-10-07T10:00:00Z")
 const MIDNIGHT = "2026-10-07T18:30:00+00:00"
 
-type Server = { row: TimerRow | null; saved: Record<string, number>; offsetMs: number; down: TimerError | null }
+type Server = {
+  row: TimerRow | null
+  saved: Record<string, number>
+  offsetMs: number
+  down: TimerError | null
+  tags: TimerTag[]
+  tagListDown: boolean
+}
 let server: Server
 
 function serverNow(): number {
@@ -56,10 +64,12 @@ function installFakeServer(): void {
     guard()
     return server.saved[day] ?? 0
   })
-  api.timerStart.mockImplementation(async (zone: string) => {
+  api.timerStart.mockImplementation(async (zone: string, tagId?: string) => {
     guard()
     if (server.row !== null) throw new TimerError("ALREADY_RUNNING")
-    server.row = runningRow(0, { tz: zone })
+    const tag = tagId === undefined ? null : (server.tags.find((t) => t.id === tagId) ?? null)
+    if (tagId !== undefined && tag === null) throw new TimerError("TAG_NOT_FOUND")
+    server.row = runningRow(0, tag === null ? { tz: zone } : { tz: zone, tag })
     return { serverNowMs: serverNow(), row: server.row }
   })
   api.timerPause.mockImplementation(async () => {
@@ -74,6 +84,11 @@ function installFakeServer(): void {
     const gone = (serverNow() - Date.parse(server.row.paused_at)) / 1000
     server.row = { ...server.row, status: "running", paused_at: null, paused_seconds: server.row.paused_seconds + gone }
     return { serverNowMs: serverNow(), row: server.row }
+  })
+  api.timerTagList.mockImplementation(async () => {
+    guard()
+    if (server.tagListDown) throw new TimerError("UNKNOWN")
+    return server.tags.map((tag) => ({ ...tag }))
   })
   api.timerEnd.mockImplementation(async () => {
     guard()
@@ -174,7 +189,7 @@ beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   vi.useFakeTimers()
   vi.setSystemTime(T0)
-  server = { row: null, saved: {}, offsetMs: 0, down: null }
+  server = { row: null, saved: {}, offsetMs: 0, down: null, tags: [], tagListDown: false }
   renders = 0
   harnessOptions = undefined
   for (const fn of Object.values(api)) fn.mockReset()
@@ -1693,6 +1708,280 @@ describe("useTimer: the milestone message", () => {
     const before = renders
     await settle(10_000)
     expect(renders - before).toBeLessThanOrEqual(11)
+  })
+})
+describe("useTimer: the tags (Packet 10C2)", () => {
+  const WORK: TimerTag = { id: "t-work", name: "Work" }
+  const STUDY: TimerTag = { id: "t-study", name: "Study" }
+  const startCalls = (): unknown[][] => api.timerStart.mock.calls as unknown[][]
+
+  it("reads the list of tags once when the screen opens, and shows it in the order the database gave it", async () => {
+    server.tags = [WORK, STUDY]
+    await mount()
+    expect(api.timerTagList).toHaveBeenCalledTimes(1)
+    expect(view.tags).toEqual([WORK, STUDY])
+    expect(view.tagId).toBeNull()
+    expect(view.runningTag).toBeNull()
+  })
+
+  it("does not read the list again in the 30 second reading (only the picker asks for that)", async () => {
+    server.tags = [WORK]
+    await mount()
+    await settle(POLL_ONLINE_MS * 3)
+    expect(api.timerState.mock.calls.length).toBeGreaterThanOrEqual(4)
+    expect(api.timerTagList).toHaveBeenCalledTimes(1)
+  })
+
+  it("reads the list again when the picker opens its list (reloadTags), and shows the new list", async () => {
+    server.tags = [WORK]
+    await mount()
+    server.tags = [WORK, STUDY]
+    await press(view.reloadTags)
+    expect(api.timerTagList).toHaveBeenCalledTimes(2)
+    expect(view.tags).toEqual([WORK, STUDY])
+  })
+
+  it("never lets a list that cannot be read stop the timer: no problem is shown, Start works with no tag, and the next reading of the list can still succeed", async () => {
+    server.tagListDown = true
+    server.tags = [WORK]
+    await mount()
+    expect(view.link).toBe("online")
+    expect(view.problem).toBe("")
+    expect(view.tags).toEqual([])
+    await press(view.start)
+    expect(view.status).toBe("running")
+    expect(view.link).toBe("online")
+    server.tagListDown = false
+    await press(view.reloadTags)
+    expect(view.tags).toEqual([WORK])
+  })
+
+  it("keeps the list it had when a later reading of it fails", async () => {
+    server.tags = [WORK]
+    await mount()
+    server.tagListDown = true
+    await press(view.reloadTags)
+    expect(view.tags).toEqual([WORK])
+    expect(view.link).toBe("online")
+  })
+
+  it("lets an old answer of the list lose against a newer one", async () => {
+    server.tags = [WORK]
+    const first = hold("timerTagList")
+    await mount()
+    await press(view.reloadTags)
+    expect(view.tags).toEqual([WORK])
+    await release(() => first.answer([STUDY]))
+    expect(view.tags).toEqual([WORK])
+  })
+
+  it("ignores the answer of the list when the screen has been left", async () => {
+    const first = hold("timerTagList")
+    await mount()
+    act(() => root?.unmount())
+    root = null
+    await release(() => first.answer([WORK]))
+    expect(api.timerTagList).toHaveBeenCalledTimes(1)
+  })
+
+  it("starts every session with no tag: the pick is none on a fresh load", async () => {
+    server.tags = [WORK]
+    await mount()
+    expect(view.tagId).toBeNull()
+  })
+
+  it("chooses a tag from the list, and none again with null", async () => {
+    server.tags = [WORK, STUDY]
+    await mount()
+    await press(() => view.chooseTag(STUDY.id))
+    expect(view.tagId).toBe(STUDY.id)
+    await press(() => view.chooseTag(WORK.id))
+    expect(view.tagId).toBe(WORK.id)
+    await press(() => view.chooseTag(null))
+    expect(view.tagId).toBeNull()
+  })
+
+  it("ignores a tag that is not in the list", async () => {
+    server.tags = [WORK]
+    await mount()
+    await press(() => view.chooseTag("t-nobody"))
+    expect(view.tagId).toBeNull()
+    await press(() => view.chooseTag(WORK.id))
+    await press(() => view.chooseTag("t-nobody"))
+    expect(view.tagId).toBe(WORK.id)
+  })
+
+  it("ignores a choice while a session runs or is paused (the database cannot change the tag of a running session)", async () => {
+    server.tags = [WORK]
+    server.row = runningRow(100)
+    await mount()
+    await press(() => view.chooseTag(WORK.id))
+    expect(view.tagId).toBeNull()
+    await press(view.pause)
+    expect(view.status).toBe("paused")
+    await press(() => view.chooseTag(WORK.id))
+    expect(view.tagId).toBeNull()
+  })
+
+  it("drops a pick that is no longer in the list after the list was read again (the tag was archived on another device)", async () => {
+    server.tags = [WORK, STUDY]
+    await mount()
+    await press(() => view.chooseTag(WORK.id))
+    server.tags = [STUDY]
+    await press(view.reloadTags)
+    expect(view.tagId).toBeNull()
+    expect(view.tags).toEqual([STUDY])
+  })
+
+  it("keeps a pick that is still in the list after the list was read again", async () => {
+    server.tags = [WORK, STUDY]
+    await mount()
+    await press(() => view.chooseTag(STUDY.id))
+    await press(view.reloadTags)
+    expect(view.tagId).toBe(STUDY.id)
+  })
+
+  it("Start with no pick is exactly the call of before tags: one argument, the time zone", async () => {
+    server.tags = [WORK]
+    await mount()
+    await press(view.start)
+    expect(api.timerStart).toHaveBeenCalledTimes(1)
+    expect(startCalls()[0]).toEqual(["Asia/Kolkata"])
+    expect(view.runningTag).toBeNull()
+  })
+
+  it("Start with a pick sends the tag with the time zone, and the running session shows the name the database sends", async () => {
+    server.tags = [WORK, STUDY]
+    await mount()
+    await press(() => view.chooseTag(STUDY.id))
+    await press(view.start)
+    expect(startCalls()[0]).toEqual(["Asia/Kolkata", STUDY.id])
+    expect(view.status).toBe("running")
+    expect(view.runningTag).toBe("Study")
+  })
+
+  it("uses up the pick as soon as a session runs: it is none while the session runs and after it", async () => {
+    server.tags = [WORK]
+    await mount()
+    await press(() => view.chooseTag(WORK.id))
+    await press(view.start)
+    expect(view.tagId).toBeNull()
+    await press(view.stop)
+    await press(view.end)
+    expect(view.status).toBe("idle")
+    expect(view.tagId).toBeNull()
+    expect(view.runningTag).toBeNull()
+    await press(view.start)
+    expect(startCalls()[1]).toEqual(["Asia/Kolkata"])
+    expect(view.runningTag).toBeNull()
+  })
+
+  it("uses up the pick when a session was started on another device", async () => {
+    server.tags = [WORK]
+    await mount()
+    await press(() => view.chooseTag(WORK.id))
+    server.row = runningRow(5)
+    await settle(POLL_ONLINE_MS)
+    expect(view.status).toBe("running")
+    expect(view.tagId).toBeNull()
+    expect(view.runningTag).toBeNull()
+  })
+
+  it("shows the tag of a session that was found already running (a reload, or another device), also while it is paused", async () => {
+    server.tags = [WORK]
+    server.row = runningRow(100, { tag: WORK })
+    await mount()
+    expect(view.runningTag).toBe("Work")
+    await press(view.pause)
+    expect(view.status).toBe("paused")
+    expect(view.runningTag).toBe("Work")
+  })
+
+  it("shows the new name when the tag was renamed while the session runs (the database sends the name it has now)", async () => {
+    server.row = runningRow(100, { tag: WORK })
+    await mount()
+    expect(view.runningTag).toBe("Work")
+    server.row = runningRow(100, { tag: { id: WORK.id, name: "Deep work" } })
+    await settle(POLL_ONLINE_MS)
+    expect(view.runningTag).toBe("Deep work")
+  })
+
+  it("shows no tag for a session whose row has no key tag (the reader of the row has already turned a null tag into no key)", async () => {
+    server.row = runningRow(100)
+    await mount()
+    expect(view.runningTag).toBeNull()
+    server.row = runningRow(130, { tag: WORK })
+    await settle(POLL_ONLINE_MS)
+    expect(view.runningTag).toBe("Work")
+    server.row = runningRow(160)
+    await settle(POLL_ONLINE_MS)
+    expect(view.runningTag).toBeNull()
+  })
+
+  it("a Start that the database refuses with TAG_NOT_FOUND sets the pick back to no tag, reads the list again and shows the plain words", async () => {
+    server.tags = [WORK, STUDY]
+    await mount()
+    await press(() => view.chooseTag(WORK.id))
+    server.tags = [STUDY]
+    await press(view.start)
+    expect(startCalls()[0]).toEqual(["Asia/Kolkata", WORK.id])
+    expect(view.tagId).toBeNull()
+    expect(view.tags).toEqual([STUDY])
+    expect(api.timerTagList).toHaveBeenCalledTimes(2)
+    expect(view.status).toBe("idle")
+    expect(view.link).toBe("problem")
+    expect(view.problem).toBe(problemText("TAG_NOT_FOUND"))
+    expect(server.row).toBeNull()
+  })
+
+  it("a Start refused with TAG_NOT_FOUND sets the pick back to no tag even when the list cannot be read again", async () => {
+    server.tags = [WORK]
+    await mount()
+    await press(() => view.chooseTag(WORK.id))
+    server.tags = []
+    server.tagListDown = true
+    await press(view.start)
+    expect(api.timerTagList).toHaveBeenCalledTimes(2)
+    expect(view.tagId).toBeNull()
+    expect(view.tags).toEqual([WORK])
+    expect(view.problem).toBe(problemText("TAG_NOT_FOUND"))
+  })
+
+  it("treats TAG_NOT_FOUND of Start as a problem of its own: the state is not read again, and a Start with no tag works after Try again", async () => {
+    server.tags = [WORK]
+    await mount()
+    await press(() => view.chooseTag(WORK.id))
+    server.tags = []
+    await press(view.start)
+    expect(api.timerState).toHaveBeenCalledTimes(1)
+    await press(view.retry)
+    expect(view.link).toBe("online")
+    await press(view.start)
+    expect(startCalls()[1]).toEqual(["Asia/Kolkata"])
+    expect(view.status).toBe("running")
+  })
+
+  it("does not touch the pick for any other refusal of Start", async () => {
+    server.tags = [WORK]
+    await mount()
+    await press(() => view.chooseTag(WORK.id))
+    api.timerStart.mockImplementationOnce(async () => {
+      throw new TimerError("UNKNOWN")
+    })
+    await press(view.start)
+    expect(view.tagId).toBe(WORK.id)
+    expect(api.timerTagList).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not read the list again for TAG_NOT_FOUND of any other button", async () => {
+    server.tags = [WORK]
+    server.row = runningRow(100)
+    await mount()
+    api.timerPause.mockImplementationOnce(async () => {
+      throw new TimerError("TAG_NOT_FOUND")
+    })
+    await press(view.pause)
+    expect(api.timerTagList).toHaveBeenCalledTimes(1)
   })
 })
 // AB:TIMER.TESTS:END
