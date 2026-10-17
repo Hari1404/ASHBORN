@@ -330,11 +330,11 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:TIMER.TESTS @ src/lib/timerApi.test.ts = expect([...raised].sort()).toEqual([...DATABASE_ERRORS].sort())`
 - Check by hand: after any change in supabase/timer_schema.sql run npm test (it reads that file), and the owner runs the changed SQL in the Supabase SQL Editor.
 
-### C29: The calls to the database use the function names, argument names and answer keys of the SQL file
+### C29: The calls to the database use the function names, argument names, answer keys and day words of the SQL files
 - Tags: `AB:TIMER.API`, `AB:TIMER.TESTS`
-- If you change: the name of a function in supabase/timer_schema.sql (timer_state, timer_day_total, timer_start, timer_pause, timer_resume, timer_end), an argument name (p_tz, p_day), or a key in an answer (server_now, running, saved, capped, session, day, active_seconds, and the six fields of a running session)
-- Then also: timerApi.ts calls each function by name through supabase.rpc and sends each argument by name. The readers (readStateReply, readRunningReply, readEndReply, readDayTotal and readTimerRow) read the keys by name and refuse anything else with the error BAD_REPLY. The six fields of a running session are the type TimerRow in timerMaths.ts (see C26). A name changed on one side only makes the call fail, or makes the screen say that the timer got an answer it could not read. The key server_now is read by the same line in two readers (readStateReply and readEndReply): the checker pins that line once and notices when it is gone from both, and npm test checks each reader. The SQL side is checked by npm test (timerApi.test.ts reads supabase/timer_schema.sql); the checker cannot read SQL. A change in the SQL file has to be run again in the Supabase SQL Editor by the owner.
-- If you forget: Start, Pause, Resume or End fail, or the screen shows an error instead of the time.
+- If you change: the name of a function in supabase/timer_schema.sql (timer_state, timer_day_total, timer_start, timer_pause, timer_resume, timer_end; and timer_day_score in supabase/day_score.sql), an argument name (p_tz, p_day), a key in an answer (server_now, running, saved, capped, session, day, active_seconds, and the six fields of a running session), or a key or a word of the day score (credited_minutes, word, usual_minutes, usual_is_stand_in, sessions, short_sessions, longest_stretch_minutes, counted_minutes, counted_over_elapsed, unconfirmed_minutes, over_cap_minutes, and the six words of timer_day_word)
+- Then also: timerApi.ts calls each function by name through supabase.rpc and sends each argument by name. The readers (readStateReply, readRunningReply, readEndReply, readDayTotal, readDayScore and readTimerRow) read the keys by name and refuse anything else with the error BAD_REPLY. The six fields of a running session are the type TimerRow in timerMaths.ts (see C26). A name changed on one side only makes the call fail, or makes the screen say that the timer got an answer it could not read. The key server_now is read by the same line in two readers (readStateReply and readEndReply): the checker pins that line once and notices when it is gone from both, and npm test checks each reader. The SQL side is checked by npm test (timerApi.test.ts reads supabase/timer_schema.sql); the checker cannot read SQL. A change in the SQL file has to be run again in the Supabase SQL Editor by the owner. The day score is read by readDayScore, which refuses a word that is not in DAY_WORDS (the six words of timer_day_word, see C54) and a day whose number of sessions does not fit its word; timerDayScore refuses the answer of another day. supabase/day_score.sql is read by npm test (timerApi.test.ts and dayScoreSql.test.ts).
+- If you forget: Start, Pause, Resume or End fail, or the screen shows an error instead of the time, or the day score is refused (BAD_REPLY) because a key or a word was changed on one side only.
 - Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = call("timer_state")`
 - Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = call("timer_day_total", { p_day: day })`
 - Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = call("timer_start", { p_tz: zone })`
@@ -348,8 +348,22 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = const session = json.session`
 - Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = session.active_seconds`
 - Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = session.day`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = call("timer_day_score", { p_day: day })`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = export const DAY_WORDS = ["NO SESSION", "LIGHT", "BELOW USUAL", "USUAL", "ABOVE USUAL", "BIG"] as const`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.credited_minutes`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.word`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.usual_minutes`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.usual_is_stand_in`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.sessions`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.short_sessions`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.longest_stretch_minutes`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.counted_minutes`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.counted_over_elapsed`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.unconfirmed_minutes`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = json.over_cap_minutes`
 - Anchor: `AB:TIMER.TESTS @ src/lib/timerApi.test.ts = "timer_state()", "timer_day_total(p_day date)", "timer_start(p_tz text)", "timer_pause()", "timer_resume()", "timer_end()"`
-- Check by hand: after any change in supabase/timer_schema.sql run npm test (it reads that file), and the owner runs the changed SQL in the Supabase SQL Editor.
+- Anchor: `AB:TIMER.TESTS @ src/lib/timerApi.test.ts = describe("the day score reply and the call (Packet 09C)", () => {`
+- Check by hand: after any change in supabase/timer_schema.sql or supabase/day_score.sql run npm test (it reads both files), and the owner runs the changed SQL in the Supabase SQL Editor.
 
 ### C30: The Pro Timer screen is chosen by the screen id timer, and the menu stays beside it
 - Tags: `AB:MENU.NAV`, `AB:AUTH.STUB`, `AB:TIMER.SCREEN`
@@ -804,10 +818,10 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Check by hand: after any change in supabase/timer_schema.sql run npm test, run the SQL in the Supabase SQL Editor, then timer_verify.sql: every row must show the same value in result and expect.
 
 ### C54: The day score: the SQL file, its verify file and its tests are tied to DECISIONS_DAY_SCORE.md and to the pause log
-- Tags: `AB:TIMER.TESTS`
+- Tags: `AB:TIMER.TESTS`, `AB:TIMER.API`
 - If you change: a rule or a number of the day score (the credit of a stretch, the 45 minutes, the 0.75, the cap of 180 minutes, the stand-in usual of 60 minutes, the 7 days of the usual, the edges and the words of a day, the 10 minute line of a short session), the keys of its answer, or the names and arguments of the four functions in supabase/day_score.sql (timer_session_score, timer_usual_seconds, timer_day_word, timer_day_score)
-- Then also: change DECISIONS_DAY_SCORE.md FIRST (it is the file of the rules), then supabase/day_score.sql, supabase/day_score_verify.sql (its 19 rows hold the worked days in seconds) and src/lib/dayScoreSql.test.ts (it reads the text of both SQL files and of timer_schema.sql). The score reads the pause log (the keys from and to; NULL means not known and [] means no pause, see C53) and the columns day, started_at, ended_at and active_seconds of timer_sessions: a change of those in supabase/timer_schema.sql changes the score. The score is read-only and stores nothing, so a change of a rule re-scores every past day from the raw sessions and nothing has to be migrated. The app does not call the score yet. When it does (a later packet), timerApi.ts calls timer_day_score(p_day) and reads its twelve keys, and C29 must get them. The owner has to run the changed supabase/day_score.sql and then supabase/day_score_verify.sql in the Supabase SQL Editor (the agent cannot run SQL). The checker cannot read SQL: npm test reads the files (dayScoreSql.test.ts).
-- If you forget: the number of a day, its word or its usual is wrong while every test is green (npm test only reads the text of the SQL), or the verify file fails, or the app later reads a key that the SQL no longer sends.
+- Then also: change DECISIONS_DAY_SCORE.md FIRST (it is the file of the rules), then supabase/day_score.sql, supabase/day_score_verify.sql (its 19 rows hold the worked days in seconds) and src/lib/dayScoreSql.test.ts (it reads the text of both SQL files and of timer_schema.sql). The score reads the pause log (the keys from and to; NULL means not known and [] means no pause, see C53) and the columns day, started_at, ended_at and active_seconds of timer_sessions: a change of those in supabase/timer_schema.sql changes the score. The score is read-only and stores nothing, so a change of a rule re-scores every past day from the raw sessions and nothing has to be migrated. timerApi.ts calls timer_day_score(p_day) (timerDayScore) and reads its twelve keys and its six words (readDayScore and DAY_WORDS): they are pinned in C29, so a key or a word changed in the SQL is changed there in the same packet. No screen shows the score yet. The owner has to run the changed supabase/day_score.sql and then supabase/day_score_verify.sql in the Supabase SQL Editor (the agent cannot run SQL). The checker cannot read SQL: npm test reads the files (dayScoreSql.test.ts).
+- If you forget: the number of a day, its word or its usual is wrong while every test is green (npm test only reads the text of the SQL), or the verify file fails, or the app reads a key or a word that the SQL no longer sends (the score is then refused as BAD_REPLY).
 - Anchor: `AB:TIMER.TESTS @ src/lib/dayScoreSql.test.ts = describe("the day score SQL file: what it makes and who may call it (Packet 09B)", () => {`
 - Check by hand: after any change in supabase/day_score.sql run npm test, run the SQL in the Supabase SQL Editor, then supabase/day_score_verify.sql: all 19 rows must show the same value in result and expect.
 

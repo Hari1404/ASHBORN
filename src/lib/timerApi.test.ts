@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import dayScoreSql from "../../supabase/day_score.sql?raw"
 import schemaSql from "../../supabase/timer_schema.sql?raw"
 
 // The database client is replaced by a fake one, so no test ever calls the network.
@@ -11,16 +12,19 @@ vi.mock("@/lib/supabase", () => ({
 
 import {
   DATABASE_ERRORS,
+  DAY_WORDS,
   REQUEST_TIMEOUT_MS,
   TimerError,
   classifyError,
   deviceTimeZone,
   isOnline,
+  readDayScore,
   readDayTotal,
   readEndReply,
   readRunningReply,
   readStateReply,
   readTimerRow,
+  timerDayScore,
   timerDayTotal,
   timerEnd,
   timerPause,
@@ -503,6 +507,146 @@ describe("the pause log in the SQL file (Packet 09A)", () => {
     const body = schemaSql.split("create or replace function public.timer_row_json")[1].split("$$;")[0]
     expect(body).not.toContain("pauses")
     expect(Object.keys(RUNNING)).toHaveLength(6)
+  })
+})
+const SCORE = {
+  day: "2026-10-06",
+  credited_minutes: 45.5,
+  word: "USUAL",
+  usual_minutes: 38.889,
+  usual_is_stand_in: false,
+  sessions: 3,
+  short_sessions: 1,
+  longest_stretch_minutes: 30,
+  counted_minutes: 50,
+  counted_over_elapsed: 0.9231,
+  unconfirmed_minutes: 0,
+  over_cap_minutes: 0,
+}
+
+const SCORE_NO_SESSION = {
+  ...SCORE,
+  credited_minutes: 0,
+  word: "NO SESSION",
+  sessions: 0,
+  short_sessions: 0,
+  longest_stretch_minutes: 0,
+  counted_minutes: 0,
+  counted_over_elapsed: null,
+}
+
+describe("the day score reply and the call (Packet 09C)", () => {
+  it("reads a day with sessions into the names the app uses", () => {
+    expect(readDayScore(SCORE)).toEqual({
+      day: "2026-10-06",
+      creditedMinutes: 45.5,
+      word: "USUAL",
+      usualMinutes: 38.889,
+      usualIsStandIn: false,
+      sessions: 3,
+      shortSessions: 1,
+      longestStretchMinutes: 30,
+      countedMinutes: 50,
+      countedOverElapsed: 0.9231,
+      unconfirmedMinutes: 0,
+      overCapMinutes: 0,
+    })
+  })
+
+  it("reads a day without a session: the word NO SESSION, 0 sessions and no ratio", () => {
+    const score = readDayScore(SCORE_NO_SESSION)
+    expect(score.word).toBe("NO SESSION")
+    expect(score.sessions).toBe(0)
+    expect(score.countedOverElapsed).toBeNull()
+    expect(score.creditedMinutes).toBe(0)
+  })
+
+  it.each(DAY_WORDS)("reads the word %s", (word) => {
+    const reply = word === "NO SESSION" ? SCORE_NO_SESSION : { ...SCORE, word }
+    expect(readDayScore(reply).word).toBe(word)
+  })
+
+  it("refuses an answer that lacks any one of the twelve keys", () => {
+    for (const reply of [SCORE, SCORE_NO_SESSION]) {
+      expect(Object.keys(reply)).toHaveLength(12)
+      for (const key of Object.keys(reply)) {
+        const rest: Record<string, unknown> = { ...reply }
+        delete rest[key]
+        expect(kindOf(() => readDayScore(rest))).toBe("BAD_REPLY")
+      }
+    }
+  })
+
+  it.each([
+    ["not an object", "x"],
+    ["nothing", null],
+    ["an array", []],
+    ["day is not a date", { ...SCORE, day: "2026-10-6" }],
+    ["day is a number", { ...SCORE, day: 20261006 }],
+    ["word in small letters", { ...SCORE, word: "usual" }],
+    ["word that does not exist", { ...SCORE, word: "HUGE" }],
+    ["usual_is_stand_in is text", { ...SCORE, usual_is_stand_in: "false" }],
+    ["sessions below 0", { ...SCORE, sessions: -1 }],
+    ["sessions is not whole", { ...SCORE, sessions: 1.5 }],
+    ["sessions is text", { ...SCORE, sessions: "3" }],
+    ["more short sessions than sessions", { ...SCORE, short_sessions: 4 }],
+    ["credited_minutes below 0", { ...SCORE, credited_minutes: -0.5 }],
+    ["credited_minutes is not a number", { ...SCORE, credited_minutes: Number.NaN }],
+    ["credited_minutes is infinite", { ...SCORE, credited_minutes: Number.POSITIVE_INFINITY }],
+    ["usual_minutes is text", { ...SCORE, usual_minutes: "38.9" }],
+    ["unconfirmed_minutes below 0", { ...SCORE, unconfirmed_minutes: -1 }],
+    ["over_cap_minutes is null", { ...SCORE, over_cap_minutes: null }],
+    ["counted_over_elapsed is text", { ...SCORE, counted_over_elapsed: "0.9" }],
+    ["counted_over_elapsed is null although there are sessions", { ...SCORE, counted_over_elapsed: null }],
+    ["counted_over_elapsed is a number although there is no session", { ...SCORE_NO_SESSION, counted_over_elapsed: 0 }],
+    ["the word NO SESSION although there are sessions", { ...SCORE, word: "NO SESSION" }],
+    ["a word of a day with sessions although there is no session", { ...SCORE_NO_SESSION, word: "LIGHT" }],
+  ])("a day score with a problem is BAD_REPLY: %s", (_name, value) => {
+    expect(kindOf(() => readDayScore(value))).toBe("BAD_REPLY")
+  })
+
+  it("says in the reason which key is wrong", () => {
+    expect(() => readDayScore({ ...SCORE, word: "HUGE" })).toThrow("word is not one of the six day words")
+    expect(() => readDayScore({ ...SCORE, sessions: 1.5 })).toThrow("sessions is not a whole number of 0 or more")
+    expect(() => readDayScore({ ...SCORE, over_cap_minutes: -1 })).toThrow("over_cap_minutes is not a number of 0 or more")
+  })
+
+  it("timerDayScore calls timer_day_score with p_day and hands back the checked answer", async () => {
+    const rpc = answer(SCORE)
+    const score = await timerDayScore("2026-10-06")
+    expect(rpc).toHaveBeenCalledWith("timer_day_score", { p_day: "2026-10-06" })
+    expect(score).toEqual(readDayScore(SCORE))
+  })
+
+  it("timerDayScore refuses the answer of another day", async () => {
+    answer({ ...SCORE, day: "2026-10-05" })
+    expect(await kindOfAsync(() => timerDayScore("2026-10-06"))).toBe("BAD_REPLY")
+  })
+
+  it("timerDayScore: no client is NOT_READY, a lost connection is NO_CONNECTION, a wrong shape is BAD_REPLY", async () => {
+    holder.client = null
+    expect(await kindOfAsync(() => timerDayScore("2026-10-06"))).toBe("NOT_READY")
+    fail({ message: "Failed to fetch" })
+    expect(await kindOfAsync(() => timerDayScore("2026-10-06"))).toBe("NO_CONNECTION")
+    answer({})
+    expect(await kindOfAsync(() => timerDayScore("2026-10-06"))).toBe("BAD_REPLY")
+  })
+
+  it("the day score SQL file has the function the app calls, and sends the twelve keys and the six words the app reads", () => {
+    expect(dayScoreSql).toContain("create or replace function public.timer_day_score(p_day date)")
+    for (const key of Object.keys(SCORE)) {
+      expect(dayScoreSql).toContain("'" + key + "',")
+    }
+    for (const word of DAY_WORDS) {
+      expect(dayScoreSql).toContain("'" + word + "'")
+    }
+  })
+
+  it("the six words of the app are exactly the six words that timer_day_word can answer, in the same order", () => {
+    const body = dayScoreSql.split("create or replace function public.timer_day_word(")[1].split("$$;")[0]
+    const words = [...body.matchAll(/(?:then|else) '([A-Z ]+)'/g)].map((m) => m[1])
+    expect(words).toEqual([...DAY_WORDS])
+    expect([...DAY_WORDS]).toEqual(["NO SESSION", "LIGHT", "BELOW USUAL", "USUAL", "ABOVE USUAL", "BIG"])
   })
 })
 // AB:TIMER.TESTS:END

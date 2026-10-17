@@ -5,6 +5,7 @@ import { parseServerTimeMs, type TimerRow } from "@/lib/timerMaths"
 // The calls from the app to the database functions of the Pro Timer (supabase/timer_schema.sql), and the reading of their answers.
 // Every function here either gives an answer that was checked, or throws a TimerError with a name that the screen understands.
 // What is tied to the SQL file: see CONNECTIONS.md C28 and C29. The tests are in src/lib/timerApi.test.ts.
+// The day score (supabase/day_score.sql): timerDayScore asks for the number, the word and the readouts of one day and readDayScore checks the answer (CONNECTIONS.md C29 and C54).
 
 // The error names that the database functions raise (raise exception 'NAME'). The screen reacts to each of them.
 export const DATABASE_ERRORS = [
@@ -53,6 +54,26 @@ export function classifyError(error: { message?: unknown; code?: unknown } | nul
 export type StateReply = { serverNowMs: number; row: TimerRow | null }
 export type RunningReply = { serverNowMs: number; row: TimerRow }
 export type EndReply = { serverNowMs: number; saved: boolean; capped: boolean; seconds: number | null; day: string | null }
+
+// The six words of a day, as timer_day_word in supabase/day_score.sql writes them (CONNECTIONS.md C54). Any other word is refused.
+export const DAY_WORDS = ["NO SESSION", "LIGHT", "BELOW USUAL", "USUAL", "ABOVE USUAL", "BIG"] as const
+export type DayWord = (typeof DAY_WORDS)[number]
+
+// The day score as timer_day_score sends it (twelve keys), with the names written the way the app writes them. The minutes are as sent (up to 3 decimals).
+export type DayScore = {
+  day: string
+  creditedMinutes: number
+  word: DayWord
+  usualMinutes: number
+  usualIsStandIn: boolean
+  sessions: number
+  shortSessions: number
+  longestStretchMinutes: number
+  countedMinutes: number
+  countedOverElapsed: number | null
+  unconfirmedMinutes: number
+  overCapMinutes: number
+}
 
 function bad(detail: string): never {
   throw new TimerError("BAD_REPLY", detail)
@@ -135,6 +156,48 @@ export function readDayTotal(json: unknown): number {
   return json
 }
 
+function readNumber(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return bad(field + " is not a number of 0 or more")
+  return value
+}
+
+function readCount(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return bad(field + " is not a whole number of 0 or more")
+  return value
+}
+
+// The answer of timer_day_score: the number, the word and the readouts of one day (the twelve keys of supabase/day_score.sql, see C54).
+// The word NO SESSION and 0 sessions go together, and counted_over_elapsed is null exactly when the day has no session.
+export function readDayScore(json: unknown): DayScore {
+  if (!isRecord(json)) return bad("the answer is not an object")
+  const day = json.day
+  if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return bad("day is not a date")
+  const word = DAY_WORDS.find((name) => name === json.word)
+  if (word === undefined) return bad("word is not one of the six day words")
+  const usualIsStandIn = json.usual_is_stand_in
+  if (typeof usualIsStandIn !== "boolean") return bad("usual_is_stand_in is not true or false")
+  const sessions = readCount(json.sessions, "sessions")
+  const shortSessions = readCount(json.short_sessions, "short_sessions")
+  if (shortSessions > sessions) return bad("short_sessions is more than sessions")
+  if ((word === "NO SESSION") !== (sessions === 0)) return bad("the word and the number of sessions do not agree")
+  const countedOverElapsed = json.counted_over_elapsed === null ? null : readNumber(json.counted_over_elapsed, "counted_over_elapsed")
+  if ((countedOverElapsed === null) !== (sessions === 0)) return bad("counted_over_elapsed must be null exactly when there is no session")
+  return {
+    day,
+    creditedMinutes: readNumber(json.credited_minutes, "credited_minutes"),
+    word,
+    usualMinutes: readNumber(json.usual_minutes, "usual_minutes"),
+    usualIsStandIn,
+    sessions,
+    shortSessions,
+    longestStretchMinutes: readNumber(json.longest_stretch_minutes, "longest_stretch_minutes"),
+    countedMinutes: readNumber(json.counted_minutes, "counted_minutes"),
+    countedOverElapsed,
+    unconfirmedMinutes: readNumber(json.unconfirmed_minutes, "unconfirmed_minutes"),
+    overCapMinutes: readNumber(json.over_cap_minutes, "over_cap_minutes"),
+  }
+}
+
 // ---- The calls ----
 function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -177,6 +240,13 @@ export async function timerState(): Promise<StateReply> {
 
 export async function timerDayTotal(day: string): Promise<number> {
   return readDayTotal(await call("timer_day_total", { p_day: day }))
+}
+
+// The day score of one local day (the day text is YYYY-MM-DD). The answer of another day is refused.
+export async function timerDayScore(day: string): Promise<DayScore> {
+  const score = readDayScore(await call("timer_day_score", { p_day: day }))
+  if (score.day !== day) return bad("the answer is for " + score.day + ", not for " + day)
+  return score
 }
 
 export async function timerStart(zone: string): Promise<RunningReply> {
