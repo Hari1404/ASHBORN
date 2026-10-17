@@ -9,7 +9,7 @@ import { DATABASE_ERRORS } from "@/lib/timerApi"
 // Tests of the session tags in the SQL files (Packet 10A). Run them with: npm test
 // Like the tests of the pause log, these read the TEXT of the SQL files: npm test cannot run SQL.
 // The behaviour itself (the limit, the names, the bring-back, who sees what) is checked by the owner with supabase/timer_verify.sql
-// in the Supabase SQL Editor (13 rows), see CONNECTIONS.md C55. The rules are labelled DEFAULT in PACKET_10A: a number written here must match the SQL file.
+// in the Supabase SQL Editor (14 rows), see CONNECTIONS.md C55. The rules are labelled DEFAULT in PACKET_10A: a number written here must match the SQL file.
 
 const TAG_ERRORS = ["BAD_TAG_NAME", "TAG_NAME_TAKEN", "TAG_LIMIT", "TAG_NOT_FOUND"]
 
@@ -82,9 +82,11 @@ describe("the session tags in the SQL file (Packet 10A)", () => {
     expect(body).not.toContain("timer_tags")
   })
 
-  it("does not send the tag to the app: timer_row_json keeps its six keys and the answer of timer_end has no new key", () => {
+  it("sends the tag of the running session to the app in timer_row_json (Packet 10C1), and the answer of timer_end has no new key", () => {
     const rowJson = schemaSql.split("create or replace function public.timer_row_json")[1].split("$$;")[0]
-    expect(rowJson).not.toContain("tag")
+    expect(rowJson).toContain("'tag', (select jsonb_build_object('id', t.id, 'name', t.name) from public.timer_tags t where t.id = r.tag_id and t.user_id = r.user_id)")
+    expect(rowJson.split("'tag'")).toHaveLength(2)
+    expect(rowJson).not.toContain("'tag_id'")
     const end = schemaSql.split("create or replace function public.timer_end()")[1].split("$$;")[0]
     expect(end).not.toContain("'tag")
   })
@@ -127,9 +129,9 @@ describe("the session tags in the SQL file (Packet 10A)", () => {
     }
   })
 
-  it("has a verify file of 13 rows that checks the tag parts and the two-argument timer_start", () => {
-    expect(verifySql).toContain("Expected result: 13 rows")
-    expect(verifySql.match(/^select '/gm)?.length).toBe(13)
+  it("has a verify file of 14 rows that checks the tag parts, the two-argument timer_start and the tag key of timer_row_json", () => {
+    expect(verifySql).toContain("Expected result: 14 rows")
+    expect(verifySql.match(/^select '/gm)?.length).toBe(14)
     for (const name of [
       "tag_table_with_row_level_security",
       "tag_id_columns",
@@ -138,6 +140,7 @@ describe("the session tags in the SQL file (Packet 10A)", () => {
       "anonymous_cannot_add_tag",
       "signed_in_can_add_tag",
       "tag_name_unique_among_live_tags",
+      "row_json_sends_tag",
     ]) {
       expect(verifySql).toContain("'" + name + "'")
     }

@@ -102,7 +102,7 @@ function readTimeText(value: unknown, field: string): string {
   return value as string
 }
 
-// One running session as timer_row_json sends it (the fields are the type TimerRow in timerMaths.ts, see C26).
+// One running session as timer_row_json sends it (the fields are the type TimerRow in timerMaths.ts, see C26). The key tag is null or missing for no tag and otherwise {id, name} (Packet 10C1, see C55); the row that is given back has the key tag only when there is a tag.
 export function readTimerRow(value: unknown): TimerRow {
   if (!isRecord(value)) return bad("the running session is not an object")
   const startedAt = readTimeText(value.started_at, "started_at")
@@ -118,7 +118,9 @@ export function readTimerRow(value: unknown): TimerRow {
   if (typeof pausedSeconds !== "number" || !Number.isFinite(pausedSeconds) || pausedSeconds < 0) {
     return bad("paused_seconds is not a number of 0 or more")
   }
-  return { started_at: startedAt, tz, status, paused_at: pausedAt, paused_seconds: pausedSeconds, cap_at: capAt }
+  const tag = readRowTag(value.tag)
+  const row: TimerRow = { started_at: startedAt, tz, status, paused_at: pausedAt, paused_seconds: pausedSeconds, cap_at: capAt }
+  return tag === null ? row : { ...row, tag }
 }
 
 // The answer of timer_state: the server time and the running session or null.
@@ -223,6 +225,12 @@ export function readTagList(json: unknown): TimerTag[] {
   const tags = json.map((item) => readTag(item))
   if (new Set(tags.map((tag) => tag.id.toLowerCase())).size !== tags.length) return bad("the tag list holds the same tag twice")
   return tags
+}
+
+// The key tag of a running session (Packet 10C1): null, or no key at all (as the database sent it before Packet 10C1), means no tag. Anything else must be a tag {id, name} as readTag reads it (an id that looks like an id, a name that is text and not empty), or the answer is BAD_REPLY. It gives null for no tag.
+function readRowTag(value: unknown): TimerTag | null {
+  if (value === undefined || value === null) return null
+  return readTag(value)
 }
 
 // ---- The calls ----

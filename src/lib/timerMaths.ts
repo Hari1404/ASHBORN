@@ -29,7 +29,10 @@ export const NEON_COLORS = [
 // ---- Types ----
 export type Quality = "meh" | "solid" | "deep" | "flow"
 
-// One running session, exactly as the database function timer_state sends it (see C26).
+// The tag of a running session as timer_row_json sends it: its id and the name it has now (Packet 10C1, see C26 and C55).
+export type RowTag = { id: string; name: string }
+
+// One running session, exactly as the database function timer_state sends it (see C26). The key tag is only there when the session has a tag: no key means Freestyle (no tag). The maths never use it.
 export type TimerRow = {
   started_at: string
   tz: string
@@ -37,6 +40,7 @@ export type TimerRow = {
   paused_at: string | null
   paused_seconds: number
   cap_at: string
+  tag?: RowTag
 }
 
 // What is waiting at this moment: the milestone to show (null for none), how many seconds late it is, and the list of the milestones that are done (shown or given up).

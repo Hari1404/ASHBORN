@@ -611,6 +611,51 @@ describe("the decisions files are in the repository (Packet 10B)", () => {
   })
 })
 
+describe("the tag of the running session (Packet 10C1)", () => {
+  it("reads a running session and a paused session that have a tag, and keeps the tag as {id, name}", () => {
+    expect(readTimerRow({ ...RUNNING, tag: TAG_A })).toEqual({ ...RUNNING, tag: TAG_A })
+    expect(readTimerRow({ ...PAUSED, tag: TAG_B })).toEqual({ ...PAUSED, tag: TAG_B })
+  })
+
+  it("gives no key tag for a session without a tag: the key is null (Freestyle) or missing (a database from before Packet 10C1)", () => {
+    expect(readTimerRow({ ...RUNNING, tag: null })).toEqual(RUNNING)
+    expect(Object.keys(readTimerRow({ ...RUNNING, tag: null }))).toHaveLength(6)
+    expect(Object.keys(readTimerRow(RUNNING))).toHaveLength(6)
+  })
+
+  it("keeps only the id and the name of the tag", () => {
+    const row = readTimerRow({ ...RUNNING, tag: { ...TAG_A, extra: 1, archived_at: null } })
+    expect(Object.keys(row.tag ?? {}).sort()).toEqual(["id", "name"])
+  })
+
+  it.each([
+    ["a text", "Python"],
+    ["a number", 5],
+    ["a list", []],
+    ["true", true],
+    ["an empty object", {}],
+    ["an id that is not an id", { id: "nope", name: "Python" }],
+    ["no id", { name: "Python" }],
+    ["an empty name", { id: TAG_A.id, name: "" }],
+    ["a name that is not text", { id: TAG_A.id, name: 7 }],
+    ["no name", { id: TAG_A.id }],
+  ])("a tag with a problem is BAD_REPLY: %s", (_name, tag) => {
+    expect(kindOf(() => readTimerRow({ ...RUNNING, tag }))).toBe("BAD_REPLY")
+  })
+
+  it("the answer of the state and the answer of start, pause or resume keep the tag of their session", () => {
+    const withTag = { ...RUNNING, tag: TAG_A }
+    expect(readStateReply({ server_now: SERVER_NOW, running: withTag }).row).toEqual(withTag)
+    expect(readRunningReply({ server_now: SERVER_NOW, running: withTag }).row).toEqual(withTag)
+  })
+
+  it("the SQL file sends the tag as {id, name} read from timer_tags of the same person, and null when there is none", () => {
+    const body = schemaSql.split("create or replace function public.timer_row_json")[1].split("$$;")[0]
+    expect(body).toContain("'tag', (select jsonb_build_object('id', t.id, 'name', t.name) from public.timer_tags t where t.id = r.tag_id and t.user_id = r.user_id)")
+    for (const key of Object.keys(RUNNING)) expect(body).toContain("'" + key + "'")
+  })
+})
+
 describe("the pause log in the SQL file (Packet 09A)", () => {
   it("has the columns pauses and tz, and old sessions keep NULL (not known) in them", () => {
     expect(schemaSql).toContain("alter table public.timer_running add column if not exists pauses jsonb not null default '[]'::jsonb;")

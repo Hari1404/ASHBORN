@@ -105,7 +105,7 @@ as $$
   select (((p_started at time zone p_tz)::date + 1)::timestamp) at time zone p_tz
 $$;
 
--- 5. Helper: one running row as JSON.
+-- 5. Helper: one running row as JSON: the six fields of the session and, since Packet 10C1, the key tag: null for Freestyle (no tag), otherwise {id, name} of the tag of the session with the name it has now (also when the tag was archived or renamed during the session).
 create or replace function public.timer_row_json(r public.timer_running)
 returns jsonb
 language sql
@@ -118,7 +118,8 @@ as $$
     'status', r.status,
     'paused_at', r.paused_at,
     'paused_seconds', r.paused_seconds,
-    'cap_at', public.timer_cap_at(r.started_at, r.tz)
+    'cap_at', public.timer_cap_at(r.started_at, r.tz),
+    'tag', (select jsonb_build_object('id', t.id, 'name', t.name) from public.timer_tags t where t.id = r.tag_id and t.user_id = r.user_id)
   )
 $$;
 
