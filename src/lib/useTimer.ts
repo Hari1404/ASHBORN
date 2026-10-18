@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import {
   TimerError,
   deviceTimeZone,
+  orderTagsByUse,
   timerDayTotal,
   timerEnd,
   timerPause,
@@ -10,6 +11,7 @@ import {
   timerState,
   timerTagAdd,
   timerTagList,
+  timerTagUse,
   type TimerErrorKind,
   type TimerTag,
 } from "@/lib/timerApi"
@@ -253,7 +255,9 @@ export function useTimer(options: TimerOptions = {}): TimerView {
   const loadTags = useCallback(async () => {
     const ticket = ++tagTicketRef.current
     try {
-      const list = await timerTagList()
+      // The use numbers come with the list; when they cannot be read the list is simply in the order the database sends it (oldest first). Packet 10F, CONNECTIONS.md C58.
+      const [rawList, use] = await Promise.all([timerTagList(), timerTagUse().catch(() => [])])
+      const list = orderTagsByUse(rawList, use)
       if (!aliveRef.current || ticket !== tagTicketRef.current) return
       tagsRef.current = list
       setTags(list)

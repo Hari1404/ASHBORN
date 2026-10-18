@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   timerEnd: vi.fn(),
   timerTagAdd: vi.fn(),
   timerTagList: vi.fn(),
+  timerTagUse: vi.fn(),
 }))
 vi.mock("@/lib/supabase", () => ({ supabase: null }))
 vi.mock("@/lib/timerApi", async (importOriginal) => {
@@ -40,6 +41,9 @@ type Server = {
   down: TimerError | null
   tags: TimerTag[]
   tagListDown: boolean
+  // Packet 10F: the seconds each tag was used (by id; a tag with no entry has 0), and a switch that makes the use read fail.
+  tagUse: Record<string, number>
+  tagUseDown: boolean
 }
 let server: Server
 
@@ -90,6 +94,11 @@ function installFakeServer(): void {
     guard()
     if (server.tagListDown) throw new TimerError("UNKNOWN")
     return server.tags.map((tag) => ({ ...tag }))
+  })
+  api.timerTagUse.mockImplementation(async () => {
+    guard()
+    if (server.tagUseDown) throw new TimerError("UNKNOWN")
+    return server.tags.map((tag) => ({ id: tag.id, seconds: server.tagUse[tag.id] ?? 0 }))
   })
   api.timerTagAdd.mockImplementation(async (name: string) => {
     guard()
@@ -200,7 +209,7 @@ beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   vi.useFakeTimers()
   vi.setSystemTime(T0)
-  server = { row: null, saved: {}, offsetMs: 0, down: null, tags: [], tagListDown: false }
+  server = { row: null, saved: {}, offsetMs: 0, down: null, tags: [], tagListDown: false, tagUse: {}, tagUseDown: false }
   renders = 0
   harnessOptions = undefined
   for (const fn of Object.values(api)) fn.mockReset()
@@ -2186,6 +2195,213 @@ describe("useTimer: adding a tag (Packet 10D)", () => {
     expect(result).toEqual({ ok: true })
     expect(problems).not.toHaveBeenCalled()
     problems.mockRestore()
+  })
+})
+describe("useTimer: the order of the tags by use (Packet 10F, CONNECTIONS.md C58)", () => {
+  const WORK: TimerTag = { id: "t-work", name: "Work" }
+  const STUDY: TimerTag = { id: "t-study", name: "Study" }
+  const READ: TimerTag = { id: "t-read", name: "Reading" }
+
+  async function add(name: string): Promise<AddTagResult> {
+    let result: AddTagResult = { ok: false, message: "not answered" }
+    await act(async () => {
+      result = await view.addTag(name)
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    return result
+  }
+
+  it("reads the list and the use numbers together when the screen opens, once each, and shows the most used tag first", async () => {
+    server.tags = [WORK, STUDY, READ]
+    server.tagUse = { [STUDY.id]: 5000, [READ.id]: 100 }
+    await mount()
+    expect(api.timerTagList).toHaveBeenCalledTimes(1)
+    expect(api.timerTagUse).toHaveBeenCalledTimes(1)
+    expect(view.tags).toEqual([STUDY, READ, WORK])
+  })
+
+  it("keeps the order the database gave (oldest first) for tags that were used the same number of seconds, also when none was used", async () => {
+    server.tags = [WORK, STUDY, READ]
+    await mount()
+    expect(view.tags).toEqual([WORK, STUDY, READ])
+    server.tagUse = { [WORK.id]: 60, [STUDY.id]: 600, [READ.id]: 600 }
+    await press(view.reloadTags)
+    expect(view.tags).toEqual([STUDY, READ, WORK])
+  })
+
+  it("puts a tag that has no row in the use answer after the tags that have use, in the order of the list", async () => {
+    server.tags = [WORK, STUDY, READ]
+    api.timerTagUse.mockImplementationOnce(async () => [{ id: READ.id, seconds: 10 }])
+    await mount()
+    expect(view.tags).toEqual([READ, WORK, STUDY])
+  })
+
+  it("ignores a row of the use answer for a tag that is not in the list (it was archived since)", async () => {
+    server.tags = [WORK, STUDY]
+    api.timerTagUse.mockImplementationOnce(async () => [
+      { id: "t-gone", seconds: 99999 },
+      { id: STUDY.id, seconds: 5 },
+    ])
+    await mount()
+    expect(view.tags).toEqual([STUDY, WORK])
+  })
+
+  it("reads the use numbers again every time the list is read again (reloadTags), and orders the list again", async () => {
+    server.tags = [WORK, STUDY]
+    await mount()
+    expect(view.tags).toEqual([WORK, STUDY])
+    server.tagUse = { [STUDY.id]: 60 }
+    await press(view.reloadTags)
+    expect(api.timerTagList).toHaveBeenCalledTimes(2)
+    expect(api.timerTagUse).toHaveBeenCalledTimes(2)
+    expect(view.tags).toEqual([STUDY, WORK])
+  })
+
+  it("does not read the use numbers in the 30 second reading (only the list does, and only when the screen opens or the picker asks)", async () => {
+    server.tags = [WORK]
+    await mount()
+    await settle(POLL_ONLINE_MS * 3)
+    expect(api.timerState.mock.calls.length).toBeGreaterThanOrEqual(4)
+    expect(api.timerTagUse).toHaveBeenCalledTimes(1)
+  })
+
+  it("swallows a use read that fails: the list shows in the order of the database, no problem is shown, the link stays online", async () => {
+    server.tags = [WORK, STUDY]
+    server.tagUse = { [STUDY.id]: 5000 }
+    server.tagUseDown = true
+    await mount()
+    expect(api.timerTagUse).toHaveBeenCalledTimes(1)
+    expect(view.tags).toEqual([WORK, STUDY])
+    expect(view.problem).toBe("")
+    expect(view.link).toBe("online")
+    await press(view.start)
+    expect(view.status).toBe("running")
+  })
+
+  it("orders the list again at the next reading when the use read works again", async () => {
+    server.tags = [WORK, STUDY]
+    server.tagUse = { [STUDY.id]: 5000 }
+    server.tagUseDown = true
+    await mount()
+    expect(view.tags).toEqual([WORK, STUDY])
+    server.tagUseDown = false
+    await press(view.reloadTags)
+    expect(view.tags).toEqual([STUDY, WORK])
+  })
+
+  it("keeps the list it had, in its order, when the list read fails but the use read works", async () => {
+    server.tags = [WORK, STUDY]
+    server.tagUse = { [STUDY.id]: 5000 }
+    await mount()
+    expect(view.tags).toEqual([STUDY, WORK])
+    server.tagListDown = true
+    server.tagUse = { [WORK.id]: 9000 }
+    await press(view.reloadTags)
+    expect(view.tags).toEqual([STUDY, WORK])
+    expect(view.problem).toBe("")
+  })
+
+  it("shows the list only when BOTH reads have answered, so that the pills never show one order and then jump to another", async () => {
+    server.tags = [WORK, STUDY]
+    const use = hold("timerTagUse")
+    await mount()
+    expect(api.timerTagList).toHaveBeenCalledTimes(1)
+    expect(view.tags).toEqual([])
+    await release(() => use.answer([{ id: STUDY.id, seconds: 7 }]))
+    expect(view.tags).toEqual([STUDY, WORK])
+  })
+
+  it("shows the list in the order of the database when the use read that was waited for fails", async () => {
+    server.tags = [WORK, STUDY]
+    const use = hold("timerTagUse")
+    await mount()
+    expect(view.tags).toEqual([])
+    await release(() => use.fail(new TimerError("UNKNOWN")))
+    expect(view.tags).toEqual([WORK, STUDY])
+    expect(view.problem).toBe("")
+  })
+
+  it("lets one ticket cover both reads: an older reading whose list and use answers come late loses as a whole, so neither its list nor its order is shown", async () => {
+    server.tags = [WORK, STUDY]
+    const oldList = hold("timerTagList")
+    const oldUse = hold("timerTagUse")
+    await mount()
+    server.tagUse = { [STUDY.id]: 10 }
+    await press(view.reloadTags)
+    expect(view.tags).toEqual([STUDY, WORK])
+    await release(() => {
+      oldList.answer([WORK, READ])
+      oldUse.answer([{ id: WORK.id, seconds: 99999 }])
+    })
+    expect(view.tags).toEqual([STUDY, WORK])
+  })
+
+  it("lets an old use answer lose against a newer reading even when the old list answered long before", async () => {
+    server.tags = [WORK, STUDY]
+    const oldUse = hold("timerTagUse")
+    await mount()
+    server.tagUse = { [STUDY.id]: 10 }
+    await press(view.reloadTags)
+    expect(view.tags).toEqual([STUDY, WORK])
+    await release(() => oldUse.answer([{ id: WORK.id, seconds: 99999 }]))
+    expect(view.tags).toEqual([STUDY, WORK])
+  })
+
+  it("ignores both answers when the screen has been left", async () => {
+    server.tags = [WORK]
+    const list = hold("timerTagList")
+    const use = hold("timerTagUse")
+    await mount()
+    act(() => root?.unmount())
+    root = null
+    await release(() => {
+      list.answer([WORK])
+      use.answer([{ id: WORK.id, seconds: 1 }])
+    })
+    expect(api.timerTagList).toHaveBeenCalledTimes(1)
+    expect(api.timerTagUse).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps the pick when the order changes (the pick is an id, not a place in the row)", async () => {
+    server.tags = [WORK, STUDY]
+    await mount()
+    await press(() => view.chooseTag(WORK.id))
+    expect(view.tagId).toBe(WORK.id)
+    server.tagUse = { [STUDY.id]: 5000 }
+    await press(view.reloadTags)
+    expect(view.tags).toEqual([STUDY, WORK])
+    expect(view.tagId).toBe(WORK.id)
+  })
+
+  it("still sets the pick back to no tag when the use numbers are in but the picked tag is not in the list any more", async () => {
+    server.tags = [WORK, STUDY]
+    await mount()
+    await press(() => view.chooseTag(WORK.id))
+    server.tags = [STUDY]
+    server.tagUse = { [WORK.id]: 9000, [STUDY.id]: 1 }
+    await press(view.reloadTags)
+    expect(view.tags).toEqual([STUDY])
+    expect(view.tagId).toBeNull()
+  })
+
+  it("reads the use numbers again when a tag is added, and the new tag (no use yet) stands after the tags that have use", async () => {
+    server.tags = [WORK, STUDY]
+    server.tagUse = { [STUDY.id]: 60 }
+    await mount()
+    expect(view.tags).toEqual([STUDY, WORK])
+    expect(await add("Reading")).toEqual({ ok: true })
+    expect(api.timerTagUse).toHaveBeenCalledTimes(2)
+    expect(view.tags.map((tag) => tag.name)).toEqual(["Study", "Work", "Reading"])
+    expect(view.tagId).toBeNull()
+  })
+
+  it("still adds the tag and shows it when the use read fails during the adding", async () => {
+    server.tags = [WORK]
+    server.tagUseDown = true
+    await mount()
+    expect(await add("Study")).toEqual({ ok: true })
+    expect(view.tags).toEqual([WORK, STUDY])
+    expect(view.problem).toBe("")
   })
 })
 // AB:TIMER.TESTS:END

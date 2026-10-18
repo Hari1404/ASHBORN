@@ -24,6 +24,15 @@ vi.mock("@/lib/lite", () => ({
   },
 }))
 
+// The glass of the tags (the ReactBits part GlassSurface) needs matchMedia, CSS.supports and a layout, which jsdom does not have, so it is replaced by a stand-in that draws a plain div with the class, the size and the children it is given. The real glass is only seen in a real browser.
+vi.mock("@/components/GlassSurface", async () => {
+  const { createElement: h } = await import("react")
+  return {
+    default: (props: { className?: string; width?: number | string; height?: number | string; borderRadius?: number; children?: unknown }) =>
+      h("div", { className: "glass-stub " + (props.className ?? ""), "data-width": String(props.width), "data-height": String(props.height), "data-radius": String(props.borderRadius) }, props.children as never),
+  }
+})
+
 // The glowing ball is replaced by a stand-in that records what the screen hands to it (the ball itself is tested in TimerBall.test.tsx).
 const ball = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }))
 vi.mock("@/components/TimerBall", async () => {
@@ -1047,18 +1056,18 @@ describe("TimerScreen: the tag picker (Packet 10C2)", () => {
     show({ status: "idle", tags: [WORK] })
     expect(kidsOfMain()).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side"])
     act(() => q(".ab-tag-pill").click())
-    expect(has(".ab-tag-sheet")).toBe(true)
+    expect(has(".ab-tag-layer")).toBe(true)
     expect(kidsOfMain()).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side"])
-    expect(q(".ab-tag-sheet").closest(".ab-timer-actions")).toBe(q(".ab-timer-actions"))
-    expect(q(".ab-tag-sheet").closest(".ab-timer-side")).toBe(q(".ab-timer-side"))
+    expect(q(".ab-tag-layer").closest(".ab-timer-actions")).toBe(q(".ab-timer-actions"))
+    expect(q(".ab-tag-layer").closest(".ab-timer-side")).toBe(q(".ab-timer-side"))
   })
 
   it("loses the open sheet when a session starts (the picker is taken away)", () => {
     show({ status: "idle", tags: [WORK] })
     act(() => q(".ab-tag-pill").click())
-    expect(has(".ab-tag-sheet")).toBe(true)
+    expect(has(".ab-tag-layer")).toBe(true)
     show({ status: "running", seconds: 5, ringSeed: SEED, tags: [WORK] })
-    expect(has(".ab-tag-sheet")).toBe(false)
+    expect(has(".ab-tag-layer")).toBe(false)
     expect(has(".ab-tag-picker")).toBe(false)
   })
 
@@ -1110,7 +1119,7 @@ describe("TimerScreen: the tag of the running session (Packet 10C2)", () => {
     expect(has(".ab-tag-line b")).toBe(false)
   })
 })
-describe("the css of the tag picker (Packet 10C2)", () => {
+describe("the css of the tag picker (Packets 10C2, 10D and 10F)", () => {
   // The marker lines are written in two pieces, so that the tag checker does not take them for markers of this test file.
   const marker = (part: string, edge: string): string => "/* A" + "B:" + part + ":" + edge + " */"
   const SCREEN_HEADER = "@media (min-width: 1000px) and (min-height: 560px), (min-width: 600px) and (min-aspect-ratio: 5/4) {"
@@ -1134,7 +1143,17 @@ describe("the css of the tag picker (Packet 10C2)", () => {
     }
     return ""
   }
-  const rule = (selector: string): string => new RegExp("\\n" + selector.replace(/[.[\]="]/g, "\\$&") + " \\{([^}]*)\\}").exec("\n" + part())?.[1] ?? ""
+  // The body of the rule of the tag part (outside every @media) that has this selector, alone or in a list of selectors, one per line.
+  const rule = (selector: string): string => {
+    const all = /\n([^\s@/{}][^\n{}]*(?:,\n[^\s@/{}][^\n{}]*)*) \{([^}]*)\}/g
+    const text = "\n" + part()
+    for (let found = all.exec(text); found !== null; found = all.exec(text)) {
+      if (found[1].split(",\n").includes(selector)) return found[2]
+    }
+    return ""
+  }
+  // Where a top-level rule of the tag part starts (-1 when it is not there).
+  const at = (selector: string): number => part().indexOf("\n" + selector + " {")
   // A rule of the whole css file (the screen's own rules), not only of the tag part.
   const screenRule = (selector: string): string => new RegExp("\\n" + selector.replace(/[.[\]="]/g, "\\$&") + " \\{([^}]*)\\}").exec("\n" + timerCss)?.[1] ?? ""
   const px = (text: string, pattern: RegExp): number => Number(pattern.exec(text)?.[1])
@@ -1166,32 +1185,33 @@ describe("the css of the tag picker (Packet 10C2)", () => {
     expect(part()).toContain(TAGS_HEADER)
   })
 
-  it("switches the pill, the blank pill and the sheet off on a wide screen and the chips on, and touches nothing else", () => {
+  it("switches the phone pill and the blank pill off on a wide screen and the row on, puts the list at the top there, and touches nothing else", () => {
     const wide = inside(part(), TAGS_HEADER)
-    expect(wide).toMatch(/\.ab-tag-pill,\s*\.ab-tag-wait,\s*\.ab-tag-sheet \{\s*display: none;\s*\}/)
+    expect(wide).toMatch(/\.ab-tag-phone,\s*\.ab-tag-wait \{\s*display: none;\s*\}/)
     expect(wide).toMatch(/\.ab-tag-chips \{[^}]*display: flex;/)
+    expect(wide).toMatch(/\.ab-tag-layer\[data-view="list"\] \.ab-tag-place \{[^}]*top: 64px;[^}]*bottom: auto;/)
     for (const word of ["overflow", "z-index", "pointer-events", "position:", "isolation", "mix-blend-mode", "--ab-timer-reserve"]) {
       expect(wide, word).not.toContain(word)
     }
   })
 
-  it("hides the chips on a phone, and the wide rule comes after every phone rule it replaces", () => {
+  it("hides the row on a phone, and the wide rule comes after every phone rule it replaces", () => {
     expect(rule(".ab-tag-chips")).toContain("display: none;")
-    const at = part().indexOf(TAGS_HEADER)
-    for (const selector of [".ab-tag-pill", ".ab-tag-wait", ".ab-tag-sheet", ".ab-tag-chips"]) {
-      const first = part().indexOf("\n" + selector + " {")
-      expect(first, selector).toBeGreaterThan(-1)
-      expect(first, selector).toBeLessThan(at)
+    const wideAt = part().indexOf(TAGS_HEADER)
+    for (const selector of [".ab-tag-phone", ".ab-tag-wait", ".ab-tag-chips", '.ab-tag-layer[data-view="list"] .ab-tag-place']) {
+      expect(at(selector), selector).toBeGreaterThan(-1)
+      expect(at(selector), selector).toBeLessThan(wideAt)
     }
   })
 
-  it("makes the pill and the blank pill 44 px high and as wide as the buttons, with round ends", () => {
-    for (const selector of [".ab-tag-pill", ".ab-tag-wait"]) {
-      expect(rule(selector), selector).toContain("height: 44px;")
-      expect(rule(selector), selector).toContain("width: 100%;")
-      expect(rule(selector), selector).toContain("border-radius: 999px;")
-    }
+  it("makes the phone pill and the blank pill 44 px high and as wide as the buttons, with round ends", () => {
+    expect(rule(".ab-tag-wait")).toContain("height: 44px;")
+    expect(rule(".ab-tag-wait")).toContain("width: 100%;")
+    expect(rule(".ab-tag-wait")).toContain("border-radius: 999px;")
     expect(rule(".ab-tag-wait")).not.toContain("cursor:")
+    expect(rule(".ab-tag-phone")).toContain("width: 100%;")
+    expect(rule(".ab-tag-pill")).toContain("height: 44px;")
+    expect(rule(".ab-tag-pill")).toContain("border-radius: 999px;")
   })
 
   it("lets the blank tag pill breathe like the blank Start pill, so that the two look like one family", () => {
@@ -1214,11 +1234,44 @@ describe("the css of the tag picker (Packet 10C2)", () => {
     expect(rule(".ab-tag-picker")).toMatch(/display:\s*contents;/)
   })
 
-  it("is outlined, so that Start stays the one white solid button, and has a disabled look and a press look like Start", () => {
-    expect(rule(".ab-tag-pill")).toContain("background: transparent;")
-    expect(rule(".ab-tag-pill")).toMatch(/border:\s*1px solid/)
+  it("gives the glass a fill and a rim of its own with !important (GlassSurface sets its own), the panel a darker fill AFTER it, and lite mode a plain box with the same 8 px of padding", () => {
+    expect(rule(".ab-tag-glass")).toMatch(/background:\s*rgba\([^)]*\) !important;/)
+    expect(rule(".ab-tag-glass")).toMatch(/border:\s*1px solid rgba\([^)]*\) !important;/)
+    expect(rule(".ab-tag-glass")).toContain("flex: none;")
+    expect(rule(".ab-tag-glass-panel")).toMatch(/background:\s*rgba\(\d+, \d+, \d+, 0\.\d+\) !important;/)
+    expect(at(".ab-tag-glass-panel")).toBeGreaterThan(at(".ab-tag-glass"))
+    expect(rule(".ab-tag-solid")).toContain("padding: 8px;")
+    expect(rule(".ab-tag-solid")).toContain("box-sizing: border-box;")
+    expect(rule('.ab-tag-solid[data-kind="panel"]')).toMatch(/background:\s*rgb\(\d+, \d+, \d+\);/)
+  })
+
+  it("makes every button of a pill fill its glass: a margin of -8 px takes back the padding that GlassSurface and the plain box put around it", () => {
+    for (const selector of [".ab-tag-pill", ".ab-tag-chip", ".ab-tag-all"]) {
+      expect(rule(selector), selector).toContain("margin: -8px;")
+      expect(rule(selector), selector).toContain("background: transparent;")
+      expect(rule(selector), selector).toMatch(/border:\s*0;/)
+      expect(px(rule(selector), /height:\s*(\d+)px;/), selector).toBe(44)
+    }
+    expect(rule(".ab-tag-pill")).toContain("width: calc(100% + 16px);")
+    expect(rule(".ab-tag-pen")).toContain("margin: -8px -8px -8px 0;")
+    expect(px(rule(".ab-tag-pen"), /height:\s*(\d+)px;/)).toBe(44)
+    expect(px(rule(".ab-tag-pen"), /width:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
+    expect(rule(".ab-tag-pen")).toMatch(/border-left:\s*1px solid/)
+  })
+
+  it("gives every button and the field of the tag part the font of the screen, and the Back button 44 px", () => {
+    for (const selector of [".ab-tag-pill", ".ab-tag-chip", ".ab-tag-all", ".ab-tag-row", ".ab-tag-back", ".ab-tag-add-button", ".ab-tag-input"]) {
+      expect(rule(selector), selector).toContain("font: inherit;")
+    }
+    expect(px(rule(".ab-tag-back"), /height:\s*(\d+)px;/)).toBe(44)
+  })
+
+  it("has a disabled look and a press look like Start", () => {
     expect(rule(".ab-tag-pill:disabled")).toContain("opacity: 0.4;")
     expect(rule(".ab-tag-pill:active:enabled")).toContain("transform: scale(0.98);")
+    expect(rule(".ab-tag-chip:disabled")).toContain("opacity: 0.4;")
+    expect(rule(".ab-tag-all:disabled")).toContain("opacity: 0.4;")
+    expect(rule(".ab-tag-pen:disabled")).toContain("opacity: 0.4;")
   })
 
   it("cuts a long name with an ellipsis instead of growing", () => {
@@ -1228,35 +1281,54 @@ describe("the css of the tag picker (Packet 10C2)", () => {
       expect(rule(selector), selector).toContain("white-space: nowrap;")
     }
     expect(rule(".ab-tag-pill-text")).toContain("min-width: 0;")
+    expect(px(rule(".ab-tag-chip"), /max-width:\s*(\d+)px;/)).toBeLessThanOrEqual(240)
   })
 
-  it("makes the sheet a fixed, plain dim layer over the whole window with no blur, and the panel sits at the bottom", () => {
-    expect(rule(".ab-tag-sheet")).toContain("position: fixed;")
-    expect(rule(".ab-tag-sheet")).toContain("inset: 0;")
+  it("makes the place a fixed, plain dim layer over the whole window with no blur in the css", () => {
+    expect(rule(".ab-tag-layer")).toContain("position: fixed;")
+    expect(rule(".ab-tag-layer")).toContain("inset: 0;")
     expect(rule(".ab-tag-scrim")).toContain("position: absolute;")
     expect(rule(".ab-tag-scrim")).toContain("inset: 0;")
     expect(rule(".ab-tag-scrim")).toMatch(/background:\s*rgba\(0, 0, 0, 0\.\d+\);/)
     expect(part()).not.toContain("blur(")
     expect(part()).not.toContain("backdrop-filter")
-    expect(rule(".ab-tag-panel")).toContain("position: absolute;")
-    expect(rule(".ab-tag-panel")).toMatch(/bottom: 0;/)
-    expect(rule(".ab-tag-panel")).toContain("overflow-y: auto;")
-    expect(rule(".ab-tag-panel")).toMatch(/max-height:\s*\d+dvh;/)
   })
 
-  it("keeps the sheet above the dial and the buttons (z-index 1) and below the menu button (z-index 40 in menu.css)", () => {
-    const z = px(rule(".ab-tag-sheet"), /z-index:\s*(\d+);/)
+  it("keeps the place above the dial and the buttons (z-index 1) and below the menu button (z-index 40 in menu.css)", () => {
+    const z = px(rule(".ab-tag-layer"), /z-index:\s*(\d+);/)
     expect(z).toBeGreaterThan(1)
     expect(z).toBeLessThan(40)
   })
 
-  it("gives the rows at least 44 px to tap, and the chips 40 px", () => {
-    expect(px(rule(".ab-tag-row"), /min-height:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
-    expect(rule(".ab-tag-row")).toContain("width: 100%;")
-    expect(px(rule(".ab-tag-chip"), /height:\s*(\d+)px;/)).toBe(40)
+  it("puts the list at the bottom (it slides up) and the editing box at the TOP under the menu button, never at the bottom where a phone keyboard would hide it", () => {
+    const place = rule(".ab-tag-place")
+    expect(place).toContain("position: absolute;")
+    expect(place).toContain("margin: 0 auto;")
+    expect(px(place, /max-width:\s*(\d+)px;/)).toBeLessThanOrEqual(440)
+    expect(place).not.toContain("top:")
+    expect(place).not.toContain("bottom:")
+    expect(rule('.ab-tag-layer[data-view="list"] .ab-tag-place')).toMatch(/bottom:\s*max\(12px, env\(safe-area-inset-bottom\)\);/)
+    const edit = rule('.ab-tag-layer[data-view="edit"] .ab-tag-place')
+    expect(px(edit, /top:\s*(\d+)px;/)).toBeGreaterThanOrEqual(56)
+    expect(edit).not.toContain("bottom:")
   })
 
-  it("fills the chosen row and the chosen chip white, as Start is", () => {
+  it("lets the panel scroll when it is taller than the window", () => {
+    const panel = rule(".ab-tag-panel")
+    expect(panel).toContain("overflow-y: auto;")
+    expect(panel).toMatch(/max-height:\s*min\(\d+dvh, calc\(100dvh - \d+px\)\);/)
+    expect(panel).toContain("outline: none;")
+  })
+
+  it("gives the rows and the buttons at least 44 px to tap, and the pills 44 px", () => {
+    expect(px(rule(".ab-tag-row"), /min-height:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
+    expect(rule(".ab-tag-row")).toContain("width: 100%;")
+    expect(px(rule(".ab-tag-edit-button"), /height:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
+    expect(px(rule(".ab-tag-edit-button"), /width:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
+    expect(rule(".ab-tag-edit-button")).toMatch(/border:\s*1px solid/)
+  })
+
+  it("fills the chosen row and the chosen pill white with black words, as Start is", () => {
     for (const selector of ['.ab-tag-row[aria-pressed="true"]', '.ab-tag-chip[aria-pressed="true"]']) {
       expect(rule(selector), selector).toContain("background: #fff;")
       expect(rule(selector), selector).toContain("color: #000;")
@@ -1264,14 +1336,27 @@ describe("the css of the tag picker (Packet 10C2)", () => {
   })
 
   it("lets a person who wants less motion have no sliding, no fading and no breathing, and the switch-off comes after the rules it switches off", () => {
-    const at = part().indexOf("@media (prefers-reduced-motion: reduce) {")
-    expect(at).toBeGreaterThan(-1)
+    const motion = part().indexOf("@media (prefers-reduced-motion: reduce) {")
+    expect(motion).toBeGreaterThan(-1)
     const off = inside(part(), "@media (prefers-reduced-motion: reduce) {")
-    for (const selector of [".ab-tag-wait", ".ab-tag-scrim", ".ab-tag-panel"]) {
+    for (const selector of [".ab-tag-wait", ".ab-tag-scrim", ".ab-tag-place"]) {
       expect(off, selector).toContain(selector)
-      expect(part().indexOf("\n" + selector + " {"), selector).toBeLessThan(at)
+      expect(at(selector), selector).toBeLessThan(motion)
     }
     expect(off).toContain("animation: none;")
+  })
+
+  it("moves the place with keyframes of its own (up for the list, down for the editing box and for the list on a wide screen), written before the motion rule that switches them off", () => {
+    const motion = part().indexOf("@media (prefers-reduced-motion: reduce) {")
+    for (const name of ["ab-tag-fade", "ab-tag-up", "ab-tag-down"]) {
+      const keyframes = part().indexOf("@keyframes " + name + " {")
+      expect(keyframes, name).toBeGreaterThan(-1)
+      expect(keyframes, name).toBeLessThan(motion)
+    }
+    expect(rule(".ab-tag-scrim")).toMatch(/animation:\s*ab-tag-fade\s+\d+ms/)
+    expect(rule('.ab-tag-layer[data-view="list"] .ab-tag-place')).toMatch(/animation:\s*ab-tag-up\s+\d+ms/)
+    expect(rule('.ab-tag-layer[data-view="edit"] .ab-tag-place')).toMatch(/animation:\s*ab-tag-down\s+\d+ms/)
+    expect(inside(part(), TAGS_HEADER)).toMatch(/animation-name:\s*ab-tag-down;/)
   })
 
   it("makes the line of the running tag take no height: its own line is 1.2em and the bottom margin takes back that line and the gap of the readout", () => {
@@ -1287,43 +1372,6 @@ describe("the css of the tag picker (Packet 10C2)", () => {
     expect(line).toMatch(/font-size:\s*max\(12px,/)
   })
 
-  it("draws the Manage tags row as a dashed full-width row of at least 44 px that does not shrink, so that it is not taken for a tag", () => {
-    const row = rule(".ab-tag-more")
-    expect(row).toContain("width: 100%;")
-    expect(row).toContain("flex: none;")
-    expect(px(row, /min-height:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
-    expect(row).toMatch(/border:\s*1px dashed/)
-    expect(row).toContain("background: transparent;")
-  })
-
-  it("draws the Manage tags chip dashed and as high as a chip, off on a phone, on (flex) in the wide rule only, and the wide rule comes after it", () => {
-    const chip = rule(".ab-tag-more-chip")
-    expect(chip).toContain("display: none;")
-    expect(chip).toMatch(/border:\s*1px dashed/)
-    expect(px(chip, /height:\s*(\d+)px;/)).toBe(px(rule(".ab-tag-chip"), /height:\s*(\d+)px;/))
-    expect(rule(".ab-tag-more-chip:disabled")).toContain("opacity: 0.4;")
-    expect(inside(part(), TAGS_HEADER)).toMatch(/\.ab-tag-more-chip \{[^}]*display: flex;/)
-    expect(part().indexOf("\n.ab-tag-more-chip {")).toBeGreaterThan(-1)
-    expect(part().indexOf("\n.ab-tag-more-chip {")).toBeLessThan(part().indexOf(TAGS_HEADER))
-  })
-
-  it("puts the box in a fixed layer above the dial and below the menu button, and the box at the TOP of the window under the menu button, never at the bottom where a phone keyboard would hide it", () => {
-    const layer = rule(".ab-tag-dialog")
-    expect(layer).toContain("position: fixed;")
-    expect(layer).toContain("inset: 0;")
-    const z = px(layer, /z-index:\s*(\d+);/)
-    expect(z).toBeGreaterThan(1)
-    expect(z).toBeLessThan(40)
-    const box = rule(".ab-tag-box")
-    expect(box).toContain("position: absolute;")
-    expect(px(box, /top:\s*(\d+)px;/)).toBeGreaterThanOrEqual(56)
-    expect(box).not.toContain("bottom:")
-    expect(box).toContain("overflow-y: auto;")
-    expect(box).toMatch(/max-height:\s*calc\(100dvh - \d+px\);/)
-    expect(box).toContain("margin: 0 auto;")
-    expect(px(box, /max-width:\s*(\d+)px;/)).toBeLessThanOrEqual(440)
-  })
-
   it("makes the field text 16 px high (a phone zooms into smaller text), 44 px or more to tap, with a focus look, and the Add button as high as the field", () => {
     const input = rule(".ab-tag-input")
     expect(px(input, /font-size:\s*(\d+)px;/)).toBeGreaterThanOrEqual(16)
@@ -1333,7 +1381,7 @@ describe("the css of the tag picker (Packet 10C2)", () => {
     expect(px(rule(".ab-tag-add-button"), /height:\s*(\d+)px;/)).toBe(px(input, /height:\s*(\d+)px;/))
   })
 
-  it("keeps Add the one solid white button of the box, with a disabled look, and the Back button outlined", () => {
+  it("keeps Add the one solid white button of the editing box, with a disabled look, and the Back button outlined", () => {
     expect(rule(".ab-tag-add-button")).toContain("background: #fff;")
     expect(rule(".ab-tag-add-button:disabled")).toContain("opacity: 0.4;")
     expect(rule(".ab-tag-back")).toContain("background: transparent;")
@@ -1357,13 +1405,11 @@ describe("the css of the tag picker (Packet 10C2)", () => {
     expect(rule(".ab-tag-have")).toContain("list-style: none;")
   })
 
-  it("slides the box down with a keyframe of its own, written before the motion rule that switches it off for a person who wants less motion", () => {
-    expect(rule(".ab-tag-box")).toMatch(/animation:\s*ab-tag-down\s+\d+ms/)
-    const keyframes = part().indexOf("@keyframes ab-tag-down {")
-    const motion = part().indexOf("@media (prefers-reduced-motion: reduce) {")
-    expect(keyframes).toBeGreaterThan(-1)
-    expect(keyframes).toBeLessThan(motion)
-    expect(inside(part(), "@media (prefers-reduced-motion: reduce) {")).toContain(".ab-tag-box")
+  it("wraps a long name in the rows of the list too, and has no css of the old sheet, the Manage tags row or the old box left", () => {
+    expect(rule(".ab-tag-row")).toContain("overflow-wrap: anywhere;")
+    for (const gone of [".ab-tag-sheet", ".ab-tag-more", ".ab-tag-more-chip", ".ab-tag-dialog", ".ab-tag-box"]) {
+      expect(part(), gone).not.toContain(gone)
+    }
   })
 
   it("never uses a css variable of its own and never touches the rules of the screen", () => {
@@ -1373,7 +1419,8 @@ describe("the css of the tag picker (Packet 10C2)", () => {
     }
   })
 })
-describe("TimerScreen: adding a tag (Packet 10D)", () => {
+
+describe("TimerScreen: editing tags from the picker (Packets 10D and 10F)", () => {
   const WORK: TimerTag = { id: "t-work", name: "Work" }
   const kidsOfMain = (): string[] => Array.from(q(".ab-timer").children).map((k) => k.id || k.className)
   const typeInto = (text: string) => {
@@ -1384,10 +1431,10 @@ describe("TimerScreen: adding a tag (Packet 10D)", () => {
     })
   }
 
-  it("hands the box the call of the hook: Manage tags, a typed name and Add reach addTag, and nothing is chosen", async () => {
+  it("hands the editing box the call of the hook: the pen, a typed name and Add reach addTag, and nothing is chosen", async () => {
     const view = show({ status: "idle", tags: [WORK] })
-    act(() => q(".ab-tag-pill").click())
-    act(() => q(".ab-tag-more").click())
+    act(() => q(".ab-tag-pen").click())
+    expect(q(".ab-tag-layer").getAttribute("data-view")).toBe("edit")
     typeInto("Study")
     await act(async () => {
       q(".ab-tag-add-button").click()
@@ -1397,50 +1444,55 @@ describe("TimerScreen: adding a tag (Packet 10D)", () => {
     expect(view.chooseTag).not.toHaveBeenCalled()
   })
 
-  it("draws the Manage tags chip as the last thing inside the picker, so that it stands in the buttons box above Start", () => {
+  it("draws the All tags pill as the last thing inside the row of the picker, so that it stands in the buttons box above Start", () => {
     show({ status: "idle", tags: [WORK] })
-    const chip = q(".ab-tag-more-chip")
-    expect(chip.parentElement).toBe(q(".ab-tag-picker"))
-    expect(chip.nextElementSibling).toBeNull()
+    const all = q(".ab-tag-all")
+    const pen = q(".ab-tag-pen")
+    expect(all.textContent).toBe("All tags")
+    expect(pen.getAttribute("aria-label")).toBe("Edit tags")
+    expect(all.parentElement).toBe(pen.parentElement)
+    expect(all.parentElement?.parentElement).toBe(q(".ab-tag-chips"))
+    expect(q(".ab-tag-chips").lastElementChild).toBe(all.parentElement)
     expect(q(".ab-tag-picker").nextElementSibling).toBe(q(".ab-timer-pill"))
-    expect(chip.textContent).toBe("Manage tags")
   })
 
-  it("is as ready as the Start button: the chip is off while the screen is busy, offline or has a problem", () => {
+  it("is as ready as the Start button: the pen and All tags are off while the screen is busy, offline or has a problem", () => {
     show({ status: "idle", busy: true })
-    expect((q(".ab-tag-more-chip") as HTMLButtonElement).disabled).toBe(true)
+    expect((q(".ab-tag-pen") as HTMLButtonElement).disabled).toBe(true)
+    expect((q(".ab-tag-all") as HTMLButtonElement).disabled).toBe(true)
     show({ status: "idle", busy: false, link: "offline" })
-    expect((q(".ab-tag-more-chip") as HTMLButtonElement).disabled).toBe(true)
+    expect((q(".ab-tag-pen") as HTMLButtonElement).disabled).toBe(true)
     show({ status: "idle", link: "problem", problem: "Something went wrong." })
-    expect((q(".ab-tag-more-chip") as HTMLButtonElement).disabled).toBe(true)
+    expect((q(".ab-tag-pen") as HTMLButtonElement).disabled).toBe(true)
     show({ status: "idle", link: "online", busy: false })
-    expect((q(".ab-tag-more-chip") as HTMLButtonElement).disabled).toBe(false)
+    expect((q(".ab-tag-pen") as HTMLButtonElement).disabled).toBe(false)
+    expect((q(".ab-tag-all") as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it("has no chip and no box while a session runs or is paused (nothing can be added then)", () => {
+  it("has no pen and no place while a session runs or is paused (nothing can be added then)", () => {
     show({ status: "running", seconds: 5, ringSeed: SEED, tags: [WORK] })
-    expect(has(".ab-tag-more-chip")).toBe(false)
-    expect(has(".ab-tag-box")).toBe(false)
+    expect(has(".ab-tag-pen")).toBe(false)
+    expect(has(".ab-tag-layer")).toBe(false)
     show({ status: "paused", seconds: 5, ringSeed: SEED, tags: [WORK] })
-    expect(has(".ab-tag-more-chip")).toBe(false)
-    expect(has(".ab-tag-box")).toBe(false)
+    expect(has(".ab-tag-pen")).toBe(false)
+    expect(has(".ab-tag-layer")).toBe(false)
   })
 
-  it("keeps the children of the screen as they were, also while the box is open: the box lives inside the picker", () => {
+  it("keeps the children of the screen as they were, also while the editing box is open: the place lives inside the picker", () => {
     show({ status: "idle", tags: [WORK] })
-    act(() => q(".ab-tag-more-chip").click())
-    expect(has(".ab-tag-box")).toBe(true)
+    act(() => q(".ab-tag-pen").click())
+    expect(has(".ab-tag-edit")).toBe(true)
     expect(kidsOfMain()).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side"])
-    expect(q(".ab-tag-box").closest(".ab-timer-actions")).toBe(q(".ab-timer-actions"))
-    expect(q(".ab-tag-box").closest(".ab-tag-picker")).toBe(q(".ab-tag-picker"))
+    expect(q(".ab-tag-layer").closest(".ab-timer-actions")).toBe(q(".ab-timer-actions"))
+    expect(q(".ab-tag-layer").closest(".ab-tag-picker")).toBe(q(".ab-tag-picker"))
   })
 
-  it("loses the open box when a session starts (the picker is taken away)", () => {
+  it("loses the open editing box when a session starts (the picker is taken away)", () => {
     show({ status: "idle", tags: [WORK] })
-    act(() => q(".ab-tag-more-chip").click())
-    expect(has(".ab-tag-box")).toBe(true)
+    act(() => q(".ab-tag-pen").click())
+    expect(has(".ab-tag-edit")).toBe(true)
     show({ status: "running", seconds: 5, ringSeed: SEED, tags: [WORK] })
-    expect(has(".ab-tag-box")).toBe(false)
+    expect(has(".ab-tag-edit")).toBe(false)
     expect(has(".ab-tag-picker")).toBe(false)
   })
 })

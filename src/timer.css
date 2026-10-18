@@ -701,7 +701,7 @@
 /* AB:TIMER.LINE-TEXT:END */
 
 /* AB:TIMER.TAGS:START */
-/* The tag picker (TagPicker.tsx, Packet 10C2, CONNECTIONS.md C56). It stands inside the buttons box, above Start, only while no session runs. On a phone: one outlined pill (44 px) that shows the choice, and the slide-up sheet. On a wide screen: the pill and the sheet are not drawn and the chips are. The pill (44 px) and the gap (14 px) fit into the 124 px of the buttons box next to the 58 px Start pill, so the phone reserve of the dial does not change (C40). The wrapper is no box at all, so its children are laid out by the buttons box. */
+/* The tag picker, version 2 (TagPicker.tsx and TagManage.tsx, Packet 10F, CONNECTIONS.md C56 and C57). It stands inside the buttons box, above Start, only while no session runs. On a phone: ONE pill (44 px) that shows the choice. On a wide screen: one row of pills (No tag, the tags used most, All tags with a pen). Both open the same place: a plain dim layer over the whole window with a glass panel in it. The glass itself is the ReactBits part GlassSurface (its settings are the GLASS object in TagPicker.tsx); here is only what the part does not do: how dark it is, and the plain box that lite mode uses instead. */
 .ab-tag-picker {
   display: contents;
 }
@@ -722,22 +722,58 @@
   }
 }
 
-/* The pill: outlined, so that Start stays the one white solid button. The name is cut with an ellipsis when it is long. */
+/* GlassSurface sets its own background from the light or dark setting of the viewer; this line makes the glass dark for everyone (the same way as .ab-glass in login.css). The higher the last number, the darker the glass. The edge light and the blur are the component's. */
+.ab-tag-glass {
+  flex: none;
+  background: rgba(255, 255, 255, 0.09) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* The panel is darker than a pill, so that the white words stay easy to read over whatever shows through it (the big clock, the Start button). It must stay below .ab-tag-glass: it replaces the fill set there. */
+.ab-tag-glass-panel {
+  background: rgba(14, 14, 18, 0.72) !important;
+}
+
+/* Lite mode (a touch screen, see src/lib/lite.ts): no glass, a plain dark box. It has the same 8 px of padding that GlassSurface puts around its content, and it is darker because nothing blurs the moving background behind it. */
+.ab-tag-solid {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.ab-tag-solid[data-kind="panel"] {
+  background: rgb(18, 18, 22);
+}
+
+/* The phone: one pill. Its button fills the whole glass (the margin of -8 px takes back the padding of the part), so the whole pill can be pressed. The name is cut with an ellipsis when it is long. */
+.ab-tag-phone {
+  width: 100%;
+}
+
 .ab-tag-pill {
   box-sizing: border-box;
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  width: 100%;
+  width: calc(100% + 16px);
   height: 44px;
+  margin: -8px;
   padding: 0 20px;
   font: inherit;
   font-size: 16px;
   font-weight: 600;
   color: #fff;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  border: 0;
   border-radius: 999px;
   cursor: pointer;
 }
@@ -769,13 +805,75 @@
   transform: rotate(45deg);
 }
 
-/* The chips are only for the wide screen (see the rule at the end of this part). */
+/* The row of the wide screen is only for the wide screen (see the rule at the end of this part). */
 .ab-tag-chips {
   display: none;
 }
 
-/* The sheet: a plain dim layer over the whole screen (no blur behind it: a blur over the moving background made the phone laggy, C25) and the panel at the bottom. It is fixed to the window, so that it covers the screen whatever the buttons box does. */
-.ab-tag-sheet {
+/* A pill of the row: the button fills the glass; the chosen one is filled white with black words, like Start, so that it reads at a glance. */
+.ab-tag-chip,
+.ab-tag-all {
+  box-sizing: border-box;
+  flex: none;
+  max-width: 220px;
+  height: 44px;
+  margin: -8px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ab-tag-chip[aria-pressed="true"] {
+  color: #000;
+  background: #fff;
+}
+
+.ab-tag-chip:disabled,
+.ab-tag-all:disabled,
+.ab-tag-pen:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The All tags pill holds two buttons: the words and, after a hairline, the pen. */
+.ab-tag-all {
+  margin-right: 0;
+  padding-right: 14px;
+}
+
+.ab-tag-pen {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 44px;
+  margin: -8px -8px -8px 0;
+  padding: 0 4px 0 0;
+  color: #fff;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 0 999px 999px 0;
+  cursor: pointer;
+}
+
+.ab-tag-pen-icon {
+  display: block;
+}
+
+/* The place: a layer over the whole window. It is fixed to the window so that it covers the screen whatever the page does, and it is above the buttons box. The dim part is plain (no blur in css: a blur over the moving background made the phone laggy, C25); the blur is the glass panel's own. */
+.ab-tag-layer {
   position: fixed;
   inset: 0;
   z-index: 2;
@@ -784,27 +882,73 @@
 .ab-tag-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.45);
   animation: ab-tag-fade 200ms ease;
 }
 
-.ab-tag-panel {
+/* Where the panel stands: the list slides up from the bottom (a phone); the editing box is at the TOP, under the Menu button (64 px; the Menu button is z-index 40 and about 56 px high), so that the keyboard of a phone does not hide the field. */
+.ab-tag-place {
   position: absolute;
   right: 0;
-  bottom: 0;
   left: 0;
+  box-sizing: border-box;
+  width: calc(100% - 24px);
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.ab-tag-layer[data-view="list"] .ab-tag-place {
+  bottom: max(12px, env(safe-area-inset-bottom));
+  animation: ab-tag-up 240ms ease;
+}
+
+.ab-tag-layer[data-view="edit"] .ab-tag-place {
+  top: 64px;
+  animation: ab-tag-down 240ms ease;
+}
+
+.ab-tag-panel {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 70dvh;
-  padding: 16px 20px max(20px, env(safe-area-inset-bottom));
+  width: 100%;
+  max-height: min(70dvh, calc(100dvh - 100px));
+  padding: 4px 4px 6px;
   overflow-y: auto;
-  background: #111114;
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 20px 20px 0 0;
+  color: #fff;
   outline: none;
-  animation: ab-tag-up 240ms ease;
+}
+
+.ab-tag-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-left: 8px;
+}
+
+.ab-tag-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* The pen at the top right of the list: it switches the place to the editing box. */
+.ab-tag-edit-button {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  cursor: pointer;
 }
 
 .ab-tag-row {
@@ -818,8 +962,8 @@
   font-weight: 600;
   text-align: left;
   color: #fff;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 14px;
   cursor: pointer;
   overflow-wrap: anywhere;
@@ -843,42 +987,19 @@
 
 @keyframes ab-tag-up {
   from {
-    transform: translateY(100%);
+    transform: translateY(24px);
+    opacity: 0;
   }
 }
 
-/* The chips of the wide screen: they wrap, 40 px high, the chosen one is filled white like Start. */
-.ab-tag-chip {
-  box-sizing: border-box;
-  flex: none;
-  max-width: 100%;
-  height: 40px;
-  padding: 0 16px;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  color: #fff;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 999px;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+@keyframes ab-tag-down {
+  from {
+    transform: translateY(-24px);
+    opacity: 0;
+  }
 }
 
-.ab-tag-chip[aria-pressed="true"] {
-  color: #000;
-  background: #fff;
-  border-color: #fff;
-}
-
-.ab-tag-chip:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-/* The name of the tag of the running session: one small line INSIDE the dial, under the day total (TimerScreen.tsx). It takes no height in the centred stack: its line is 1.2em high and the negative bottom margin takes back that line and the 8 px gap above it, so the two clocks stay exactly where they are. The line is cut with an ellipsis when the name is long. */
+/* The name of the tag of the running session: one small line INSIDE the dial, under the day total (TimerScreen.tsx). It takes no height in the centred stack: its line is 1.2em high and the negative bottom margin takes back that height and the 8 px gap, so the two clocks do not move. */
 .ab-tag-line {
   box-sizing: border-box;
   max-width: 84cqw;
@@ -894,88 +1015,11 @@
   text-shadow: 0 0 14px rgba(0, 0, 0, 0.75), 0 0 4px rgba(0, 0, 0, 0.6);
 }
 
-/* The Manage tags row at the end of the phone list (Packet 10D, CONNECTIONS.md C57): the size of a tag row, with a dashed edge and softer words, so that it is not taken for a tag. */
-.ab-tag-more {
-  box-sizing: border-box;
-  flex: none;
-  width: 100%;
-  min-height: 48px;
-  padding: 10px 20px;
-  font: inherit;
-  font-size: 17px;
-  font-weight: 600;
-  text-align: left;
-  color: rgba(255, 255, 255, 0.7);
-  background: transparent;
-  border: 1px dashed rgba(255, 255, 255, 0.3);
-  border-radius: 14px;
-  cursor: pointer;
-}
-
-/* The Manage tags chip of a wide screen: one dashed chip on a row of its own under the chips (it is no tag, so it does not stand among them). It is not drawn on a phone, where the list has the row (the wide rule at the end of this part switches it on). */
-.ab-tag-more-chip {
-  display: none;
-  box-sizing: border-box;
-  flex: none;
-  align-self: center;
-  height: 40px;
-  padding: 0 16px;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
-  background: transparent;
-  border: 1px dashed rgba(255, 255, 255, 0.4);
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.ab-tag-more-chip:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-/* The Manage tags box: the same plain dim layer as the list, and a box at the TOP of the window, under the Menu button (64 px; the Menu button is z-index 40 and about 56 px high). It is at the top on purpose: the keyboard of a phone would hide a box at the bottom while the person types. On a wide screen it is the same box, 440 px at most, centred. */
-.ab-tag-dialog {
-  position: fixed;
-  inset: 0;
-  z-index: 2;
-}
-
-.ab-tag-box {
-  position: absolute;
-  top: 64px;
-  right: 0;
-  left: 0;
-  box-sizing: border-box;
+/* The editing box (TagManage.tsx): a title, Back, a field with Add, one line for an error and the tags the person has as a plain list. */
+.ab-tag-edit {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: calc(100% - 24px);
-  max-width: 440px;
-  max-height: calc(100dvh - 76px);
-  margin: 0 auto;
-  padding: 16px 20px 20px;
-  overflow-y: auto;
-  background: #111114;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 20px;
-  outline: none;
-  animation: ab-tag-down 240ms ease;
-}
-
-.ab-tag-box-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.ab-tag-box-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #fff;
 }
 
 .ab-tag-back {
@@ -996,6 +1040,7 @@
 .ab-tag-add {
   display: flex;
   gap: 8px;
+  padding: 0 4px;
 }
 
 /* The field is 16 px high text on purpose: a phone zooms into a field with smaller text. */
@@ -1039,7 +1084,7 @@
 }
 
 .ab-tag-error {
-  margin: 0;
+  margin: 0 4px;
   padding: 10px 14px;
   font-size: 14px;
   line-height: 1.35;
@@ -1055,11 +1100,11 @@
   flex-direction: column;
   gap: 0;
   margin: 4px 0 0;
-  padding: 0;
+  padding: 0 8px;
   list-style: none;
 }
 
-/* The tags the person has are a plain list (a hairline under each name, no box, no round edge), so that a name is not taken for a button: it cannot be pressed in this packet (renaming and removing come in Packet 10E). */
+/* The tags the person has are a plain list (a hairline under each name, no box, no round edge), so that a name is not taken for a button: it cannot be pressed in this packet (renaming and removing come in Packet 10G). */
 .ab-tag-have-row {
   box-sizing: border-box;
   display: flex;
@@ -1079,47 +1124,40 @@
 }
 
 .ab-tag-have-empty {
-  margin: 0;
+  margin: 0 8px;
   font-size: 14px;
   color: rgba(255, 255, 255, 0.6);
-}
-
-@keyframes ab-tag-down {
-  from {
-    opacity: 0;
-    transform: translateY(-24px);
-  }
 }
 
 /* A person who asked their device for less motion gets no sliding and no breathing. It is written AFTER the rules it switches off. */
 @media (prefers-reduced-motion: reduce) {
   .ab-tag-wait,
   .ab-tag-scrim,
-  .ab-tag-panel,
-  .ab-tag-box {
+  .ab-tag-place {
     animation: none;
   }
 }
 
-/* The wide screen: the same two conditions as the wide rule of the screen (C39), written in the other order on purpose, so that the one test that counts the wide rule of the screen finds it exactly once. This rule only switches things on and off (display); it must stay AFTER the rules above. */
+/* The wide screen: the same two conditions as the wide rule of the screen (C39), written in the other order on purpose, so that the one test that counts the wide rule of the screen finds it exactly once. This rule only switches things on and off and moves the list to the top (a list at the bottom of a wide window would be far from the row); it has no overflow, z-index, position and the like. */
 @media (min-width: 600px) and (min-aspect-ratio: 5/4), (min-width: 1000px) and (min-height: 560px) {
-  .ab-tag-pill,
-  .ab-tag-wait,
-  .ab-tag-sheet {
+  .ab-tag-phone,
+  .ab-tag-wait {
     display: none;
-  }
-
-  .ab-tag-more-chip {
-    display: flex;
-    align-items: center;
   }
 
   .ab-tag-chips {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     justify-content: center;
     gap: 8px;
     width: 100%;
+  }
+
+  .ab-tag-layer[data-view="list"] .ab-tag-place {
+    top: 64px;
+    bottom: auto;
+    animation-name: ab-tag-down;
   }
 }
 /* AB:TIMER.TAGS:END */

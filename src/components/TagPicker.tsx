@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react"
+import GlassSurface from "@/components/GlassSurface"
 import TagManage from "@/components/TagManage"
+import { LITE_LEVEL } from "@/lib/lite"
 import type { TimerTag } from "@/lib/timerApi"
 import type { AddTagResult } from "@/lib/useTimer"
 import "../timer.css"
 
 // AB:TIMER.TAGS:START
-// The tag picker of the Pro Timer (Packet 10C2): the person chooses the tag BEFORE pressing Start (DECISIONS_TAGS.md section 4, CONNECTIONS.md C56). TimerScreen.tsx shows it as the first thing inside the buttons box, only while no session runs; the choice itself lives in useTimer.ts (tagId, chooseTag, reloadTags) and goes to the database with Start.
-// "No tag" (Freestyle) is always the first choice and the one every new session starts with. The tags follow in the order the hook gives them (oldest first). A tag name is shown as plain text, never as markup.
-// On a phone (the one-column screen) it is ONE pill above Start that shows the current choice. Tapping it asks the hook to read the list again and opens the sheet: a plain dim layer over the whole screen (no blur, C25) with a panel that slides up from the bottom. Tapping a row chooses it and closes the sheet; tapping the dim layer or pressing Escape closes it without a change. Focus goes to the panel (not to a row, as in StopAlert.tsx) and comes back to the pill when the sheet closes. Tab stays inside the panel while it is open.
-// On a wide screen (the same condition as C39) the pill and the sheet are not drawn (timer.css): every tag stands there as a chip in a wrapping row, "No tag" first, and tapping a chip chooses it. Both versions are always in the page; the css decides which one is seen.
-// Managing tags (Packet 10D, CONNECTIONS.md C57): the list ends with a Manage tags row, and a wide screen has a Manage tags chip on a row of its own under the chips. Either one opens the Manage tags box (TagManage.tsx), which is drawn INSTEAD of the list while it is open: from the row, Back goes back to the list; from the chip (a wide screen has no list), Done closes the picker. The box only adds a tag for now (renaming and removing are Packet 10E), and a tag that was added is never chosen by itself.
+// The tag picker of the Pro Timer, version 2 (Packet 10F; version 1 was Packet 10C2): the person chooses the tag BEFORE pressing Start (DECISIONS_TAGS.md sections 4 and 4b, CONNECTIONS.md C56). TimerScreen.tsx shows it as the first thing inside the buttons box, only while no session runs; the choice itself lives in useTimer.ts (tagId, chooseTag, reloadTags), and the list arrives there already in the order of use (CONNECTIONS.md C58).
+// The glass is the ReactBits part GlassSurface.tsx (Hari's decision of 18 Oct 2026). All its settings are in the GLASS object below, in one place; the darkness is in timer.css (.ab-tag-glass). In lite mode (src/lib/lite.ts: a touch screen, or ?lite=1 in the address) GlassSurface is not used: a plain dark box of the same size stands there (the same rule as the login card, CONNECTIONS.md C22).
+// On a wide screen (the same condition as C39) one row stands above Start: No tag, the four tags the person uses most (the first four of the list), the chosen tag as one more pill when it is not among those four (so that the choice is always seen), and ONE All tags pill that holds two buttons: the words All tags (opens the list) and a pen (opens the editing box). On a phone (the one-column screen) ONE pill shows the current choice and opens the list. Both versions are always in the page; the css decides which one is seen.
+// The place (a layer over the whole window, a plain dim layer with the glass panel in it) has two views. LIST: the title All tags, a pen at the top right, and a row for No tag and for EVERY tag in the order of use; a tap on a row chooses it and closes (nothing starts). EDIT: the box of Packet 10D (TagManage.tsx: the field and Add; renaming and removing are Packet 10G); Back goes to the list. Escape and a tap on the dim layer close everything. Focus goes to the panel when the list opens and when Back comes back to it (to the field when the editing view opens) and back to what opened it when it closes. Tab stays inside the panel. A tag name is shown as plain text, never as markup.
 // The look is in timer.css, in the part that has the same tag as this one (see CODE_MAP.md).
 
 type TagPickerProps = {
@@ -22,45 +23,89 @@ type TagPickerProps = {
 }
 
 const NO_TAG = "No tag"
+const TOP_COUNT = 4
+
+// The settings of the glass, one object for the pills and one for the panel (the meaning of every number is in GlassSurface.tsx and in src/components/LoginCard.tsx, which has the same kind of object).
+const GLASS = {
+  pill: {
+    borderRadius: 22,
+    borderWidth: 0.07,
+    brightness: 50,
+    opacity: 0.93,
+    blur: 11,
+    displace: 0,
+    backgroundOpacity: 0,
+    saturation: 1,
+    distortionScale: -120,
+    redOffset: 0,
+    greenOffset: 0,
+    blueOffset: 0,
+  },
+  panel: {
+    borderRadius: 22,
+    borderWidth: 0.07,
+    brightness: 50,
+    opacity: 0.93,
+    blur: 11,
+    displace: 2,
+    backgroundOpacity: 0,
+    saturation: 1,
+    distortionScale: -120,
+    redOffset: 0,
+    greenOffset: 0,
+    blueOffset: 0,
+  },
+}
+
+type GlassProps = { kind: "pill" | "panel"; className: string; width: number | string; height: number | string; children: ReactNode }
+
+// The glass, or in lite mode the plain dark box with the same size and corners (both have 8 px of padding around the content).
+function Glass({ kind, className, width, height, children }: GlassProps) {
+  const settings = GLASS[kind]
+  if (LITE_LEVEL > 0) {
+    return (
+      <div className="ab-tag-solid" data-kind={kind} style={{ width, height, borderRadius: settings.borderRadius }}>
+        {children}
+      </div>
+    )
+  }
+  return (
+    <GlassSurface {...settings} width={width} height={height} className={className}>
+      {children}
+    </GlassSurface>
+  )
+}
+
+function PenIcon() {
+  return (
+    <svg className="ab-tag-pen-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13.5 8.5l3 3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
 
 export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onAdd }: TagPickerProps) {
-  const [open, setOpen] = useState(false)
-  const [view, setView] = useState<"list" | "manage">("list")
-  const [viaChip, setViaChip] = useState(false)
-  const pillRef = useRef<HTMLButtonElement>(null)
+  const [view, setView] = useState<"closed" | "list" | "edit">("closed")
+  const openerRef = useRef<HTMLElement | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const chipRef = useRef<HTMLButtonElement>(null)
+  const open = view !== "closed"
   const current = tagId === null ? undefined : tags.find((tag) => tag.id === tagId)
   const label = current === undefined ? NO_TAG : current.name
+  // The pills of the row: the first four tags, and the chosen tag after them when it is a tag from further down the list.
+  const top = tags.slice(0, TOP_COUNT)
+  const row = current === undefined || top.includes(current) ? top : [...top, current]
 
-  // Closing returns the focus to the pill, so that a keyboard person is where they were.
+  // Closing returns the focus to what opened the place, so that a keyboard person is where they were.
   function close() {
-    setOpen(false)
-    pillRef.current?.focus()
+    setView("closed")
+    openerRef.current?.focus()
   }
 
-  function openList() {
-    setViaChip(false)
-    setView("list")
+  function openAs(next: "list" | "edit") {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     onOpen()
-    setOpen(true)
-  }
-
-  function openManageFromList() {
-    setView("manage")
-  }
-
-  function openManageFromChip() {
-    onOpen()
-    setViaChip(true)
-    setView("manage")
-    setOpen(true)
-  }
-
-  // Back from the box: to the list when the box was opened from the list (a phone), out of the picker when it was opened from the chip (a wide screen has no list).
-  function leaveManage() {
-    if (viaChip) close()
-    else setView("list")
+    setView(next)
   }
 
   function choose(id: string | null) {
@@ -68,32 +113,31 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onA
     close()
   }
 
-  // While the sheet is open: focus goes to the panel, and Escape closes the sheet without a change.
+  // The LIST has the focus on its panel, when it opens and when Back comes back to it (never on a row, so that a key still held can never choose a tag). The editing view puts the focus on its own field when it opens (TagManage.tsx), so this effect leaves it alone there.
+  useEffect(() => {
+    if (view === "list") panelRef.current?.focus()
+  }, [view])
+
+  // While the place is open, Escape closes everything.
   useEffect(() => {
     if (!open) return
-    panelRef.current?.focus()
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setOpen(false)
-        pillRef.current?.focus()
+        setView("closed")
+        openerRef.current?.focus()
       }
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [open, view])
+  }, [open])
 
-  // When the picker closes after a box that was opened from the chip of a wide screen, the focus goes back to that chip (the pill is not drawn there).
-  useEffect(() => {
-    if (!open && viaChip) chipRef.current?.focus()
-  }, [open, viaChip])
-
-  // Tab stays inside the panel: from the last row it goes to the first one and back (the panel itself counts as the place before the first row).
+  // Tab stays inside the panel: from the last stop it goes to the first one and back (the panel itself counts as the place before the first stop).
   function trap(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (event.key !== "Tab") return
-    const rows = Array.from(panelRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])
-    if (rows.length === 0) return
-    const first = rows[0]
-    const last = rows[rows.length - 1]
+    const stops = Array.from(panelRef.current?.querySelectorAll<HTMLElement>("button, input") ?? [])
+    if (stops.length === 0) return
+    const first = stops[0]
+    const last = stops[stops.length - 1]
     const active = document.activeElement
     if (event.shiftKey && (active === first || active === panelRef.current)) {
       event.preventDefault()
@@ -106,57 +150,80 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onA
 
   return (
     <div className="ab-tag-picker">
-      <button
-        className="ab-tag-pill"
-        type="button"
-        ref={pillRef}
-        disabled={disabled}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label={"Tag: " + label}
-        onClick={openList}
-      >
-        <span className="ab-tag-pill-text">{label}</span>
-        <span className="ab-tag-chevron" aria-hidden="true" />
-      </button>
-      <div className="ab-tag-chips" role="group" aria-label="Tag">
-        <button className="ab-tag-chip" type="button" disabled={disabled} aria-pressed={tagId === null} onClick={() => onChoose(null)}>
-          {NO_TAG}
-        </button>
-        {tags.map((tag) => (
+      <div className="ab-tag-phone">
+        <Glass kind="pill" className="ab-tag-glass" width="100%" height={44}>
           <button
-            key={tag.id}
-            className="ab-tag-chip"
+            className="ab-tag-pill"
             type="button"
             disabled={disabled}
-            aria-pressed={tag.id === tagId}
-            onClick={() => onChoose(tag.id)}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            aria-label={"Tag: " + label}
+            onClick={() => openAs("list")}
           >
-            {tag.name}
+            <span className="ab-tag-pill-text">{label}</span>
+            <span className="ab-tag-chevron" aria-hidden="true" />
           </button>
-        ))}
+        </Glass>
       </div>
-      <button className="ab-tag-more-chip" type="button" ref={chipRef} disabled={disabled} aria-haspopup="dialog" onClick={openManageFromChip}>
-        Manage tags
-      </button>
-      {open && view === "manage" ? (
-        <TagManage tags={tags} backLabel={viaChip ? "Done" : "Back"} onAdd={onAdd} onBack={leaveManage} onClose={close} />
-      ) : null}
-      {open && view === "list" ? (
-        <div className="ab-tag-sheet">
+      <div className="ab-tag-chips" role="group" aria-label="Tag">
+        <Glass kind="pill" className="ab-tag-glass" width="auto" height={44}>
+          <button className="ab-tag-chip" type="button" disabled={disabled} aria-pressed={tagId === null} onClick={() => onChoose(null)}>
+            {NO_TAG}
+          </button>
+        </Glass>
+        {row.map((tag) => (
+          <Glass key={tag.id} kind="pill" className="ab-tag-glass" width="auto" height={44}>
+            <button className="ab-tag-chip" type="button" disabled={disabled} aria-pressed={tag.id === tagId} onClick={() => onChoose(tag.id)}>
+              {tag.name}
+            </button>
+          </Glass>
+        ))}
+        <Glass kind="pill" className="ab-tag-glass" width="auto" height={44}>
+          <button className="ab-tag-all" type="button" disabled={disabled} aria-haspopup="dialog" onClick={() => openAs("list")}>
+            All tags
+          </button>
+          <button className="ab-tag-pen" type="button" disabled={disabled} aria-haspopup="dialog" aria-label="Edit tags" onClick={() => openAs("edit")}>
+            <PenIcon />
+          </button>
+        </Glass>
+      </div>
+      {open ? (
+        <div className="ab-tag-layer" data-view={view}>
           <div className="ab-tag-scrim" aria-hidden="true" onClick={close} />
-          <div className="ab-tag-panel" role="dialog" aria-modal="true" aria-label="Choose a tag" tabIndex={-1} ref={panelRef} onKeyDown={trap}>
-            <button className="ab-tag-row" type="button" aria-pressed={tagId === null} onClick={() => choose(null)}>
-              {NO_TAG}
-            </button>
-            {tags.map((tag) => (
-              <button key={tag.id} className="ab-tag-row" type="button" aria-pressed={tag.id === tagId} onClick={() => choose(tag.id)}>
-                {tag.name}
-              </button>
-            ))}
-            <button className="ab-tag-more" type="button" onClick={openManageFromList}>
-              Manage tags
-            </button>
+          <div className="ab-tag-place">
+            <Glass kind="panel" className="ab-tag-glass ab-tag-glass-panel" width="100%" height="auto">
+              <div
+                className="ab-tag-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-label={view === "edit" ? "Edit tags" : "All tags"}
+                tabIndex={-1}
+                ref={panelRef}
+                onKeyDown={trap}
+              >
+                {view === "edit" ? (
+                  <TagManage tags={tags} onAdd={onAdd} onBack={() => setView("list")} />
+                ) : (
+                  <>
+                    <div className="ab-tag-head">
+                      <p className="ab-tag-title">All tags</p>
+                      <button className="ab-tag-edit-button" type="button" aria-label="Edit tags" onClick={() => setView("edit")}>
+                        <PenIcon />
+                      </button>
+                    </div>
+                    <button className="ab-tag-row" type="button" aria-pressed={tagId === null} onClick={() => choose(null)}>
+                      {NO_TAG}
+                    </button>
+                    {tags.map((tag) => (
+                      <button key={tag.id} className="ab-tag-row" type="button" aria-pressed={tag.id === tagId} onClick={() => choose(tag.id)}>
+                        {tag.name}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            </Glass>
           </div>
         </div>
       ) : null}

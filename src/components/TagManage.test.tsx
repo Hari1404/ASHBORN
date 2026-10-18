@@ -8,7 +8,7 @@ import type { AddTagResult } from "@/lib/useTimer"
 import TagManage from "./TagManage"
 
 // AB:TIMER.TESTS:START
-// The Manage tags box (TagManage.tsx, Packet 10D): what it shows, what Add and Enter hand to the hook, what happens while the call runs and after its answer, where the focus goes, and what the keys do. The css is not read here (TimerScreen.test.tsx reads it). A made-up call stands in for the hook, and a made-up answer can be held back until the test lets it go.
+// The editing box (TagManage.tsx, Packet 10D; Packet 10F made it the inside of the Edit tags view of the picker): what it shows, what Add and Enter hand to the hook, what happens while the call runs and after its answer, where the focus goes, and what Back and the keys do. The dim layer, the panel, Escape and the Tab rule belong to TagPicker.tsx and are tested in TagPicker.test.tsx. The css is not read here (TimerScreen.test.tsx reads it). A made-up call stands in for the hook, and a made-up answer can be held back until the test lets it go.
 const WORK: TimerTag = { id: "t-work", name: "Work" }
 const STUDY: TimerTag = { id: "t-study", name: "Study" }
 
@@ -19,10 +19,8 @@ type Props = Partial<Parameters<typeof TagManage>[0]>
 function show(over: Props = {}) {
   const props = {
     tags: [WORK, STUDY],
-    backLabel: "Back",
     onAdd: vi.fn(async (): Promise<AddTagResult> => ({ ok: true })),
     onBack: vi.fn(),
-    onClose: vi.fn(),
     ...over,
   }
   if (container === null) {
@@ -105,15 +103,13 @@ afterEach(() => {
 })
 
 describe("TagManage: what it shows", () => {
-  it("is a modal dialog with the name Manage tags, a title, the button with the label it was given, a field and an Add button", () => {
-    show({ backLabel: "Done" })
-    const box = q(".ab-tag-box")
-    expect(box.getAttribute("role")).toBe("dialog")
-    expect(box.getAttribute("aria-modal")).toBe("true")
-    expect(box.getAttribute("aria-label")).toBe("Manage tags")
-    expect(box.getAttribute("tabindex")).toBe("-1")
-    expect(q(".ab-tag-box-title").textContent).toBe("Manage tags")
-    expect(q(".ab-tag-back").textContent).toBe("Done")
+  it("is the inside of the Edit tags view: a title, a Back button, a field and an Add button, and NO dialog of its own (the panel of the picker is the dialog)", () => {
+    show()
+    expect(q(".ab-tag-edit").parentElement).toBe(container)
+    expect(has("[role=dialog]")).toBe(false)
+    expect(q(".ab-tag-title").textContent).toBe("Edit tags")
+    expect(q(".ab-tag-head").contains(q(".ab-tag-back"))).toBe(true)
+    expect(q(".ab-tag-back").textContent).toBe("Back")
     expect(q(".ab-tag-back").getAttribute("type")).toBe("button")
     expect(addButton().textContent).toBe("Add")
     expect(addButton().getAttribute("type")).toBe("button")
@@ -167,8 +163,8 @@ describe("TagManage: what it shows", () => {
   it("shows a name as text only", () => {
     show({ tags: [{ id: "t-odd", name: "<b>bold</b> & <img src=x onerror=alert(1)>" }] })
     expect(q(".ab-tag-have-row").textContent).toBe("<b>bold</b> & <img src=x onerror=alert(1)>")
-    expect(has(".ab-tag-box b")).toBe(false)
-    expect(has(".ab-tag-box img")).toBe(false)
+    expect(has(".ab-tag-edit b")).toBe(false)
+    expect(has(".ab-tag-edit img")).toBe(false)
   })
 })
 
@@ -317,58 +313,43 @@ describe("TagManage: adding a tag", () => {
   })
 })
 
-describe("TagManage: the buttons, the dim layer and the keys", () => {
+describe("TagManage: Back and the keys", () => {
   it("calls onBack on a tap of its button, and nothing else", () => {
     const props = show()
     click(q(".ab-tag-back"))
     expect(props.onBack).toHaveBeenCalledTimes(1)
-    expect(props.onClose).not.toHaveBeenCalled()
     expect(props.onAdd).not.toHaveBeenCalled()
   })
 
-  it("calls onClose on a tap of the dim layer, which is hidden from the screen reader, and not on a tap inside the box", () => {
+  it("does not call onBack on a tap inside the box", () => {
     const props = show()
-    expect(q(".ab-tag-scrim").getAttribute("aria-hidden")).toBe("true")
-    click(q(".ab-tag-box"))
-    click(q(".ab-tag-box-title"))
+    click(q(".ab-tag-edit"))
+    click(q(".ab-tag-title"))
     click(field())
     click(q(".ab-tag-have-row"))
-    expect(props.onClose).not.toHaveBeenCalled()
-    click(q(".ab-tag-scrim"))
-    expect(props.onClose).toHaveBeenCalledTimes(1)
     expect(props.onBack).not.toHaveBeenCalled()
   })
 
-  it("leaves Escape to the picker: the box itself neither closes nor goes back", () => {
+  it("leaves Escape to the picker: the box itself neither goes back nor adds", () => {
     const props = show()
     key(field(), "Escape")
-    key(q(".ab-tag-box"), "Escape")
-    expect(props.onClose).not.toHaveBeenCalled()
+    key(q(".ab-tag-edit"), "Escape")
     expect(props.onBack).not.toHaveBeenCalled()
+    expect(props.onAdd).not.toHaveBeenCalled()
   })
 
-  it("keeps Tab inside the box: from the last stop (Add) to the first (the button), and Shift+Tab from the first stop or the box to the last", () => {
-    show()
-    const stops = all(".ab-tag-box button, .ab-tag-box input")
-    expect(stops.map((s) => s.className)).toEqual(["ab-tag-back", "ab-tag-input", "ab-tag-add-button"])
-    addButton().focus()
-    const forward = key(addButton(), "Tab")
-    expect(forward.defaultPrevented).toBe(true)
-    expect(document.activeElement).toBe(q(".ab-tag-back"))
-    const back = key(q(".ab-tag-back"), "Tab", true)
-    expect(back.defaultPrevented).toBe(true)
-    expect(document.activeElement).toBe(addButton())
-    q(".ab-tag-box").focus()
-    const fromBox = key(q(".ab-tag-box"), "Tab", true)
-    expect(fromBox.defaultPrevented).toBe(true)
-    expect(document.activeElement).toBe(addButton())
-  })
-
-  it("lets Tab go on by itself everywhere else in the box", () => {
+  it("has no Tab rule of its own (the picker keeps Tab inside its panel): Tab is left alone in the box", () => {
     show()
     field().focus()
     expect(key(field(), "Tab").defaultPrevented).toBe(false)
     expect(key(field(), "Tab", true).defaultPrevented).toBe(false)
+    expect(key(addButton(), "Tab").defaultPrevented).toBe(false)
+    expect(key(q(".ab-tag-back"), "Tab", true).defaultPrevented).toBe(false)
+  })
+
+  it("keeps its stops in the order Back, the field, Add, which the Tab rule of the picker relies on", () => {
+    show()
+    expect(all(".ab-tag-edit button, .ab-tag-edit input").map((stop) => stop.className)).toEqual(["ab-tag-back", "ab-tag-input", "ab-tag-add-button"])
   })
 })
 // AB:TIMER.TESTS:END
