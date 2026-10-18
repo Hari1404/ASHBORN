@@ -25,7 +25,7 @@ import type { TimerTag } from "@/lib/timerApi"
 import TagPicker from "./TagPicker"
 
 // AB:TIMER.TESTS:START
-// The tag picker, version 2 (TagPicker.tsx, Packets 10C2 and 10F): the pill of the phone, the row of the wide screen (No tag, the four tags used most, the chosen tag when it is not one of them, and the All tags pill with its pen), the All tags list, the Edit tags view, where the focus goes, what the keys do, lite mode against the glass, and what the picker hands to the hook. The css is not read here (vitest turns an imported css file into nothing), so the pill, the row and the place are all in the page; the look is tested in TimerScreen.test.tsx. CONNECTIONS.md C56 and C57.
+// The tag picker, version 2 (TagPicker.tsx, Packets 10C2 and 10F): the pill of the phone, the row of the wide screen (No tag, the four tags used most, the chosen tag when it is not one of them, and ONE round three-dot button that opens the list; the pen is inside the list: Packet 10F2), the All tags list, the Edit tags view, where the focus goes, what the keys do, lite mode against the glass, and what the picker hands to the hook. The css is not read here (vitest turns an imported css file into nothing), so the pill, the row and the place are all in the page; the look is tested in TimerScreen.test.tsx. CONNECTIONS.md C56 and C57.
 const WORK: TimerTag = { id: "t-work", name: "Work" }
 const STUDY: TimerTag = { id: "t-study", name: "Study" }
 const READ: TimerTag = { id: "t-read", name: "Reading" }
@@ -93,12 +93,15 @@ function openList() {
   press(q(".ab-tag-pill"))
 }
 
+// The three dots at the end of the row of the wide screen open the list (Packet 10F2).
 function openAllTags() {
-  press(q(".ab-tag-all"))
+  press(q(".ab-tag-dots"))
 }
 
+// The pen is only inside the list: open the list with the three dots, then press the pen at its top. It leaves the focus where the editing view puts it (in the field).
 function openPen() {
-  press(q(".ab-tag-pen"))
+  openAllTags()
+  click(q(".ab-tag-edit-button"))
 }
 
 function typeInto(text: string) {
@@ -178,18 +181,19 @@ describe("TagPicker: the pill of the phone", () => {
     expect(q(".ab-tag-pill").getAttribute("aria-expanded")).toBe("true")
   })
 
-  it("stands in one glass pill that is 44 px high and as wide as the buttons", () => {
+  it("stands in one plain pill that is 44 px high and as wide as the buttons (not glass: Packet 10F2)", () => {
     show()
-    const glass = q(".ab-tag-phone .glass-stub")
-    expect(glass.contains(q(".ab-tag-pill"))).toBe(true)
-    expect(glass.getAttribute("data-width")).toBe("100%")
-    expect(glass.getAttribute("data-height")).toBe("44")
-    expect(glass.className).toContain("ab-tag-glass")
+    const box = q(".ab-tag-phone .ab-tag-solid")
+    expect(box.contains(q(".ab-tag-pill"))).toBe(true)
+    expect(box.getAttribute("data-kind")).toBe("pill")
+    expect(box.style.width).toBe("100%")
+    expect(box.style.height).toBe("44px")
+    expect(has(".ab-tag-phone .glass-stub")).toBe(false)
   })
 })
 
 describe("TagPicker: the row of the wide screen", () => {
-  it("is one group with a name: No tag, then the tags in the order given, then the All tags pill with its pen", () => {
+  it("is one group with a name: No tag, then the tags in the order given, then the three dots", () => {
     show()
     const row = q(".ab-tag-chips")
     expect(row.getAttribute("role")).toBe("group")
@@ -199,16 +203,32 @@ describe("TagPicker: the row of the wide screen", () => {
       expect(chip.tagName).toBe("BUTTON")
       expect(chip.getAttribute("type")).toBe("button")
     }
-    expect(q(".ab-tag-all").textContent).toBe("All tags")
-    expect(q(".ab-tag-pen").getAttribute("aria-label")).toBe("Edit tags")
-    expect(q(".ab-tag-pen").textContent).toBe("")
-    expect(q(".ab-tag-pen").getAttribute("type")).toBe("button")
+    const more = q(".ab-tag-dots")
+    expect(more.tagName).toBe("BUTTON")
+    expect(more.getAttribute("type")).toBe("button")
+    expect(more.getAttribute("aria-label")).toBe("All tags")
+    expect(more.getAttribute("aria-haspopup")).toBe("dialog")
+    expect(more.textContent).toBe("")
+    expect(more.querySelectorAll("circle")).toHaveLength(3)
   })
 
-  it("holds the words All tags and the pen in ONE pill, as the last pill of the row", () => {
+  it("has NO pen and no words All tags in the row: editing is reached from inside the list (Packet 10F2)", () => {
     show()
-    expect(q(".ab-tag-all").parentElement).toBe(q(".ab-tag-pen").parentElement)
-    expect(q(".ab-tag-chips").lastElementChild).toBe(q(".ab-tag-all").parentElement)
+    expect(has(".ab-tag-chips .ab-tag-pen")).toBe(false)
+    expect(has(".ab-tag-chips .ab-tag-all")).toBe(false)
+    expect(has(".ab-tag-chips .ab-tag-pen-icon")).toBe(false)
+    expect(has(".ab-tag-chips .ab-tag-edit-button")).toBe(false)
+    expect(q(".ab-tag-chips").textContent).not.toContain("All tags")
+  })
+
+  it("holds the three dots alone in ONE round 44 by 44 px box, as the last pill of the row", () => {
+    show()
+    const box = q(".ab-tag-dots").parentElement as HTMLElement
+    expect(box).toBe(q(".ab-tag-chips").lastElementChild)
+    expect(box.querySelectorAll("button")).toHaveLength(1)
+    expect(box.getAttribute("data-kind")).toBe("pill")
+    expect(box.style.width).toBe("44px")
+    expect(box.style.height).toBe("44px")
   })
 
   it("shows only the first FOUR tags of the list, in the order the hook gave them", () => {
@@ -216,13 +236,13 @@ describe("TagPicker: the row of the wide screen", () => {
     expect(texts(".ab-tag-chip")).toEqual(["No tag", "Work", "Study", "Reading", "Chess"])
   })
 
-  it("shows the tags there are when there are fewer than four, and only No tag and All tags when there are none", () => {
+  it("shows the tags there are when there are fewer than four, and only No tag and the three dots when there are none", () => {
     show({ tags: [WORK] })
     expect(texts(".ab-tag-chip")).toEqual(["No tag", "Work"])
     show({ tags: [] })
     expect(texts(".ab-tag-chip")).toEqual(["No tag"])
-    expect(has(".ab-tag-all")).toBe(true)
-    expect(has(".ab-tag-pen")).toBe(true)
+    expect(has(".ab-tag-dots")).toBe(true)
+    expect(has(".ab-tag-pen")).toBe(false)
   })
 
   it("marks the chosen pill (aria-pressed) and only that one", () => {
@@ -236,7 +256,7 @@ describe("TagPicker: the row of the wide screen", () => {
     const props = show({ tags: SIX, tagId: GYM.id })
     expect(texts(".ab-tag-chip")).toEqual(["No tag", "Work", "Study", "Reading", "Chess", "Gym"])
     expect(pressed(".ab-tag-chip")).toEqual(["false", "false", "false", "false", "false", "true"])
-    expect(q(".ab-tag-all").parentElement?.previousElementSibling?.textContent).toBe("Gym")
+    expect(q(".ab-tag-dots").parentElement?.previousElementSibling?.textContent).toBe("Gym")
     click(all(".ab-tag-chip")[5])
     expect(props.onChoose).toHaveBeenCalledWith(GYM.id)
   })
@@ -268,9 +288,9 @@ describe("TagPicker: the row of the wide screen", () => {
     expect(has(".ab-tag-layer")).toBe(false)
   })
 
-  it("is disabled when the screen is not ready, as the pill is: every pill, All tags and the pen", () => {
+  it("is disabled when the screen is not ready, as the pill is: every pill and the three dots", () => {
     const props = show({ disabled: true })
-    for (const button of all(".ab-tag-chip, .ab-tag-all, .ab-tag-pen")) {
+    for (const button of all(".ab-tag-chip, .ab-tag-dots")) {
       expect((button as HTMLButtonElement).disabled).toBe(true)
       click(button)
     }
@@ -285,17 +305,19 @@ describe("TagPicker: the row of the wide screen", () => {
     expect(has(".ab-tag-chips img")).toBe(false)
   })
 
-  it("puts every pill of the row in its own glass pill, 44 px high and as wide as its words", () => {
+  it("puts every button of the row in its own plain box, 44 px high, as wide as its words (the three dots: 44 px) and with NO glass (Packet 10F2)", () => {
     show({ tags: SIX })
     const buttons = all(".ab-tag-chips button")
-    expect(buttons).toHaveLength(7)
+    expect(buttons).toHaveLength(6)
     for (const button of buttons) {
-      const glass = button.closest(".glass-stub")
-      expect(glass, button.className).not.toBeNull()
-      expect(glass?.getAttribute("data-height")).toBe("44")
-      expect(glass?.getAttribute("data-width")).toBe("auto")
+      const box = button.closest(".ab-tag-solid") as HTMLElement | null
+      expect(box, button.className).not.toBeNull()
+      expect(box?.getAttribute("data-kind")).toBe("pill")
+      expect(box?.style.height).toBe("44px")
+      expect(box?.style.width).toBe(button.className === "ab-tag-dots" ? "44px" : "auto")
     }
-    expect(all(".ab-tag-chips .glass-stub")).toHaveLength(6)
+    expect(all(".ab-tag-chips .ab-tag-solid")).toHaveLength(6)
+    expect(has(".ab-tag-chips .glass-stub")).toBe(false)
   })
 })
 
@@ -306,7 +328,7 @@ describe("TagPicker: the All tags list", () => {
     expect(has(".ab-tag-panel")).toBe(false)
   })
 
-  it("opens on a tap of All tags, asks the hook to read the list once, and is a modal dialog with the name All tags", () => {
+  it("opens on a tap of the three dots, asks the hook to read the list once, and is a modal dialog with the name All tags", () => {
     const props = show()
     openAllTags()
     expect(props.onOpen).toHaveBeenCalledTimes(1)
@@ -371,12 +393,12 @@ describe("TagPicker: the All tags list", () => {
     expect(document.activeElement).toBe(q(".ab-tag-pill"))
   })
 
-  it("gives the focus back to All tags when All tags opened the list", () => {
+  it("gives the focus back to the three dots when the three dots opened the list", () => {
     show()
     openAllTags()
     click(all(".ab-tag-row")[1])
     expect(has(".ab-tag-layer")).toBe(false)
-    expect(document.activeElement).toBe(q(".ab-tag-all"))
+    expect(document.activeElement).toBe(q(".ab-tag-dots"))
   })
 
   it("lets a tag that is not one of the four be chosen from the list, and then shows it in the row", () => {
@@ -505,7 +527,7 @@ describe("TagPicker: the All tags list", () => {
 })
 
 describe("TagPicker: the Edit tags view", () => {
-  it("opens straight from the pen of the All tags pill, without showing the list first: a modal dialog with the name Edit tags", () => {
+  it("opens from the pen at the top of the list (the pen is no longer in the row): a modal dialog with the name Edit tags, and the list is read only once", () => {
     const props = show()
     openPen()
     expect(props.onOpen).toHaveBeenCalledTimes(1)
@@ -518,7 +540,7 @@ describe("TagPicker: the Edit tags view", () => {
     expect(q(".ab-tag-title").textContent).toBe("Edit tags")
   })
 
-  it("puts the focus in the field when the pen of the pill opens it", () => {
+  it("puts the focus in the field when the pen inside the list opens it", () => {
     show()
     openPen()
     expect(document.activeElement).toBe(q(".ab-tag-input"))
@@ -557,13 +579,13 @@ describe("TagPicker: the Edit tags view", () => {
     expect(props.onChoose).not.toHaveBeenCalled()
   })
 
-  it("goes back to the list also when the pen of the pill opened the editing view (Back always goes to the list)", () => {
+  it("gives the focus back to the three dots when a row is chosen after Back (the opener is still the three dots, not the pen)", () => {
     show()
     openPen()
     click(q(".ab-tag-back"))
-    expect(q(".ab-tag-layer").getAttribute("data-view")).toBe("list")
-    expect(texts(".ab-tag-row")).toEqual(["No tag", "Work", "Study", "Reading"])
-    expect(document.activeElement).toBe(q(".ab-tag-panel"))
+    click(all(".ab-tag-row")[1])
+    expect(has(".ab-tag-layer")).toBe(false)
+    expect(document.activeElement).toBe(q(".ab-tag-dots"))
   })
 
   it("closes the WHOLE picker on Escape from the editing view, without a change, and the focus goes back to what opened it", () => {
@@ -572,7 +594,7 @@ describe("TagPicker: the Edit tags view", () => {
     key(q(".ab-tag-input"), "Escape")
     expect(has(".ab-tag-layer")).toBe(false)
     expect(props.onChoose).not.toHaveBeenCalled()
-    expect(document.activeElement).toBe(q(".ab-tag-pen"))
+    expect(document.activeElement).toBe(q(".ab-tag-dots"))
   })
 
   it("closes the WHOLE picker on a tap of the dim layer of the editing view, without a change", () => {
@@ -627,27 +649,29 @@ describe("TagPicker: the Edit tags view", () => {
     expect(document.activeElement).toBe(stops[2])
   })
 
-  it("is off with the rest of the picker when the screen is not ready: the pen does not open it", () => {
+  it("is off with the rest of the picker when the screen is not ready: the three dots do not open anything, so the editing view cannot be reached", () => {
     const props = show({ disabled: true })
-    click(q(".ab-tag-pen"))
+    click(q(".ab-tag-dots"))
     expect(has(".ab-tag-layer")).toBe(false)
     expect(props.onOpen).not.toHaveBeenCalled()
   })
 })
 
 describe("TagPicker: the glass and lite mode", () => {
-  it("draws glass and no plain box at lite level 0 (a laptop), also in the place", () => {
+  it("draws glass only in the PANEL at lite level 0 (a laptop): the six pills are plain boxes, nothing can be drawn into them from another layer (Packet 10F2)", () => {
     show()
-    expect(all(".glass-stub")).toHaveLength(6)
-    expect(has(".ab-tag-solid")).toBe(false)
+    expect(has(".glass-stub")).toBe(false)
+    expect(all(".ab-tag-solid")).toHaveLength(6)
     openList()
-    expect(all(".glass-stub")).toHaveLength(7)
-    expect(has(".ab-tag-solid")).toBe(false)
+    expect(all(".glass-stub")).toHaveLength(1)
+    expect(q(".ab-tag-place > .glass-stub").className).toContain("ab-tag-glass-panel")
+    expect(all(".ab-tag-solid")).toHaveLength(6)
   })
 
-  it("gives every glass the corner of its kind from the one GLASS object: 22 px for a pill and for the panel", () => {
+  it("gives every box the corner of its kind from the one GLASS object: 22 px for a pill and for the panel", () => {
     show()
     openList()
+    for (const box of all(".ab-tag-solid")) expect(box.style.borderRadius).toBe("22px")
     for (const glass of all(".glass-stub")) expect(glass.getAttribute("data-radius")).toBe("22")
   })
 
@@ -675,7 +699,7 @@ describe("TagPicker: the glass and lite mode", () => {
     }
   })
 
-  it("works the same in lite mode: the pill opens the list, a row chooses, the pen opens the editing view", () => {
+  it("works the same in lite mode: the pill opens the list, a row chooses, the pen inside the list opens the editing view", () => {
     lite.level = 1
     const props = show()
     openList()
@@ -688,11 +712,12 @@ describe("TagPicker: the glass and lite mode", () => {
 
   it("follows the lite level the next time it is drawn (the level is read when the picker is drawn, not once)", () => {
     show()
+    openList()
     expect(has(".glass-stub")).toBe(true)
     lite.level = 1
     show()
     expect(has(".glass-stub")).toBe(false)
-    expect(has(".ab-tag-solid")).toBe(true)
+    expect(has(".ab-tag-place > .ab-tag-solid")).toBe(true)
   })
 })
 // AB:TIMER.TESTS:END

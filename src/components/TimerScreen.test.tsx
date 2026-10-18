@@ -1234,7 +1234,7 @@ describe("the css of the tag picker (Packets 10C2, 10D and 10F)", () => {
     expect(rule(".ab-tag-picker")).toMatch(/display:\s*contents;/)
   })
 
-  it("gives the glass a fill and a rim of its own with !important (GlassSurface sets its own), the panel a darker fill AFTER it, and lite mode a plain box with the same 8 px of padding", () => {
+  it("gives the glass a fill and a rim of its own with !important (GlassSurface sets its own), the panel a darker fill AFTER it, and the plain box (every pill, and the panel in lite mode) with the same 8 px of padding", () => {
     expect(rule(".ab-tag-glass")).toMatch(/background:\s*rgba\([^)]*\) !important;/)
     expect(rule(".ab-tag-glass")).toMatch(/border:\s*1px solid rgba\([^)]*\) !important;/)
     expect(rule(".ab-tag-glass")).toContain("flex: none;")
@@ -1242,25 +1242,25 @@ describe("the css of the tag picker (Packets 10C2, 10D and 10F)", () => {
     expect(at(".ab-tag-glass-panel")).toBeGreaterThan(at(".ab-tag-glass"))
     expect(rule(".ab-tag-solid")).toContain("padding: 8px;")
     expect(rule(".ab-tag-solid")).toContain("box-sizing: border-box;")
+    expect(rule(".ab-tag-solid")).toMatch(/box-shadow:\s*inset 0 0 0 1px rgba\([^)]*\), inset 0 1px 0 rgba\([^)]*\);/)
+    expect(rule(".ab-tag-solid")).not.toContain("backdrop-filter")
     expect(rule('.ab-tag-solid[data-kind="panel"]')).toMatch(/background:\s*rgb\(\d+, \d+, \d+\);/)
   })
 
   it("makes every button of a pill fill its glass: a margin of -8 px takes back the padding that GlassSurface and the plain box put around it", () => {
-    for (const selector of [".ab-tag-pill", ".ab-tag-chip", ".ab-tag-all"]) {
+    for (const selector of [".ab-tag-pill", ".ab-tag-chip", ".ab-tag-dots"]) {
       expect(rule(selector), selector).toContain("margin: -8px;")
       expect(rule(selector), selector).toContain("background: transparent;")
       expect(rule(selector), selector).toMatch(/border:\s*0;/)
       expect(px(rule(selector), /height:\s*(\d+)px;/), selector).toBe(44)
     }
     expect(rule(".ab-tag-pill")).toContain("width: calc(100% + 16px);")
-    expect(rule(".ab-tag-pen")).toContain("margin: -8px -8px -8px 0;")
-    expect(px(rule(".ab-tag-pen"), /height:\s*(\d+)px;/)).toBe(44)
-    expect(px(rule(".ab-tag-pen"), /width:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
-    expect(rule(".ab-tag-pen")).toMatch(/border-left:\s*1px solid/)
+    expect(px(rule(".ab-tag-dots"), /width:\s*(\d+)px;/)).toBe(44)
+    expect(rule(".ab-tag-dots")).toContain("border-radius: 999px;")
   })
 
   it("gives every button and the field of the tag part the font of the screen, and the Back button 44 px", () => {
-    for (const selector of [".ab-tag-pill", ".ab-tag-chip", ".ab-tag-all", ".ab-tag-row", ".ab-tag-back", ".ab-tag-add-button", ".ab-tag-input"]) {
+    for (const selector of [".ab-tag-pill", ".ab-tag-chip", ".ab-tag-row", ".ab-tag-back", ".ab-tag-add-button", ".ab-tag-input"]) {
       expect(rule(selector), selector).toContain("font: inherit;")
     }
     expect(px(rule(".ab-tag-back"), /height:\s*(\d+)px;/)).toBe(44)
@@ -1270,8 +1270,7 @@ describe("the css of the tag picker (Packets 10C2, 10D and 10F)", () => {
     expect(rule(".ab-tag-pill:disabled")).toContain("opacity: 0.4;")
     expect(rule(".ab-tag-pill:active:enabled")).toContain("transform: scale(0.98);")
     expect(rule(".ab-tag-chip:disabled")).toContain("opacity: 0.4;")
-    expect(rule(".ab-tag-all:disabled")).toContain("opacity: 0.4;")
-    expect(rule(".ab-tag-pen:disabled")).toContain("opacity: 0.4;")
+    expect(rule(".ab-tag-dots:disabled")).toContain("opacity: 0.4;")
   })
 
   it("cuts a long name with an ellipsis instead of growing", () => {
@@ -1407,9 +1406,11 @@ describe("the css of the tag picker (Packets 10C2, 10D and 10F)", () => {
 
   it("wraps a long name in the rows of the list too, and has no css of the old sheet, the Manage tags row or the old box left", () => {
     expect(rule(".ab-tag-row")).toContain("overflow-wrap: anywhere;")
-    for (const gone of [".ab-tag-sheet", ".ab-tag-more", ".ab-tag-more-chip", ".ab-tag-dialog", ".ab-tag-box"]) {
+    for (const gone of [".ab-tag-sheet", ".ab-tag-more", ".ab-tag-more-chip", ".ab-tag-dialog", ".ab-tag-box", ".ab-tag-all"]) {
       expect(part(), gone).not.toContain(gone)
     }
+    // The pen left the row at Packet 10F2: only its icon (the pen at the top of the list) is still styled.
+    expect(part()).not.toMatch(/\.ab-tag-pen\s*[{,:]/)
   })
 
   it("never uses a css variable of its own and never touches the rules of the screen", () => {
@@ -1431,9 +1432,10 @@ describe("TimerScreen: editing tags from the picker (Packets 10D and 10F)", () =
     })
   }
 
-  it("hands the editing box the call of the hook: the pen, a typed name and Add reach addTag, and nothing is chosen", async () => {
+  it("hands the editing box the call of the hook: the three dots, the pen inside the list, a typed name and Add reach addTag, and nothing is chosen", async () => {
     const view = show({ status: "idle", tags: [WORK] })
-    act(() => q(".ab-tag-pen").click())
+    act(() => q(".ab-tag-dots").click())
+    act(() => q(".ab-tag-edit-button").click())
     expect(q(".ab-tag-layer").getAttribute("data-view")).toBe("edit")
     typeInto("Study")
     await act(async () => {
@@ -1444,43 +1446,40 @@ describe("TimerScreen: editing tags from the picker (Packets 10D and 10F)", () =
     expect(view.chooseTag).not.toHaveBeenCalled()
   })
 
-  it("draws the All tags pill as the last thing inside the row of the picker, so that it stands in the buttons box above Start", () => {
+  it("draws the three dots as the last thing inside the row of the picker (and no pen in the row), so that they stand in the buttons box above Start", () => {
     show({ status: "idle", tags: [WORK] })
-    const all = q(".ab-tag-all")
-    const pen = q(".ab-tag-pen")
-    expect(all.textContent).toBe("All tags")
-    expect(pen.getAttribute("aria-label")).toBe("Edit tags")
-    expect(all.parentElement).toBe(pen.parentElement)
-    expect(all.parentElement?.parentElement).toBe(q(".ab-tag-chips"))
-    expect(q(".ab-tag-chips").lastElementChild).toBe(all.parentElement)
+    const dots = q(".ab-tag-dots")
+    expect(dots.getAttribute("aria-label")).toBe("All tags")
+    expect(dots.parentElement?.parentElement).toBe(q(".ab-tag-chips"))
+    expect(q(".ab-tag-chips").lastElementChild).toBe(dots.parentElement)
+    expect(has(".ab-tag-chips .ab-tag-edit-button")).toBe(false)
     expect(q(".ab-tag-picker").nextElementSibling).toBe(q(".ab-timer-pill"))
   })
 
-  it("is as ready as the Start button: the pen and All tags are off while the screen is busy, offline or has a problem", () => {
+  it("is as ready as the Start button: the three dots are off while the screen is busy, offline or has a problem", () => {
     show({ status: "idle", busy: true })
-    expect((q(".ab-tag-pen") as HTMLButtonElement).disabled).toBe(true)
-    expect((q(".ab-tag-all") as HTMLButtonElement).disabled).toBe(true)
+    expect((q(".ab-tag-dots") as HTMLButtonElement).disabled).toBe(true)
     show({ status: "idle", busy: false, link: "offline" })
-    expect((q(".ab-tag-pen") as HTMLButtonElement).disabled).toBe(true)
+    expect((q(".ab-tag-dots") as HTMLButtonElement).disabled).toBe(true)
     show({ status: "idle", link: "problem", problem: "Something went wrong." })
-    expect((q(".ab-tag-pen") as HTMLButtonElement).disabled).toBe(true)
+    expect((q(".ab-tag-dots") as HTMLButtonElement).disabled).toBe(true)
     show({ status: "idle", link: "online", busy: false })
-    expect((q(".ab-tag-pen") as HTMLButtonElement).disabled).toBe(false)
-    expect((q(".ab-tag-all") as HTMLButtonElement).disabled).toBe(false)
+    expect((q(".ab-tag-dots") as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it("has no pen and no place while a session runs or is paused (nothing can be added then)", () => {
+  it("has no three dots and no place while a session runs or is paused (nothing can be added then)", () => {
     show({ status: "running", seconds: 5, ringSeed: SEED, tags: [WORK] })
-    expect(has(".ab-tag-pen")).toBe(false)
+    expect(has(".ab-tag-dots")).toBe(false)
     expect(has(".ab-tag-layer")).toBe(false)
     show({ status: "paused", seconds: 5, ringSeed: SEED, tags: [WORK] })
-    expect(has(".ab-tag-pen")).toBe(false)
+    expect(has(".ab-tag-dots")).toBe(false)
     expect(has(".ab-tag-layer")).toBe(false)
   })
 
   it("keeps the children of the screen as they were, also while the editing box is open: the place lives inside the picker", () => {
     show({ status: "idle", tags: [WORK] })
-    act(() => q(".ab-tag-pen").click())
+    act(() => q(".ab-tag-dots").click())
+    act(() => q(".ab-tag-edit-button").click())
     expect(has(".ab-tag-edit")).toBe(true)
     expect(kidsOfMain()).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side"])
     expect(q(".ab-tag-layer").closest(".ab-timer-actions")).toBe(q(".ab-timer-actions"))
@@ -1489,7 +1488,8 @@ describe("TimerScreen: editing tags from the picker (Packets 10D and 10F)", () =
 
   it("loses the open editing box when a session starts (the picker is taken away)", () => {
     show({ status: "idle", tags: [WORK] })
-    act(() => q(".ab-tag-pen").click())
+    act(() => q(".ab-tag-dots").click())
+    act(() => q(".ab-tag-edit-button").click())
     expect(has(".ab-tag-edit")).toBe(true)
     show({ status: "running", seconds: 5, ringSeed: SEED, tags: [WORK] })
     expect(has(".ab-tag-edit")).toBe(false)

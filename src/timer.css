@@ -701,7 +701,7 @@
 /* AB:TIMER.LINE-TEXT:END */
 
 /* AB:TIMER.TAGS:START */
-/* The tag picker, version 2 (TagPicker.tsx and TagManage.tsx, Packet 10F, CONNECTIONS.md C56 and C57). It stands inside the buttons box, above Start, only while no session runs. On a phone: ONE pill (44 px) that shows the choice. On a wide screen: one row of pills (No tag, the tags used most, All tags with a pen). Both open the same place: a plain dim layer over the whole window with a glass panel in it. The glass itself is the ReactBits part GlassSurface (its settings are the GLASS object in TagPicker.tsx); here is only what the part does not do: how dark it is, and the plain box that lite mode uses instead. */
+/* The tag picker, version 2 (TagPicker.tsx and TagManage.tsx, Packets 10F and 10F2, CONNECTIONS.md C56 and C57). It stands inside the buttons box, above Start, only while no session runs. On a phone: ONE pill (44 px) that shows the choice. On a wide screen: one row of pills (No tag, the tags used most, and one round button of three dots that opens the list). Both open the same place: a plain dim layer over the whole window with a glass panel in it. The glass itself is the ReactBits part GlassSurface (its settings are the GLASS object in TagPicker.tsx); here is only what the part does not do: how dark it is, and the plain box that every pill uses (and the panel too in lite mode). */
 .ab-tag-picker {
   display: contents;
 }
@@ -722,7 +722,7 @@
   }
 }
 
-/* GlassSurface sets its own background from the light or dark setting of the viewer; this line makes the glass dark for everyone (the same way as .ab-glass in login.css). The higher the last number, the darker the glass. The edge light and the blur are the component's. */
+/* GlassSurface sets its own background from the light or dark setting of the viewer; this line makes the glass dark for everyone (the same way as .ab-glass in login.css). The higher the last number, the darker the glass. The edge light and the blur are the component's. Since Packet 10F2 only the PANEL is glass (the pills are plain boxes, see .ab-tag-solid). */
 .ab-tag-glass {
   flex: none;
   background: rgba(255, 255, 255, 0.09) !important;
@@ -732,10 +732,10 @@
 
 /* The panel is darker than a pill, so that the white words stay easy to read over whatever shows through it (the big clock, the Start button). It must stay below .ab-tag-glass: it replaces the fill set there. */
 .ab-tag-glass-panel {
-  background: rgba(14, 14, 18, 0.72) !important;
+  background: rgba(14, 14, 18, 0.9) !important;
 }
 
-/* Lite mode (a touch screen, see src/lib/lite.ts): no glass, a plain dark box. It has the same 8 px of padding that GlassSurface puts around its content, and it is darker because nothing blurs the moving background behind it. */
+/* The plain dark box: every pill (since Packet 10F2: a pill has no backdrop filter, so nothing can be drawn into it from another layer) and, in lite mode (a touch screen, see src/lib/lite.ts), the panel too. It has the same 8 px of padding that GlassSurface puts around its content. */
 .ab-tag-solid {
   box-sizing: border-box;
   display: flex;
@@ -745,7 +745,7 @@
   padding: 8px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.07);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .ab-tag-solid[data-kind="panel"] {
@@ -811,8 +811,7 @@
 }
 
 /* A pill of the row: the button fills the glass; the chosen one is filled white with black words, like Start, so that it reads at a glance. */
-.ab-tag-chip,
-.ab-tag-all {
+.ab-tag-chip {
   box-sizing: border-box;
   flex: none;
   max-width: 220px;
@@ -838,36 +837,30 @@
 }
 
 .ab-tag-chip:disabled,
-.ab-tag-all:disabled,
-.ab-tag-pen:disabled {
+.ab-tag-dots:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-/* The All tags pill holds two buttons: the words and, after a hairline, the pen. */
-.ab-tag-all {
-  margin-right: 0;
-  padding-right: 14px;
-}
-
-.ab-tag-pen {
+/* The small round button at the end of the row (three dots): it opens the list of all tags. It is 44 by 44 px and fills its whole round box (the margin of -8 px takes back the padding of the box), so the whole circle can be pressed. */
+.ab-tag-dots {
   box-sizing: border-box;
   display: flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 48px;
+  width: 44px;
   height: 44px;
-  margin: -8px -8px -8px 0;
-  padding: 0 4px 0 0;
+  margin: -8px;
+  padding: 0;
   color: #fff;
   background: transparent;
   border: 0;
-  border-left: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 0 999px 999px 0;
+  border-radius: 999px;
   cursor: pointer;
 }
 
+.ab-tag-dots-icon,
 .ab-tag-pen-icon {
   display: block;
 }

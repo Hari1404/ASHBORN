@@ -8,9 +8,9 @@ import "../timer.css"
 
 // AB:TIMER.TAGS:START
 // The tag picker of the Pro Timer, version 2 (Packet 10F; version 1 was Packet 10C2): the person chooses the tag BEFORE pressing Start (DECISIONS_TAGS.md sections 4 and 4b, CONNECTIONS.md C56). TimerScreen.tsx shows it as the first thing inside the buttons box, only while no session runs; the choice itself lives in useTimer.ts (tagId, chooseTag, reloadTags), and the list arrives there already in the order of use (CONNECTIONS.md C58).
-// The glass is the ReactBits part GlassSurface.tsx (Hari's decision of 18 Oct 2026). All its settings are in the GLASS object below, in one place; the darkness is in timer.css (.ab-tag-glass). In lite mode (src/lib/lite.ts: a touch screen, or ?lite=1 in the address) GlassSurface is not used: a plain dark box of the same size stands there (the same rule as the login card, CONNECTIONS.md C22).
-// On a wide screen (the same condition as C39) one row stands above Start: No tag, the four tags the person uses most (the first four of the list), the chosen tag as one more pill when it is not among those four (so that the choice is always seen), and ONE All tags pill that holds two buttons: the words All tags (opens the list) and a pen (opens the editing box). On a phone (the one-column screen) ONE pill shows the current choice and opens the list. Both versions are always in the page; the css decides which one is seen.
-// The place (a layer over the whole window, a plain dim layer with the glass panel in it) has two views. LIST: the title All tags, a pen at the top right, and a row for No tag and for EVERY tag in the order of use; a tap on a row chooses it and closes (nothing starts). EDIT: the box of Packet 10D (TagManage.tsx: the field and Add; renaming and removing are Packet 10G); Back goes to the list. Escape and a tap on the dim layer close everything. Focus goes to the panel when the list opens and when Back comes back to it (to the field when the editing view opens) and back to what opened it when it closes. Tab stays inside the panel. A tag name is shown as plain text, never as markup.
+// The glass is the ReactBits part GlassSurface.tsx (Hari's decision of 18 Oct 2026), and since Packet 10F2 only the big PANEL is glass. The pills stand in plain dark boxes (the same box as lite mode): the picker is seen only while no session runs, when the screen behind it is black, so the glass of a pill showed nothing, but its backdrop filter drew stray pixels from other layers over the pills when the dim layer opened (Hari's look at 10F). The panel settings are in the GLASS object below, in one place; the darkness is in timer.css (.ab-tag-glass). In lite mode (src/lib/lite.ts: a touch screen, or ?lite=1 in the address) the panel is a plain dark box too (the same rule as the login card, CONNECTIONS.md C22).
+// On a wide screen (the same condition as C39) one row stands above Start: No tag, the four tags the person uses most (the first four of the list), the chosen tag as one more pill when it is not among those four (so that the choice is always seen), and ONE small round three-dot button that opens the list of all tags (Packet 10F2; it replaced the All tags pill with its pen). On a phone (the one-column screen) ONE pill shows the current choice and opens the list. Both versions are always in the page; the css decides which one is seen.
+// The place (a layer over the whole window, a plain dim layer with the glass panel in it) has two views. LIST: the title All tags, a pen at the top right, and a row for No tag and for EVERY tag in the order of use; a tap on a row chooses it and closes (nothing starts). EDIT: the box of Packet 10D (TagManage.tsx: the field and Add; renaming and removing are Packet 10G); Back goes to the list. The pen is only in the list (editing is reached from inside the menu, never from the row). Escape and a tap on the dim layer close everything. Focus goes to the panel when the list opens and when Back comes back to it (to the field when the editing view opens) and back to what opened it when it closes. Tab stays inside the panel. A tag name is shown as plain text, never as markup.
 // The look is in timer.css, in the part that has the same tag as this one (see CODE_MAP.md).
 
 type TagPickerProps = {
@@ -25,29 +25,16 @@ type TagPickerProps = {
 const NO_TAG = "No tag"
 const TOP_COUNT = 4
 
-// The settings of the glass, one object for the pills and one for the panel (the meaning of every number is in GlassSurface.tsx and in src/components/LoginCard.tsx, which has the same kind of object).
+// The settings of the glass: the corner of every box, and the PANEL glass (the meaning of every number is in GlassSurface.tsx and in src/components/LoginCard.tsx, which has the same kind of object). displace is the blur of the glass: it was 2 and the big clock showed through the panel almost sharp (Hari's look at 10F), so it is 10 now.
 const GLASS = {
-  pill: {
-    borderRadius: 22,
-    borderWidth: 0.07,
-    brightness: 50,
-    opacity: 0.93,
-    blur: 11,
-    displace: 0,
-    backgroundOpacity: 0,
-    saturation: 1,
-    distortionScale: -120,
-    redOffset: 0,
-    greenOffset: 0,
-    blueOffset: 0,
-  },
+  radius: 22,
   panel: {
     borderRadius: 22,
     borderWidth: 0.07,
     brightness: 50,
     opacity: 0.93,
     blur: 11,
-    displace: 2,
+    displace: 10,
     backgroundOpacity: 0,
     saturation: 1,
     distortionScale: -120,
@@ -57,20 +44,19 @@ const GLASS = {
   },
 }
 
-type GlassProps = { kind: "pill" | "panel"; className: string; width: number | string; height: number | string; children: ReactNode }
+type GlassProps = { kind: "pill" | "panel"; className?: string; width: number | string; height: number | string; children: ReactNode }
 
-// The glass, or in lite mode the plain dark box with the same size and corners (both have 8 px of padding around the content).
+// The panel is glass; a pill is always the plain dark box, and in lite mode the panel is too (all have the same size and corners and 8 px of padding around the content).
 function Glass({ kind, className, width, height, children }: GlassProps) {
-  const settings = GLASS[kind]
-  if (LITE_LEVEL > 0) {
+  if (kind === "pill" || LITE_LEVEL > 0) {
     return (
-      <div className="ab-tag-solid" data-kind={kind} style={{ width, height, borderRadius: settings.borderRadius }}>
+      <div className="ab-tag-solid" data-kind={kind} style={{ width, height, borderRadius: GLASS.radius }}>
         {children}
       </div>
     )
   }
   return (
-    <GlassSurface {...settings} width={width} height={height} className={className}>
+    <GlassSurface {...GLASS.panel} width={width} height={height} className={className ?? ""}>
       {children}
     </GlassSurface>
   )
@@ -81,6 +67,17 @@ function PenIcon() {
     <svg className="ab-tag-pen-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
       <path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M13.5 8.5l3 3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+// Three dots in a row: the small round button of the wide screen row opens the list of all tags with it.
+function DotsIcon() {
+  return (
+    <svg className="ab-tag-dots-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+      <circle cx="5" cy="12" r="2" fill="currentColor" />
+      <circle cx="12" cy="12" r="2" fill="currentColor" />
+      <circle cx="19" cy="12" r="2" fill="currentColor" />
     </svg>
   )
 }
@@ -102,10 +99,11 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onA
     openerRef.current?.focus()
   }
 
-  function openAs(next: "list" | "edit") {
+  // Both buttons that open the place (the pill of the phone, the three dots of the wide screen) open the LIST; the editing view is reached from the pen inside it.
+  function openList() {
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     onOpen()
-    setView(next)
+    setView("list")
   }
 
   function choose(id: string | null) {
@@ -151,7 +149,7 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onA
   return (
     <div className="ab-tag-picker">
       <div className="ab-tag-phone">
-        <Glass kind="pill" className="ab-tag-glass" width="100%" height={44}>
+        <Glass kind="pill" width="100%" height={44}>
           <button
             className="ab-tag-pill"
             type="button"
@@ -159,7 +157,7 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onA
             aria-haspopup="dialog"
             aria-expanded={open}
             aria-label={"Tag: " + label}
-            onClick={() => openAs("list")}
+            onClick={() => openList()}
           >
             <span className="ab-tag-pill-text">{label}</span>
             <span className="ab-tag-chevron" aria-hidden="true" />
@@ -167,24 +165,21 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onA
         </Glass>
       </div>
       <div className="ab-tag-chips" role="group" aria-label="Tag">
-        <Glass kind="pill" className="ab-tag-glass" width="auto" height={44}>
+        <Glass kind="pill" width="auto" height={44}>
           <button className="ab-tag-chip" type="button" disabled={disabled} aria-pressed={tagId === null} onClick={() => onChoose(null)}>
             {NO_TAG}
           </button>
         </Glass>
         {row.map((tag) => (
-          <Glass key={tag.id} kind="pill" className="ab-tag-glass" width="auto" height={44}>
+          <Glass key={tag.id} kind="pill" width="auto" height={44}>
             <button className="ab-tag-chip" type="button" disabled={disabled} aria-pressed={tag.id === tagId} onClick={() => onChoose(tag.id)}>
               {tag.name}
             </button>
           </Glass>
         ))}
-        <Glass kind="pill" className="ab-tag-glass" width="auto" height={44}>
-          <button className="ab-tag-all" type="button" disabled={disabled} aria-haspopup="dialog" onClick={() => openAs("list")}>
-            All tags
-          </button>
-          <button className="ab-tag-pen" type="button" disabled={disabled} aria-haspopup="dialog" aria-label="Edit tags" onClick={() => openAs("edit")}>
-            <PenIcon />
+        <Glass kind="pill" width={44} height={44}>
+          <button className="ab-tag-dots" type="button" disabled={disabled} aria-haspopup="dialog" aria-label="All tags" onClick={() => openList()}>
+            <DotsIcon />
           </button>
         </Glass>
       </div>
