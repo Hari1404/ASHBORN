@@ -77,7 +77,7 @@ export default function TimerScreen() {
         <div className="ab-timer-actions">
           {timer.link === "loading" ? <div className="ab-tag-wait" aria-hidden="true" /> : null}
           {timer.link !== "loading" && timer.status === "idle" ? (
-            <TagPicker tags={timer.tags} tagId={timer.tagId} disabled={!ready} onChoose={timer.chooseTag} onOpen={timer.reloadTags} />
+            <TagPicker tags={timer.tags} tagId={timer.tagId} disabled={!ready} onChoose={timer.chooseTag} onOpen={timer.reloadTags} onAdd={timer.addTag} />
           ) : null}
           {timer.link === "loading" ? (
             <div className="ab-timer-wait" aria-hidden="true" />

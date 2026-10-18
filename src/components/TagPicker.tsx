@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
+import TagManage from "@/components/TagManage"
 import type { TimerTag } from "@/lib/timerApi"
+import type { AddTagResult } from "@/lib/useTimer"
 import "../timer.css"
 
 // AB:TIMER.TAGS:START
@@ -7,7 +9,7 @@ import "../timer.css"
 // "No tag" (Freestyle) is always the first choice and the one every new session starts with. The tags follow in the order the hook gives them (oldest first). A tag name is shown as plain text, never as markup.
 // On a phone (the one-column screen) it is ONE pill above Start that shows the current choice. Tapping it asks the hook to read the list again and opens the sheet: a plain dim layer over the whole screen (no blur, C25) with a panel that slides up from the bottom. Tapping a row chooses it and closes the sheet; tapping the dim layer or pressing Escape closes it without a change. Focus goes to the panel (not to a row, as in StopAlert.tsx) and comes back to the pill when the sheet closes. Tab stays inside the panel while it is open.
 // On a wide screen (the same condition as C39) the pill and the sheet are not drawn (timer.css): every tag stands there as a chip in a wrapping row, "No tag" first, and tapping a chip chooses it. Both versions are always in the page; the css decides which one is seen.
-// The picker has no adding, renaming or removing of tags (Packets 10D and 10E).
+// Managing tags (Packet 10D, CONNECTIONS.md C57): the list ends with a Manage tags row, and a wide screen has a Manage tags chip on a row of its own under the chips. Either one opens the Manage tags box (TagManage.tsx), which is drawn INSTEAD of the list while it is open: from the row, Back goes back to the list; from the chip (a wide screen has no list), Done closes the picker. The box only adds a tag for now (renaming and removing are Packet 10E), and a tag that was added is never chosen by itself.
 // The look is in timer.css, in the part that has the same tag as this one (see CODE_MAP.md).
 
 type TagPickerProps = {
@@ -16,14 +18,18 @@ type TagPickerProps = {
   disabled: boolean
   onChoose: (id: string | null) => void
   onOpen: () => void
+  onAdd: (name: string) => Promise<AddTagResult>
 }
 
 const NO_TAG = "No tag"
 
-export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen }: TagPickerProps) {
+export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onAdd }: TagPickerProps) {
   const [open, setOpen] = useState(false)
+  const [view, setView] = useState<"list" | "manage">("list")
+  const [viaChip, setViaChip] = useState(false)
   const pillRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const chipRef = useRef<HTMLButtonElement>(null)
   const current = tagId === null ? undefined : tags.find((tag) => tag.id === tagId)
   const label = current === undefined ? NO_TAG : current.name
 
@@ -34,8 +40,27 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen }: T
   }
 
   function openList() {
+    setViaChip(false)
+    setView("list")
     onOpen()
     setOpen(true)
+  }
+
+  function openManageFromList() {
+    setView("manage")
+  }
+
+  function openManageFromChip() {
+    onOpen()
+    setViaChip(true)
+    setView("manage")
+    setOpen(true)
+  }
+
+  // Back from the box: to the list when the box was opened from the list (a phone), out of the picker when it was opened from the chip (a wide screen has no list).
+  function leaveManage() {
+    if (viaChip) close()
+    else setView("list")
   }
 
   function choose(id: string | null) {
@@ -55,7 +80,12 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen }: T
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [open])
+  }, [open, view])
+
+  // When the picker closes after a box that was opened from the chip of a wide screen, the focus goes back to that chip (the pill is not drawn there).
+  useEffect(() => {
+    if (!open && viaChip) chipRef.current?.focus()
+  }, [open, viaChip])
 
   // Tab stays inside the panel: from the last row it goes to the first one and back (the panel itself counts as the place before the first row).
   function trap(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -106,7 +136,13 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen }: T
           </button>
         ))}
       </div>
-      {open ? (
+      <button className="ab-tag-more-chip" type="button" ref={chipRef} disabled={disabled} aria-haspopup="dialog" onClick={openManageFromChip}>
+        Manage tags
+      </button>
+      {open && view === "manage" ? (
+        <TagManage tags={tags} backLabel={viaChip ? "Done" : "Back"} onAdd={onAdd} onBack={leaveManage} onClose={close} />
+      ) : null}
+      {open && view === "list" ? (
         <div className="ab-tag-sheet">
           <div className="ab-tag-scrim" aria-hidden="true" onClick={close} />
           <div className="ab-tag-panel" role="dialog" aria-modal="true" aria-label="Choose a tag" tabIndex={-1} ref={panelRef} onKeyDown={trap}>
@@ -118,6 +154,9 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen }: T
                 {tag.name}
               </button>
             ))}
+            <button className="ab-tag-more" type="button" onClick={openManageFromList}>
+              Manage tags
+            </button>
           </div>
         </div>
       ) : null}

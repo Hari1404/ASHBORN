@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   timerPause: vi.fn(),
   timerResume: vi.fn(),
   timerEnd: vi.fn(),
+  timerTagAdd: vi.fn(),
   timerTagList: vi.fn(),
 }))
 vi.mock("@/lib/supabase", () => ({ supabase: null }))
@@ -25,7 +26,7 @@ import { fillSlots } from "@/lib/lineMarkup"
 import { COMEBACK_BANKS, STOP_ALERT_BANKS, bankIdFor, isComebackBank } from "@/lib/stopAlertLines"
 import { activeSeconds, canGoBackIn, type TimerRow } from "@/lib/timerMaths"
 import { MILESTONE_BANKS, milestonePool } from "@/lib/milestoneLines"
-import { POLL_OFFLINE_MS, POLL_ONLINE_MS, problemText, useTimer, type TimerOptions, type TimerView } from "./useTimer"
+import { POLL_OFFLINE_MS, POLL_ONLINE_MS, problemText, useTimer, type AddTagResult, type TimerOptions, type TimerView } from "./useTimer"
 
 // AB:TIMER.TESTS:START
 // 2026-10-07 10:00:00 UTC is 15:30 on 7 October in Asia/Kolkata. Local midnight there is 18:30 UTC.
@@ -89,6 +90,16 @@ function installFakeServer(): void {
     guard()
     if (server.tagListDown) throw new TimerError("UNKNOWN")
     return server.tags.map((tag) => ({ ...tag }))
+  })
+  api.timerTagAdd.mockImplementation(async (name: string) => {
+    guard()
+    const clean = name.trim()
+    if (clean.length < 1 || clean.length > 20 || clean.toLowerCase() === "freestyle") throw new TimerError("BAD_TAG_NAME")
+    if (server.tags.some((tag) => tag.name.toLowerCase() === clean.toLowerCase())) throw new TimerError("TAG_NAME_TAKEN")
+    if (server.tags.length >= 10) throw new TimerError("TAG_LIMIT")
+    const tag: TimerTag = { id: "t-" + clean.toLowerCase(), name: clean }
+    server.tags = [...server.tags, tag]
+    return { ...tag }
   })
   api.timerEnd.mockImplementation(async () => {
     guard()
@@ -1982,6 +1993,199 @@ describe("useTimer: the tags (Packet 10C2)", () => {
     })
     await press(view.pause)
     expect(api.timerTagList).toHaveBeenCalledTimes(1)
+  })
+})
+describe("useTimer: adding a tag (Packet 10D)", () => {
+  const WORK: TimerTag = { id: "t-work", name: "Work" }
+  const STUDY: TimerTag = { id: "t-study", name: "Study" }
+
+  // addTag answers with a promise: the test waits for it inside act, as a person waits for the box.
+  async function add(name: string): Promise<AddTagResult> {
+    let result: AddTagResult = { ok: false, message: "not answered" }
+    await act(async () => {
+      result = await view.addTag(name)
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    return result
+  }
+
+  it("adds the tag: it answers ok, shows the tag at the end of the list, shows no problem, and does not choose the tag", async () => {
+    server.tags = [WORK]
+    await mount()
+    expect(await add("Study")).toEqual({ ok: true })
+    expect(api.timerTagAdd).toHaveBeenCalledTimes(1)
+    expect(api.timerTagAdd).toHaveBeenCalledWith("Study")
+    expect(view.tags).toEqual([WORK, STUDY])
+    expect(view.tagId).toBeNull()
+    expect(view.problem).toBe("")
+    expect(view.link).toBe("online")
+  })
+
+  it("adds the first tag of a person who has none", async () => {
+    await mount()
+    expect(view.tags).toEqual([])
+    expect(await add("Study")).toEqual({ ok: true })
+    expect(view.tags).toEqual([STUDY])
+  })
+
+  it("hands the name to the database as typed (the database cuts the spaces) and shows the name the database kept", async () => {
+    await mount()
+    expect(await add("  Study  ")).toEqual({ ok: true })
+    expect(api.timerTagAdd).toHaveBeenCalledWith("  Study  ")
+    expect(view.tags).toEqual([STUDY])
+  })
+
+  it("reads the list again after the call, so that a tag that another device added shows too", async () => {
+    server.tags = [WORK]
+    await mount()
+    expect(api.timerTagList).toHaveBeenCalledTimes(1)
+    server.tags = [WORK, { id: "t-read", name: "Reading" }]
+    await add("Study")
+    expect(api.timerTagList).toHaveBeenCalledTimes(2)
+    expect(view.tags.map((tag) => tag.name)).toEqual(["Work", "Reading", "Study"])
+  })
+
+  it("never chooses the new tag: a pick stays as it was, no pick stays no pick, and the next Start sends no tag", async () => {
+    server.tags = [WORK]
+    await mount()
+    await press(() => view.chooseTag(WORK.id))
+    await add("Study")
+    expect(view.tagId).toBe(WORK.id)
+    await press(() => view.chooseTag(null))
+    await add("Reading")
+    expect(view.tagId).toBeNull()
+    await press(view.start)
+    expect(api.timerStart).toHaveBeenCalledWith("Asia/Kolkata")
+    expect(view.runningTag).toBeNull()
+  })
+
+  it("puts the new tag at the end of the list when the second reading of the list fails, shows no problem, and the next good reading agrees", async () => {
+    server.tags = [WORK]
+    await mount()
+    server.tagListDown = true
+    expect(await add("Study")).toEqual({ ok: true })
+    expect(view.tags).toEqual([WORK, STUDY])
+    expect(view.problem).toBe("")
+    expect(view.link).toBe("online")
+    server.tagListDown = false
+    await press(view.reloadTags)
+    expect(view.tags).toEqual([WORK, STUDY])
+  })
+
+  it("can choose the new tag afterwards even when the second reading of the list failed (the hook chooses only from the list it keeps)", async () => {
+    server.tags = [WORK]
+    await mount()
+    server.tagListDown = true
+    await add("Study")
+    await press(() => view.chooseTag(STUDY.id))
+    expect(view.tagId).toBe(STUDY.id)
+  })
+
+  it("shows the tag once when the second reading already has it", async () => {
+    await mount()
+    await add("Study")
+    expect(view.tags.filter((tag) => tag.id === STUDY.id)).toHaveLength(1)
+  })
+
+  it("answers the plain words of the database rules, changes nothing and does not read the list again", async () => {
+    server.tags = [WORK]
+    await mount()
+    const bad = { ok: false, message: problemText("BAD_TAG_NAME") }
+    expect(await add("")).toEqual(bad)
+    expect(await add("   ")).toEqual(bad)
+    expect(await add("freestyle")).toEqual(bad)
+    expect(await add("A".repeat(21))).toEqual(bad)
+    expect(await add("  work ")).toEqual({ ok: false, message: problemText("TAG_NAME_TAKEN") })
+    expect(problemText("BAD_TAG_NAME")).toBe("A tag name needs 1 to 20 characters, and cannot be Freestyle.")
+    expect(problemText("TAG_NAME_TAKEN")).toBe("You already have a tag with that name.")
+    expect(view.tags).toEqual([WORK])
+    expect(api.timerTagList).toHaveBeenCalledTimes(1)
+    expect(view.problem).toBe("")
+    expect(view.link).toBe("online")
+  })
+
+  it("answers the words of the limit when the person has the most tags allowed", async () => {
+    server.tags = Array.from({ length: 10 }, (_, i) => ({ id: "t-" + i, name: "Tag" + i }))
+    await mount()
+    expect(await add("Eleven")).toEqual({ ok: false, message: problemText("TAG_LIMIT") })
+    expect(problemText("TAG_LIMIT")).toBe("You have the most tags allowed. Remove one to add another.")
+    expect(view.tags).toHaveLength(10)
+  })
+
+  it.each(["BAD_TAG_NAME", "TAG_NAME_TAKEN", "TAG_LIMIT", "TAG_NOT_FOUND", "NOT_SIGNED_IN", "BAD_REPLY", "UNKNOWN"] as const)("gives problemText(%s) as the words of that error", async (kind) => {
+    await mount()
+    api.timerTagAdd.mockRejectedValueOnce(new TimerError(kind))
+    expect(await add("Gym")).toEqual({ ok: false, message: problemText(kind) })
+    expect(view.problem).toBe("")
+  })
+
+  it("answers its own words when there is no connection, and does not turn the whole screen offline (the next reading of the state does that)", async () => {
+    await mount()
+    api.timerTagAdd.mockRejectedValueOnce(new TimerError("NO_CONNECTION"))
+    expect(await add("Gym")).toEqual({ ok: false, message: "No connection. Try again in a moment." })
+    expect(view.link).toBe("online")
+    expect(view.problem).toBe("")
+  })
+
+  it("answers Something went wrong. for an error that is not one of its own and never throws", async () => {
+    await mount()
+    api.timerTagAdd.mockRejectedValueOnce(new Error("boom"))
+    expect(await add("Gym")).toEqual({ ok: false, message: "Something went wrong." })
+  })
+
+  it("keeps the list that was read last: an older reading that answers late cannot take the new tag out", async () => {
+    server.tags = [WORK]
+    await mount()
+    const old = hold("timerTagList")
+    await press(view.reloadTags)
+    await add("Study")
+    expect(view.tags).toEqual([WORK, STUDY])
+    await release(() => old.answer([{ ...WORK }]))
+    expect(view.tags).toEqual([WORK, STUDY])
+  })
+
+  it("never touches the session: a running session goes on with no tag, and the state is not read again", async () => {
+    server.row = runningRow(30)
+    server.tags = [WORK]
+    await mount()
+    const reads = api.timerState.mock.calls.length
+    expect(await add("Study")).toEqual({ ok: true })
+    expect(view.status).toBe("running")
+    expect(view.runningTag).toBeNull()
+    expect(api.timerState.mock.calls.length).toBe(reads)
+    expect(api.timerPause).not.toHaveBeenCalled()
+    expect(api.timerEnd).not.toHaveBeenCalled()
+  })
+
+  it("is the same function in every drawing of the screen, so that the box is not drawn again for nothing", async () => {
+    server.row = runningRow(10)
+    await mount()
+    const first = view.addTag
+    await settle(5000)
+    expect(view.seconds).toBeGreaterThan(10)
+    expect(view.addTag).toBe(first)
+  })
+
+  it("does not fail when its answer comes after the screen was closed", async () => {
+    const problems = vi.spyOn(console, "error").mockImplementation(() => {})
+    server.tags = [WORK]
+    await mount()
+    const pending = hold("timerTagAdd")
+    let result: AddTagResult | null = null
+    await act(async () => {
+      void view.addTag("Study").then((answer) => {
+        result = answer
+      })
+    })
+    act(() => root?.unmount())
+    root = null
+    await act(async () => {
+      pending.answer({ id: "t-study", name: "Study" })
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(result).toEqual({ ok: true })
+    expect(problems).not.toHaveBeenCalled()
+    problems.mockRestore()
   })
 })
 // AB:TIMER.TESTS:END

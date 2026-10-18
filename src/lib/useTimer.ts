@@ -8,6 +8,7 @@ import {
   timerResume,
   timerStart,
   timerState,
+  timerTagAdd,
   timerTagList,
   type TimerErrorKind,
   type TimerTag,
@@ -37,7 +38,8 @@ import {
 // The comeback message: when that Resume really runs the session again, resume picks one comeback line for the seconds the session stopped at (pickComebackLine) and keeps it as long as that session runs. A Resume that is not the one after GO BACK IN (or after any other pause) gets none. The screen shows it for a few seconds (Comeback.tsx) and then calls clearComeback. See CONNECTIONS.md C48.
 // The milestone message (Packet 07B): when the session reaches 15, 25, 45, 60, 90, 120, 150 or 180 minutes the message WAITS until the person is looking (the page is visible), the session is running and no other milestone message is on the screen, and is then shown at once. A message that nobody saw is shown the moment the person looks again, up to 10 minutes after its milestone (timerMaths.ts, milestoneWaiting), with the number of minutes it is late when that is 5 or more (earlier); after 10 minutes it is given up for good. Only the newest milestone is shown, and each is shown at most once per session. The line about the glowing ball is only picked when the message is on time (milestoneOnTime) and the screen draws the ball (the option drawn, given by TimerScreen.tsx); a late message gets the general lines only. The screen shows it for 30 seconds (Milestone.tsx) and then calls clearMilestone.
 // The tags (Packet 10C2): the hook keeps the list of the person's live tags (read once when the screen opens and again each time the picker opens its list, never by the 30 second poll; a list that cannot be read never stops the timer) and the tag that was picked before Start (tagId: none at first, and back to none as soon as any session is running, so every session starts with no tag). Start sends the picked tag only when there is one: with no tag it is the same call as before tags. chooseTag only works while nothing runs and only for a tag that is in the list. A Start that the database refuses with TAG_NOT_FOUND (the tag was archived on another device) sets the pick back to no tag, reads the list again and shows the plain words of problemText. runningTag is the name of the tag of the running session as the database sends it (C55), or null for no tag. See CONNECTIONS.md C56.
-// What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43, C45, C48, C51 and C56. The names used by the screen are in TimerView.
+// Adding a tag (Packet 10D): addTag hands the name to the database as typed (timerTagAdd; the database cuts the spaces and checks the rules, so the words of the errors are the ones of problemText), reads the list again, and answers { ok: true } or { ok: false, message }. It never throws, it never shows a problem on the screen itself (the answer goes to the Manage tags box), and it NEVER chooses the new tag: every session starts with no tag, and the person picks the tag himself (DECISIONS_TAGS.md section 4).
+// What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43, C45, C48, C51, C56 and C57. The names used by the screen are in TimerView.
 
 export const POLL_ONLINE_MS = 30000
 export const POLL_OFFLINE_MS = 3000
@@ -117,8 +119,12 @@ export type TimerView = {
   clearMilestone: () => void
   chooseTag: (id: string | null) => void
   reloadTags: () => void
+  addTag: (name: string) => Promise<AddTagResult>
   retry: () => void
 }
+
+// The answer of addTag (Packet 10D): it worked, or the plain words to show.
+export type AddTagResult = { ok: true } | { ok: false; message: string }
 
 export function problemText(kind: TimerErrorKind): string {
   switch (kind) {
@@ -267,6 +273,27 @@ export function useTimer(options: TimerOptions = {}): TimerView {
     [showTagId],
   )
   const reloadTags = useCallback(() => void loadTags(), [loadTags])
+
+  // Packet 10D, CONNECTIONS.md C57. The name goes to the database as typed. A tag that was added is put into the list after the list was read again (the reading may fail; the person must still see the tag). The new tag is never chosen.
+  const addTag = useCallback(
+    async (name: string): Promise<AddTagResult> => {
+      let added: TimerTag
+      try {
+        added = await timerTagAdd(name)
+      } catch (error) {
+        const kind: TimerErrorKind = error instanceof TimerError ? error.kind : "UNKNOWN"
+        return { ok: false, message: kind === "NO_CONNECTION" ? "No connection. Try again in a moment." : problemText(kind) }
+      }
+      await loadTags()
+      if (aliveRef.current && !tagsRef.current.some((tag) => tag.id === added.id)) {
+        const list = [...tagsRef.current, added]
+        tagsRef.current = list
+        setTags(list)
+      }
+      return { ok: true }
+    },
+    [loadTags],
+  )
 
   const adopt = useCallback(
     (next: Reading) => {
@@ -554,6 +581,7 @@ export function useTimer(options: TimerOptions = {}): TimerView {
     clearMilestone,
     chooseTag,
     reloadTags,
+    addTag,
     retry: () => void refresh(),
   }
 }

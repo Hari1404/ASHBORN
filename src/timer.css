@@ -894,11 +894,209 @@
   text-shadow: 0 0 14px rgba(0, 0, 0, 0.75), 0 0 4px rgba(0, 0, 0, 0.6);
 }
 
+/* The Manage tags row at the end of the phone list (Packet 10D, CONNECTIONS.md C57): the size of a tag row, with a dashed edge and softer words, so that it is not taken for a tag. */
+.ab-tag-more {
+  box-sizing: border-box;
+  flex: none;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 20px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.7);
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+/* The Manage tags chip of a wide screen: one dashed chip on a row of its own under the chips (it is no tag, so it does not stand among them). It is not drawn on a phone, where the list has the row (the wide rule at the end of this part switches it on). */
+.ab-tag-more-chip {
+  display: none;
+  box-sizing: border-box;
+  flex: none;
+  align-self: center;
+  height: 40px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ab-tag-more-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The Manage tags box: the same plain dim layer as the list, and a box at the TOP of the window, under the Menu button (64 px; the Menu button is z-index 40 and about 56 px high). It is at the top on purpose: the keyboard of a phone would hide a box at the bottom while the person types. On a wide screen it is the same box, 440 px at most, centred. */
+.ab-tag-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+}
+
+.ab-tag-box {
+  position: absolute;
+  top: 64px;
+  right: 0;
+  left: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: calc(100% - 24px);
+  max-width: 440px;
+  max-height: calc(100dvh - 76px);
+  margin: 0 auto;
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+  background: #111114;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 20px;
+  outline: none;
+  animation: ab-tag-down 240ms ease;
+}
+
+.ab-tag-box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ab-tag-box-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.ab-tag-back {
+  box-sizing: border-box;
+  flex: none;
+  height: 44px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ab-tag-add {
+  display: flex;
+  gap: 8px;
+}
+
+/* The field is 16 px high text on purpose: a phone zooms into a field with smaller text. */
+.ab-tag-input {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  height: 48px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 16px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 14px;
+  outline: none;
+}
+
+.ab-tag-input:focus {
+  border-color: #fff;
+}
+
+.ab-tag-add-button {
+  box-sizing: border-box;
+  flex: none;
+  height: 48px;
+  padding: 0 20px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: #000;
+  background: #fff;
+  border: 1px solid #fff;
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.ab-tag-add-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ab-tag-error {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+  border-left: 3px solid #fff;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.ab-tag-have {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The tags the person has are a plain list (a hairline under each name, no box, no round edge), so that a name is not taken for a button: it cannot be pressed in this packet (renaming and removing come in Packet 10E). */
+.ab-tag-have-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 4px;
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  overflow-wrap: anywhere;
+}
+
+.ab-tag-have-row:last-child {
+  border-bottom: 0;
+}
+
+.ab-tag-have-empty {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+@keyframes ab-tag-down {
+  from {
+    opacity: 0;
+    transform: translateY(-24px);
+  }
+}
+
 /* A person who asked their device for less motion gets no sliding and no breathing. It is written AFTER the rules it switches off. */
 @media (prefers-reduced-motion: reduce) {
   .ab-tag-wait,
   .ab-tag-scrim,
-  .ab-tag-panel {
+  .ab-tag-panel,
+  .ab-tag-box {
     animation: none;
   }
 }
@@ -909,6 +1107,11 @@
   .ab-tag-wait,
   .ab-tag-sheet {
     display: none;
+  }
+
+  .ab-tag-more-chip {
+    display: flex;
+    align-items: center;
   }
 
   .ab-tag-chips {

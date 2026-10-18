@@ -89,6 +89,7 @@ function makeView(over: Partial<TimerView> = {}): TimerView {
     clearMilestone: vi.fn(),
     chooseTag: vi.fn(),
     reloadTags: vi.fn(),
+    addTag: vi.fn(async () => ({ ok: true as const })),
     retry: vi.fn(),
     ...over,
   }
@@ -1286,11 +1287,161 @@ describe("the css of the tag picker (Packet 10C2)", () => {
     expect(line).toMatch(/font-size:\s*max\(12px,/)
   })
 
+  it("draws the Manage tags row as a dashed full-width row of at least 44 px that does not shrink, so that it is not taken for a tag", () => {
+    const row = rule(".ab-tag-more")
+    expect(row).toContain("width: 100%;")
+    expect(row).toContain("flex: none;")
+    expect(px(row, /min-height:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
+    expect(row).toMatch(/border:\s*1px dashed/)
+    expect(row).toContain("background: transparent;")
+  })
+
+  it("draws the Manage tags chip dashed and as high as a chip, off on a phone, on (flex) in the wide rule only, and the wide rule comes after it", () => {
+    const chip = rule(".ab-tag-more-chip")
+    expect(chip).toContain("display: none;")
+    expect(chip).toMatch(/border:\s*1px dashed/)
+    expect(px(chip, /height:\s*(\d+)px;/)).toBe(px(rule(".ab-tag-chip"), /height:\s*(\d+)px;/))
+    expect(rule(".ab-tag-more-chip:disabled")).toContain("opacity: 0.4;")
+    expect(inside(part(), TAGS_HEADER)).toMatch(/\.ab-tag-more-chip \{[^}]*display: flex;/)
+    expect(part().indexOf("\n.ab-tag-more-chip {")).toBeGreaterThan(-1)
+    expect(part().indexOf("\n.ab-tag-more-chip {")).toBeLessThan(part().indexOf(TAGS_HEADER))
+  })
+
+  it("puts the box in a fixed layer above the dial and below the menu button, and the box at the TOP of the window under the menu button, never at the bottom where a phone keyboard would hide it", () => {
+    const layer = rule(".ab-tag-dialog")
+    expect(layer).toContain("position: fixed;")
+    expect(layer).toContain("inset: 0;")
+    const z = px(layer, /z-index:\s*(\d+);/)
+    expect(z).toBeGreaterThan(1)
+    expect(z).toBeLessThan(40)
+    const box = rule(".ab-tag-box")
+    expect(box).toContain("position: absolute;")
+    expect(px(box, /top:\s*(\d+)px;/)).toBeGreaterThanOrEqual(56)
+    expect(box).not.toContain("bottom:")
+    expect(box).toContain("overflow-y: auto;")
+    expect(box).toMatch(/max-height:\s*calc\(100dvh - \d+px\);/)
+    expect(box).toContain("margin: 0 auto;")
+    expect(px(box, /max-width:\s*(\d+)px;/)).toBeLessThanOrEqual(440)
+  })
+
+  it("makes the field text 16 px high (a phone zooms into smaller text), 44 px or more to tap, with a focus look, and the Add button as high as the field", () => {
+    const input = rule(".ab-tag-input")
+    expect(px(input, /font-size:\s*(\d+)px;/)).toBeGreaterThanOrEqual(16)
+    expect(px(input, /height:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
+    expect(input).toContain("min-width: 0;")
+    expect(rule(".ab-tag-input:focus")).toContain("border-color: #fff;")
+    expect(px(rule(".ab-tag-add-button"), /height:\s*(\d+)px;/)).toBe(px(input, /height:\s*(\d+)px;/))
+  })
+
+  it("keeps Add the one solid white button of the box, with a disabled look, and the Back button outlined", () => {
+    expect(rule(".ab-tag-add-button")).toContain("background: #fff;")
+    expect(rule(".ab-tag-add-button:disabled")).toContain("opacity: 0.4;")
+    expect(rule(".ab-tag-back")).toContain("background: transparent;")
+    expect(rule(".ab-tag-back")).toMatch(/border:\s*1px solid/)
+    expect(px(rule(".ab-tag-back"), /height:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
+  })
+
+  it("shows the error as one plain line with a bar at its left and lets a long word wrap", () => {
+    const error = rule(".ab-tag-error")
+    expect(error).toMatch(/border-left:\s*3px solid #fff;/)
+    expect(error).toContain("overflow-wrap: anywhere;")
+  })
+
+  it("wraps a long name in the read-only rows, gives them the height of a tag row and no pointer, and draws the list without bullets", () => {
+    const row = rule(".ab-tag-have-row")
+    expect(row).toContain("overflow-wrap: anywhere;")
+    expect(px(row, /min-height:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
+    expect(row).not.toContain("cursor:")
+    expect(row).not.toContain("border-radius")
+    expect(row).toMatch(/border:\s*0;/)
+    expect(rule(".ab-tag-have")).toContain("list-style: none;")
+  })
+
+  it("slides the box down with a keyframe of its own, written before the motion rule that switches it off for a person who wants less motion", () => {
+    expect(rule(".ab-tag-box")).toMatch(/animation:\s*ab-tag-down\s+\d+ms/)
+    const keyframes = part().indexOf("@keyframes ab-tag-down {")
+    const motion = part().indexOf("@media (prefers-reduced-motion: reduce) {")
+    expect(keyframes).toBeGreaterThan(-1)
+    expect(keyframes).toBeLessThan(motion)
+    expect(inside(part(), "@media (prefers-reduced-motion: reduce) {")).toContain(".ab-tag-box")
+  })
+
   it("never uses a css variable of its own and never touches the rules of the screen", () => {
     expect(part()).not.toContain("--ab-")
     for (const selector of [".ab-timer-actions", ".ab-timer-pill", ".ab-timer-wait", ".ab-timer-readout", ".ab-timer-small"]) {
       expect(part(), selector).not.toContain(selector + " ")
     }
+  })
+})
+describe("TimerScreen: adding a tag (Packet 10D)", () => {
+  const WORK: TimerTag = { id: "t-work", name: "Work" }
+  const kidsOfMain = (): string[] => Array.from(q(".ab-timer").children).map((k) => k.id || k.className)
+  const typeInto = (text: string) => {
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
+    act(() => {
+      set?.call(q(".ab-tag-input"), text)
+      q(".ab-tag-input").dispatchEvent(new Event("input", { bubbles: true }))
+    })
+  }
+
+  it("hands the box the call of the hook: Manage tags, a typed name and Add reach addTag, and nothing is chosen", async () => {
+    const view = show({ status: "idle", tags: [WORK] })
+    act(() => q(".ab-tag-pill").click())
+    act(() => q(".ab-tag-more").click())
+    typeInto("Study")
+    await act(async () => {
+      q(".ab-tag-add-button").click()
+    })
+    expect(view.addTag).toHaveBeenCalledTimes(1)
+    expect(view.addTag).toHaveBeenCalledWith("Study")
+    expect(view.chooseTag).not.toHaveBeenCalled()
+  })
+
+  it("draws the Manage tags chip as the last thing inside the picker, so that it stands in the buttons box above Start", () => {
+    show({ status: "idle", tags: [WORK] })
+    const chip = q(".ab-tag-more-chip")
+    expect(chip.parentElement).toBe(q(".ab-tag-picker"))
+    expect(chip.nextElementSibling).toBeNull()
+    expect(q(".ab-tag-picker").nextElementSibling).toBe(q(".ab-timer-pill"))
+    expect(chip.textContent).toBe("Manage tags")
+  })
+
+  it("is as ready as the Start button: the chip is off while the screen is busy, offline or has a problem", () => {
+    show({ status: "idle", busy: true })
+    expect((q(".ab-tag-more-chip") as HTMLButtonElement).disabled).toBe(true)
+    show({ status: "idle", busy: false, link: "offline" })
+    expect((q(".ab-tag-more-chip") as HTMLButtonElement).disabled).toBe(true)
+    show({ status: "idle", link: "problem", problem: "Something went wrong." })
+    expect((q(".ab-tag-more-chip") as HTMLButtonElement).disabled).toBe(true)
+    show({ status: "idle", link: "online", busy: false })
+    expect((q(".ab-tag-more-chip") as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("has no chip and no box while a session runs or is paused (nothing can be added then)", () => {
+    show({ status: "running", seconds: 5, ringSeed: SEED, tags: [WORK] })
+    expect(has(".ab-tag-more-chip")).toBe(false)
+    expect(has(".ab-tag-box")).toBe(false)
+    show({ status: "paused", seconds: 5, ringSeed: SEED, tags: [WORK] })
+    expect(has(".ab-tag-more-chip")).toBe(false)
+    expect(has(".ab-tag-box")).toBe(false)
+  })
+
+  it("keeps the children of the screen as they were, also while the box is open: the box lives inside the picker", () => {
+    show({ status: "idle", tags: [WORK] })
+    act(() => q(".ab-tag-more-chip").click())
+    expect(has(".ab-tag-box")).toBe(true)
+    expect(kidsOfMain()).toEqual(["background-stub", "ab-timer-dial", "ab-timer-side"])
+    expect(q(".ab-tag-box").closest(".ab-timer-actions")).toBe(q(".ab-timer-actions"))
+    expect(q(".ab-tag-box").closest(".ab-tag-picker")).toBe(q(".ab-tag-picker"))
+  })
+
+  it("loses the open box when a session starts (the picker is taken away)", () => {
+    show({ status: "idle", tags: [WORK] })
+    act(() => q(".ab-tag-more-chip").click())
+    expect(has(".ab-tag-box")).toBe(true)
+    show({ status: "running", seconds: 5, ringSeed: SEED, tags: [WORK] })
+    expect(has(".ab-tag-box")).toBe(false)
+    expect(has(".ab-tag-picker")).toBe(false)
   })
 })
 // AB:TIMER.TESTS:END
