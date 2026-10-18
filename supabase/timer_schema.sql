@@ -313,7 +313,7 @@ begin
 end
 $$;
 
--- 11b. The tags of a person (Packet 10A). Four functions. The app never writes the table itself.
+-- 11b. The tags of a person (Packet 10A). Four functions list, add, rename and archive the tags; a fifth one, timer_tag_use (Packet 10E), counts how much each tag was used. The app never writes the table itself.
 --      The name is checked the same way in add and in rename: the spaces at both ends are cut, 1 to 20 characters, no control
 --      character (tab, line break), and the name Freestyle (any capitals) is reserved. Otherwise: error BAD_TAG_NAME.
 --      Add and rename take a lock per person, so two devices cannot make the 11th tag, or the same name twice, at the same moment.
@@ -330,6 +330,26 @@ as $$
   select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name) order by created_at, id), '[]'::jsonb)
   from public.timer_tags
   where user_id = (select auth.uid()) and archived_at is null
+$$;
+
+-- timer_tag_use(): how much each live tag was used, so that the app can put the tags in the order of their use (Packet 10E, DECISIONS_TAGS.md section 4b, points 1 to 3).
+-- One row for each live tag of the person, oldest first: [{"id": ..., "seconds": ...}]. Use = the sum of active_seconds of the SAVED sessions of that tag that ENDED in the last 30 days.
+-- The running session is not counted (it is not saved yet), an archived tag is not listed, a tag with no use gives 0, and only the person's own tags and sessions count. Read-only; it runs with the rights of the caller.
+create or replace function public.timer_tag_use()
+returns jsonb
+language sql
+stable
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', t.id, 'seconds', coalesce(u.seconds, 0)) order by t.created_at, t.id), '[]'::jsonb)
+  from public.timer_tags t
+  left join (
+    select s.tag_id, sum(s.active_seconds) as seconds
+    from public.timer_sessions s
+    where s.user_id = (select auth.uid()) and s.tag_id is not null and s.ended_at >= now() - interval '30 days'
+    group by s.tag_id
+  ) u on u.tag_id = t.id
+  where t.user_id = (select auth.uid()) and t.archived_at is null
 $$;
 
 -- timer_tag_add(name): a new tag. If an archived tag has that name, the NEWEST archived tag of that name comes back instead
@@ -448,10 +468,12 @@ revoke all on function public.timer_tag_list() from public, anon;
 revoke all on function public.timer_tag_add(text) from public, anon;
 revoke all on function public.timer_tag_rename(uuid, text) from public, anon;
 revoke all on function public.timer_tag_archive(uuid) from public, anon;
+revoke all on function public.timer_tag_use() from public, anon;
 grant execute on function public.timer_tag_list() to authenticated;
 grant execute on function public.timer_tag_add(text) to authenticated;
 grant execute on function public.timer_tag_rename(uuid, text) to authenticated;
 grant execute on function public.timer_tag_archive(uuid) to authenticated;
+grant execute on function public.timer_tag_use() to authenticated;
 
 -- 13. Tell the API layer to read the new function list now (the two-argument timer_start and the tag functions).
 notify pgrst, 'reload schema';

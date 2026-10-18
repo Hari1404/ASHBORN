@@ -9,7 +9,7 @@ import { DATABASE_ERRORS } from "@/lib/timerApi"
 // Tests of the session tags in the SQL files (Packet 10A). Run them with: npm test
 // Like the tests of the pause log, these read the TEXT of the SQL files: npm test cannot run SQL.
 // The behaviour itself (the limit, the names, the bring-back, who sees what) is checked by the owner with supabase/timer_verify.sql
-// in the Supabase SQL Editor (14 rows), see CONNECTIONS.md C55. The rules are labelled DEFAULT in PACKET_10A: a number written here must match the SQL file.
+// in the Supabase SQL Editor (18 rows), see CONNECTIONS.md C55 and C58. The rules are labelled DEFAULT in PACKET_10A: a number written here must match the SQL file.
 
 const TAG_ERRORS = ["BAD_TAG_NAME", "TAG_NAME_TAKEN", "TAG_LIMIT", "TAG_NOT_FOUND"]
 
@@ -129,9 +129,9 @@ describe("the session tags in the SQL file (Packet 10A)", () => {
     }
   })
 
-  it("has a verify file of 14 rows that checks the tag parts, the two-argument timer_start and the tag key of timer_row_json", () => {
-    expect(verifySql).toContain("Expected result: 14 rows")
-    expect(verifySql.match(/^select '/gm)?.length).toBe(14)
+  it("has a verify file of 18 rows that checks the tag parts, the two-argument timer_start, the tag key of timer_row_json and the function timer_tag_use", () => {
+    expect(verifySql).toContain("Expected result: 18 rows")
+    expect(verifySql.match(/^select '/gm)?.length).toBe(18)
     for (const name of [
       "tag_table_with_row_level_security",
       "tag_id_columns",
@@ -141,11 +141,52 @@ describe("the session tags in the SQL file (Packet 10A)", () => {
       "signed_in_can_add_tag",
       "tag_name_unique_among_live_tags",
       "row_json_sends_tag",
+      "tag_use_function_exists",
+      "anonymous_cannot_read_tag_use",
+      "signed_in_can_read_tag_use",
+      "tag_use_answers_a_list",
     ]) {
       expect(verifySql).toContain("'" + name + "'")
     }
     expect(verifySql).toContain("'public.timer_start(text, uuid)'")
     expect(verifySql).not.toContain("'public.timer_start(text)'")
+    expect(verifySql).toContain("select 'tag_use_function_exists', (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'timer_tag_use')::text, '1'")
+    expect(verifySql).toContain("select 'anonymous_cannot_read_tag_use', has_function_privilege('anon', 'public.timer_tag_use()', 'execute')::text, 'false'")
+    expect(verifySql).toContain("select 'signed_in_can_read_tag_use', has_function_privilege('authenticated', 'public.timer_tag_use()', 'execute')::text, 'true'")
+    expect(verifySql).toContain("select 'tag_use_answers_a_list', jsonb_typeof(public.timer_tag_use()), 'array'")
+  })
+
+  it("has timer_tag_use (Packet 10E): it only reads, it runs with the rights of the caller, and only signed-in people may call it", () => {
+    expect(schemaSql).toContain("create or replace function public.timer_tag_use()")
+    const body = schemaSql.split("create or replace function public.timer_tag_use()")[1].split("$$;")[0]
+    expect(body).toContain("stable")
+    expect(body).toContain("set search_path = ''")
+    expect(body).not.toContain("security definer")
+    expect(body).not.toMatch(/\b(insert|update|delete)\b/i)
+    expect(schemaSql).toContain("revoke all on function public.timer_tag_use() from public, anon;")
+    expect(schemaSql).toContain("grant execute on function public.timer_tag_use() to authenticated;")
+  })
+
+  it("timer_tag_use sums the active seconds of the saved sessions of the person that ended in the last 30 days, and nothing else (Packet 10E)", () => {
+    const body = schemaSql.split("create or replace function public.timer_tag_use()")[1].split("$$;")[0]
+    expect(body).toContain("sum(s.active_seconds) as seconds")
+    expect(body).toContain("from public.timer_sessions s")
+    expect(body).toContain("s.user_id = (select auth.uid()) and s.tag_id is not null and s.ended_at >= now() - interval '30 days'")
+    expect(count(body, "'30 days'")).toBe(1)
+    expect(body).toContain("group by s.tag_id")
+    expect(body).not.toContain("timer_running")
+  })
+
+  it("timer_tag_use lists the live tags of the person only, gives 0 to a tag that was not used, and answers {id, seconds} oldest first like timer_tag_list (Packet 10E)", () => {
+    const body = schemaSql.split("create or replace function public.timer_tag_use()")[1].split("$$;")[0]
+    expect(body).toContain("from public.timer_tags t")
+    expect(body).toContain("left join (")
+    expect(body).toContain(") u on u.tag_id = t.id")
+    expect(body).toContain("t.user_id = (select auth.uid()) and t.archived_at is null")
+    expect(body).toContain("jsonb_build_object('id', t.id, 'seconds', coalesce(u.seconds, 0)) order by t.created_at, t.id")
+    expect(body).toContain("'[]'::jsonb")
+    const list = schemaSql.split("create or replace function public.timer_tag_list()")[1].split("$$;")[0]
+    expect(list).toContain("order by created_at, id")
   })
 
   it("keeps the tag out of the day score, and tells the API layer to read the new functions", () => {

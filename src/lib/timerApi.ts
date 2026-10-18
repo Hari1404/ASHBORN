@@ -6,7 +6,7 @@ import { parseServerTimeMs, type TimerRow } from "@/lib/timerMaths"
 // Every function here either gives an answer that was checked, or throws a TimerError with a name that the screen understands.
 // What is tied to the SQL file: see CONNECTIONS.md C28 and C29. The tests are in src/lib/timerApi.test.ts.
 // The day score (supabase/day_score.sql): timerDayScore asks for the number, the word and the readouts of one day and readDayScore checks the answer (CONNECTIONS.md C29 and C54).
-// The tags (supabase/timer_schema.sql, Packets 10A and 10B): timerTagList, timerTagAdd, timerTagRename and timerTagArchive call the four tag functions, readTag and readTagList check their answers, and timerStart can send the tag chosen before Start. The last four names of DATABASE_ERRORS come from these functions. No screen uses the calls yet (CONNECTIONS.md C28, C29 and C55).
+// The tags (supabase/timer_schema.sql, Packets 10A and 10B): timerTagList, timerTagAdd, timerTagRename and timerTagArchive call the four tag functions, readTag and readTagList check their answers, and timerStart can send the tag chosen before Start. The last four names of DATABASE_ERRORS come from these functions. Since Packet 10E the database also counts how much each tag was used in the last 30 days (timer_tag_use): timerTagUse calls it, readTagUse checks the answer and orderTagsByUse puts the tags in the order of their use. No screen uses the calls yet (CONNECTIONS.md C28, C29, C55 and C58).
 
 // The error names that the database functions raise (raise exception 'NAME'). The screen reacts to each of them.
 export const DATABASE_ERRORS = [
@@ -233,6 +233,37 @@ function readRowTag(value: unknown): TimerTag | null {
   return readTag(value)
 }
 
+// One row of the use of a tag as timer_tag_use sends it (Packet 10E): the id of a live tag and its seconds of use in the last 30 days (0 when it was not used). Any other key is left out. The 30 days are counted by the database, not here.
+export type TagUse = { id: string; seconds: number }
+
+// The answer of timer_tag_use: one row for each live tag of the person, oldest first. The order is kept. An empty list is fine. Each id must look like an id, each number of seconds must be a whole number of 0 or more, and the same tag twice (also when only the capitals of the id differ) is refused.
+export function readTagUse(json: unknown): TagUse[] {
+  if (!Array.isArray(json)) return bad("the tag use is not a list")
+  const rows = json.map((item): TagUse => {
+    if (!isRecord(item)) return bad("a row of the tag use is not an object")
+    const id = item.id
+    if (typeof id !== "string" || !UUID_SHAPE.test(id)) return bad("the tag id in the tag use is not an id")
+    const seconds = item.seconds
+    if (typeof seconds !== "number" || !Number.isSafeInteger(seconds) || seconds < 0) return bad("the seconds of a tag are not a whole number of 0 or more")
+    return { id, seconds }
+  })
+  if (new Set(rows.map((row) => row.id.toLowerCase())).size !== rows.length) return bad("the tag use holds the same tag twice")
+  return rows
+}
+
+// Puts the tags in the order of their use (DECISIONS_TAGS.md section 4b, point 2): the tag with the most seconds first; tags with the same seconds (also none) stay in the order of tags (oldest first, as the database sends them). A tag that has no row in use counts 0 seconds, a row for a tag that is not in tags is ignored, and ids that differ only in capitals are the same id. If a row comes twice, the first one counts. It gives a NEW list (the tags in it are the same objects) and changes neither argument.
+export function orderTagsByUse(tags: TimerTag[], use: TagUse[]): TimerTag[] {
+  const seconds = new Map<string, number>()
+  for (const row of use) {
+    const key = row.id.toLowerCase()
+    if (!seconds.has(key)) seconds.set(key, row.seconds)
+  }
+  return tags
+    .map((tag, index) => ({ tag, index, seconds: seconds.get(tag.id.toLowerCase()) ?? 0 }))
+    .sort((a, b) => b.seconds - a.seconds || a.index - b.index)
+    .map((item) => item.tag)
+}
+
 // ---- The calls ----
 function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -301,10 +332,15 @@ export async function timerResume(): Promise<RunningReply> {
 export async function timerEnd(): Promise<EndReply> {
   return readEndReply(await call("timer_end"))
 }
-// ---- The tags (the four tag functions of supabase/timer_schema.sql, see CONNECTIONS.md C55) ----
+// ---- The tags (the five tag functions of supabase/timer_schema.sql, see CONNECTIONS.md C55 and C58) ----
 // The live tags of the signed-in person, oldest first.
 export async function timerTagList(): Promise<TimerTag[]> {
   return readTagList(await call("timer_tag_list"))
+}
+
+// How much each live tag was used in the last 30 days: one row {id, seconds} for each live tag, oldest first (Packet 10E). It only reads. The order of the tags by use is made by orderTagsByUse.
+export async function timerTagUse(): Promise<TagUse[]> {
+  return readTagUse(await call("timer_tag_use"))
 }
 
 // A new tag. The name is sent as typed: the database cuts the spaces at both ends and checks the rules (BAD_TAG_NAME, TAG_NAME_TAKEN, TAG_LIMIT). If an archived tag has that name, the newest one comes back with its old id.

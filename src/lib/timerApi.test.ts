@@ -20,6 +20,7 @@ import {
   classifyError,
   deviceTimeZone,
   isOnline,
+  orderTagsByUse,
   readDayScore,
   readDayTotal,
   readEndReply,
@@ -27,6 +28,7 @@ import {
   readStateReply,
   readTag,
   readTagList,
+  readTagUse,
   readTimerRow,
   timerDayScore,
   timerDayTotal,
@@ -39,6 +41,7 @@ import {
   timerTagArchive,
   timerTagList,
   timerTagRename,
+  timerTagUse,
   type TimerErrorKind,
 } from "./timerApi"
 
@@ -479,8 +482,8 @@ describe("the SQL file says what the app expects (the text of supabase/timer_sch
     expect([...raised].sort()).toEqual([...DATABASE_ERRORS].sort())
   })
 
-  it("has the ten functions the app calls, with the argument names the app sends", () => {
-    for (const signature of ["timer_state()", "timer_day_total(p_day date)", "timer_start(p_tz text, p_tag_id uuid default null)", "timer_pause()", "timer_resume()", "timer_end()", "timer_tag_list()", "timer_tag_add(p_name text)", "timer_tag_rename(p_id uuid, p_name text)", "timer_tag_archive(p_id uuid)"]) {
+  it("has the eleven functions the app calls, with the argument names the app sends", () => {
+    for (const signature of ["timer_state()", "timer_day_total(p_day date)", "timer_start(p_tz text, p_tag_id uuid default null)", "timer_pause()", "timer_resume()", "timer_end()", "timer_tag_list()", "timer_tag_add(p_name text)", "timer_tag_rename(p_id uuid, p_name text)", "timer_tag_archive(p_id uuid)", "timer_tag_use()"]) {
       expect(schemaSql).toContain("create or replace function public." + signature)
     }
   })
@@ -653,6 +656,157 @@ describe("the tag of the running session (Packet 10C1)", () => {
     const body = schemaSql.split("create or replace function public.timer_row_json")[1].split("$$;")[0]
     expect(body).toContain("'tag', (select jsonb_build_object('id', t.id, 'name', t.name) from public.timer_tags t where t.id = r.tag_id and t.user_id = r.user_id)")
     for (const key of Object.keys(RUNNING)) expect(body).toContain("'" + key + "'")
+  })
+})
+
+const TAG_C = { id: "5e7d2a90-3c41-4b8f-a6d2-7f0b9c1e4d33", name: "Study" }
+
+describe("the tag use: the reader, the call and the order of the tags (Packet 10E)", () => {
+  it("reads the use of the tags into id and seconds, in the order sent, and leaves out any other key", () => {
+    const use = [
+      { id: TAG_A.id, seconds: 5400 },
+      { id: TAG_B.id, seconds: 0 },
+    ]
+    expect(readTagUse(use)).toEqual(use)
+    expect(readTagUse([{ ...use[0], name: "Python", extra: 1 }])).toEqual([use[0]])
+    expect(readTagUse([])).toEqual([])
+  })
+
+  it("reads 0 seconds (a tag that was not used) and a big number of seconds", () => {
+    expect(readTagUse([{ id: TAG_A.id, seconds: 0 }])).toEqual([{ id: TAG_A.id, seconds: 0 }])
+    expect(readTagUse([{ id: TAG_A.id, seconds: 2592000 }])).toEqual([{ id: TAG_A.id, seconds: 2592000 }])
+  })
+
+  it("refuses an answer that is not a list, a row that is not an object, an id that is not an id, and seconds that are not a whole number of 0 or more", () => {
+    for (const value of [null, undefined, {}, "[]", 0, { id: TAG_A.id, seconds: 1 }]) expect(kindOf(() => readTagUse(value))).toBe("BAD_REPLY")
+    for (const row of [null, undefined, "x", 5, [], [TAG_A.id, 1]]) expect(kindOf(() => readTagUse([row]))).toBe("BAD_REPLY")
+    for (const id of [undefined, null, 5, "", "abc", "3f2b8c1e-5d4a-4b7e-9c10-2a6f8d9e0b1g"]) expect(kindOf(() => readTagUse([{ id, seconds: 60 }]))).toBe("BAD_REPLY")
+    for (const seconds of [undefined, null, "60", -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1, [60], {}]) {
+      expect(kindOf(() => readTagUse([{ id: TAG_A.id, seconds }]))).toBe("BAD_REPLY")
+    }
+  })
+
+  it("refuses the same tag twice, also when only the capitals of the id differ", () => {
+    expect(() =>
+      readTagUse([
+        { id: TAG_A.id, seconds: 1 },
+        { id: TAG_A.id, seconds: 2 },
+      ]),
+    ).toThrow("the tag use holds the same tag twice")
+    expect(
+      kindOf(() =>
+        readTagUse([
+          { id: TAG_A.id, seconds: 1 },
+          { id: TAG_A.id.toUpperCase(), seconds: 2 },
+        ]),
+      ),
+    ).toBe("BAD_REPLY")
+  })
+
+  it("says in the reason which part is wrong", () => {
+    expect(() => readTagUse({})).toThrow("the tag use is not a list")
+    expect(() => readTagUse(["x"])).toThrow("a row of the tag use is not an object")
+    expect(() => readTagUse([{ id: "abc", seconds: 1 }])).toThrow("the tag id in the tag use is not an id")
+    expect(() => readTagUse([{ id: TAG_A.id, seconds: -1 }])).toThrow("the seconds of a tag are not a whole number of 0 or more")
+  })
+
+  it("timerTagUse calls timer_tag_use with no arguments and hands back the checked list", async () => {
+    const rows = [
+      { id: TAG_A.id, seconds: 120 },
+      { id: TAG_B.id, seconds: 0 },
+    ]
+    const rpc = answer(rows)
+    expect(await timerTagUse()).toEqual(rows)
+    expect(rpc).toHaveBeenCalledWith("timer_tag_use", undefined)
+  })
+
+  it("timerTagUse: no client is NOT_READY, a lost connection is NO_CONNECTION, a wrong shape is BAD_REPLY, and a database error keeps its name", async () => {
+    holder.client = null
+    expect(await kindOfAsync(() => timerTagUse())).toBe("NOT_READY")
+    fail({ message: "Failed to fetch" })
+    expect(await kindOfAsync(() => timerTagUse())).toBe("NO_CONNECTION")
+    answer({})
+    expect(await kindOfAsync(() => timerTagUse())).toBe("BAD_REPLY")
+    fail({ message: "NOT_SIGNED_IN", code: "P0001" })
+    expect(await kindOfAsync(() => timerTagUse())).toBe("NOT_SIGNED_IN")
+  })
+
+  it("orderTagsByUse puts the tag with the most seconds first", () => {
+    const use = [
+      { id: TAG_A.id, seconds: 100 },
+      { id: TAG_B.id, seconds: 900 },
+      { id: TAG_C.id, seconds: 500 },
+    ]
+    expect(orderTagsByUse([TAG_A, TAG_B, TAG_C], use)).toEqual([TAG_B, TAG_C, TAG_A])
+  })
+
+  it("tags with the same seconds keep the order of the list: all 0, nothing known about use, or a tie between used tags", () => {
+    const zeros = [
+      { id: TAG_A.id, seconds: 0 },
+      { id: TAG_B.id, seconds: 0 },
+      { id: TAG_C.id, seconds: 0 },
+    ]
+    expect(orderTagsByUse([TAG_A, TAG_B, TAG_C], zeros)).toEqual([TAG_A, TAG_B, TAG_C])
+    expect(orderTagsByUse([TAG_C, TAG_A, TAG_B], [])).toEqual([TAG_C, TAG_A, TAG_B])
+    const tie = [
+      { id: TAG_B.id, seconds: 60 },
+      { id: TAG_C.id, seconds: 60 },
+    ]
+    expect(orderTagsByUse([TAG_A, TAG_B, TAG_C], tie)).toEqual([TAG_B, TAG_C, TAG_A])
+    expect(orderTagsByUse([TAG_C, TAG_B, TAG_A], tie)).toEqual([TAG_C, TAG_B, TAG_A])
+  })
+
+  it("a tag with no row counts 0 seconds and comes after a used tag, and a row for a tag that is not in the list is ignored", () => {
+    expect(orderTagsByUse([TAG_A, TAG_B], [{ id: TAG_B.id, seconds: 30 }])).toEqual([TAG_B, TAG_A])
+    expect(
+      orderTagsByUse(
+        [TAG_A, TAG_B],
+        [
+          { id: TAG_C.id, seconds: 99999 },
+          { id: TAG_B.id, seconds: 30 },
+        ],
+      ),
+    ).toEqual([TAG_B, TAG_A])
+    expect(orderTagsByUse([TAG_A], [{ id: TAG_C.id, seconds: 99999 }])).toEqual([TAG_A])
+    // a tag with no row counts exactly 0: it ties with a tag whose row says 0 (the older one stays first)
+    expect(orderTagsByUse([TAG_A, TAG_B], [{ id: TAG_A.id, seconds: 0 }])).toEqual([TAG_A, TAG_B])
+  })
+
+  it("an id in capitals is the same id, and when a row comes twice the first one counts", () => {
+    expect(orderTagsByUse([TAG_A, TAG_B], [{ id: TAG_B.id.toUpperCase(), seconds: 30 }])).toEqual([TAG_B, TAG_A])
+    // the same when the TAG has the capitals and the row has not
+    expect(orderTagsByUse([TAG_A, { ...TAG_B, id: TAG_B.id.toUpperCase() }], [{ id: TAG_B.id, seconds: 30 }])).toEqual([{ ...TAG_B, id: TAG_B.id.toUpperCase() }, TAG_A])
+    const twice = [
+      { id: TAG_A.id, seconds: 10 },
+      { id: TAG_B.id, seconds: 20 },
+      { id: TAG_A.id, seconds: 500 },
+    ]
+    expect(orderTagsByUse([TAG_A, TAG_B], twice)).toEqual([TAG_B, TAG_A])
+  })
+
+  it("gives a new list with the same tag objects, changes neither argument, and an empty list of tags gives an empty list", () => {
+    const tags = [TAG_A, TAG_B, TAG_C]
+    const use = [
+      { id: TAG_C.id, seconds: 9 },
+      { id: TAG_A.id, seconds: 1 },
+    ]
+    const tagsBefore = JSON.stringify(tags)
+    const useBefore = JSON.stringify(use)
+    const ordered = orderTagsByUse(tags, use)
+    expect(ordered).not.toBe(tags)
+    expect(ordered[0]).toBe(TAG_C)
+    expect(JSON.stringify(tags)).toBe(tagsBefore)
+    expect(JSON.stringify(use)).toBe(useBefore)
+    expect(orderTagsByUse([], use)).toEqual([])
+  })
+
+  it("ten tags: the first four of the result are the four most used, in the order of use, and the rest follow in the same rule", () => {
+    const ten = Array.from({ length: 10 }, (_, i) => ({ id: "00000000-0000-4000-8000-0000000000" + String(i).padStart(2, "0"), name: "T" + i }))
+    const seconds = [0, 300, 60, 9000, 0, 300, 120, 0, 7200, 60]
+    const use = ten.map((tag, i) => ({ id: tag.id, seconds: seconds[i] ?? 0 }))
+    const names = orderTagsByUse(ten, use).map((tag) => tag.name)
+    expect(names.slice(0, 4)).toEqual(["T3", "T8", "T1", "T5"])
+    expect(names).toEqual(["T3", "T8", "T1", "T5", "T6", "T2", "T9", "T0", "T4", "T7"])
   })
 })
 
