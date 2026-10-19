@@ -22,10 +22,11 @@ vi.mock("@/components/GlassSurface", async () => {
 })
 
 import type { TimerTag } from "@/lib/timerApi"
+import type { TagEditResult } from "@/lib/useTimer"
 import TagPicker from "./TagPicker"
 
 // AB:TIMER.TESTS:START
-// The tag picker, version 2 (TagPicker.tsx, Packets 10C2 and 10F): the pill of the phone, the row of the wide screen (No tag, the four tags used most, the chosen tag when it is not one of them, and ONE round three-dot button that opens the list; the pen is inside the list: Packet 10F2), the All tags list, the Edit tags view, where the focus goes, what the keys do, lite mode against the glass, and what the picker hands to the hook. The css is not read here (vitest turns an imported css file into nothing), so the pill, the row and the place are all in the page; the look is tested in TimerScreen.test.tsx. CONNECTIONS.md C56 and C57.
+// The tag picker, version 2 (TagPicker.tsx, Packets 10C2 and 10F): the pill of the phone, the row of the wide screen (No tag, the four tags used most, the chosen tag when it is not one of them, and ONE round three-dot button that opens the list; the pen is inside the list: Packet 10F2), the All tags list, the Edit tags view, where the focus goes, what the keys do, lite mode against the glass, and what the picker hands to the hook (the calls of Add, Rename and Remove; the rows of the Edit tags view are tested in TagManage.test.tsx, and Packet 10G tests here only what the PICKER does with them: the calls it hands over, the Escape that cancels only an open row, the Tab rule with the new last stop, the dim layer and Back with a row open). The css is not read here (vitest turns an imported css file into nothing), so the pill, the row and the place are all in the page; the look is tested in TimerScreen.test.tsx. CONNECTIONS.md C56 and C57.
 const WORK: TimerTag = { id: "t-work", name: "Work" }
 const STUDY: TimerTag = { id: "t-study", name: "Study" }
 const READ: TimerTag = { id: "t-read", name: "Reading" }
@@ -39,7 +40,7 @@ let container: HTMLElement | null = null
 
 type Props = Partial<Parameters<typeof TagPicker>[0]>
 function show(over: Props = {}) {
-  const props = { tags: [WORK, STUDY, READ], tagId: null, disabled: false, onChoose: vi.fn(), onOpen: vi.fn(), onAdd: vi.fn(async () => ({ ok: true as const })), ...over }
+  const props = { tags: [WORK, STUDY, READ], tagId: null, disabled: false, onChoose: vi.fn(), onOpen: vi.fn(), onAdd: vi.fn(async () => ({ ok: true as const })), onRename: vi.fn(async () => ({ ok: true as const })), onRemove: vi.fn(async () => ({ ok: true as const })), ...over }
   if (container === null) {
     container = document.createElement("div")
     document.body.appendChild(container)
@@ -110,6 +111,41 @@ function typeInto(text: string) {
     set?.call(q(".ab-tag-input"), text)
     q(".ab-tag-input").dispatchEvent(new Event("input", { bubbles: true }))
   })
+}
+
+// The rows of the Edit tags view (Packet 10G). An element that has an aria-label is found by the label (Rename NAME, Remove NAME, Remove NAME now).
+function labelled(label: string): HTMLElement {
+  const found = Array.from(container?.querySelectorAll<HTMLElement>("[aria-label]") ?? []).find((element) => element.getAttribute("aria-label") === label)
+  if (found === undefined) throw new Error("nothing is labelled: " + label)
+  return found
+}
+
+// A button of the open row, found by its words (Save, Cancel, Keep): only one row is open at a time.
+function rowButton(text: string): HTMLButtonElement {
+  const found = Array.from(container?.querySelectorAll<HTMLButtonElement>(".ab-tag-have-row button") ?? []).find((button) => button.textContent === text)
+  if (found === undefined) throw new Error("no button " + text + " in an open row")
+  return found
+}
+
+function typeIntoRow(text: string) {
+  const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
+  act(() => {
+    set?.call(q(".ab-tag-row-input"), text)
+    q(".ab-tag-row-input").dispatchEvent(new Event("input", { bubbles: true }))
+  })
+}
+
+// An answer of onRename or onRemove that does not come until the test says so.
+function held(): { promise: Promise<TagEditResult>; answer: (result: TagEditResult) => void } {
+  let answer: (result: TagEditResult) => void = () => {}
+  const promise = new Promise<TagEditResult>((resolve) => {
+    answer = resolve
+  })
+  return { promise, answer: (result) => answer(result) }
+}
+
+function rowModes(): (string | null)[] {
+  return all(".ab-tag-have-row").map((row) => row.getAttribute("data-mode"))
 }
 
 beforeEach(() => {
@@ -557,13 +593,14 @@ describe("TagPicker: the Edit tags view", () => {
     expect(document.activeElement).toBe(q(".ab-tag-input"))
   })
 
-  it("shows the person's tags in the editing view as plain rows in the order of the hook (all of them), and follows the list while it is open", () => {
+  it("shows the person's tags in the editing view as rows in the order of the hook (all of them, each with Rename and Remove), and follows the list while it is open", () => {
     show({ tags: SIX })
     openPen()
-    expect(texts(".ab-tag-have-row")).toEqual(["Work", "Study", "Reading", "Chess", "Gym", "Writing"])
-    expect(has(".ab-tag-have button")).toBe(false)
+    expect(texts(".ab-tag-have-name")).toEqual(["Work", "Study", "Reading", "Chess", "Gym", "Writing"])
+    expect(all(".ab-tag-have-row button")).toHaveLength(12)
     show({ tags: [WORK] })
-    expect(texts(".ab-tag-have-row")).toEqual(["Work"])
+    expect(texts(".ab-tag-have-name")).toEqual(["Work"])
+    expect(all(".ab-tag-have-row button")).toHaveLength(2)
   })
 
   it("says Back on the button, and Back goes back to the list: the editing view is gone, the panel has the focus, nothing was chosen, the picker stays open", () => {
@@ -634,19 +671,51 @@ describe("TagPicker: the Edit tags view", () => {
     expect(pressed(".ab-tag-row")).toEqual(["true", "false", "false"])
   })
 
-  it("keeps Tab inside the editing view: from Add to Back, and Shift+Tab from Back (or the panel) to Add", () => {
+  it("keeps Tab inside the editing view: from its LAST stop (Remove of the last row) to Back, and Shift+Tab from Back (or the panel) to that last stop; Tab goes on by itself in between", () => {
     show()
     openPen()
     const stops = all(".ab-tag-panel button, .ab-tag-panel input")
-    expect(stops.map((s) => s.className)).toEqual(["ab-tag-back", "ab-tag-input", "ab-tag-add-button"])
+    expect(stops.map((s) => s.getAttribute("aria-label") ?? s.textContent)).toEqual(["Back", "New tag name", "Add", "Rename Work", "Remove Work", "Rename Study", "Remove Study", "Rename Reading", "Remove Reading"])
+    const last = stops[stops.length - 1]
+    last.focus()
+    expect(key(last, "Tab").defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(stops[0])
+    expect(key(stops[0], "Tab", true).defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(last)
+    q(".ab-tag-panel").focus()
+    expect(key(q(".ab-tag-panel"), "Tab", true).defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(last)
+    stops[2].focus()
+    expect(key(stops[2], "Tab").defaultPrevented).toBe(false)
+    expect(key(stops[4], "Tab", true).defaultPrevented).toBe(false)
+  })
+
+  it("keeps the same Tab rule with no tags at all: the last stop is then Add", () => {
+    show({ tags: [] })
+    openPen()
+    const stops = all(".ab-tag-panel button, .ab-tag-panel input")
+    expect(stops.map((s) => s.getAttribute("aria-label") ?? s.textContent)).toEqual(["Back", "New tag name", "Add"])
     stops[2].focus()
     expect(key(stops[2], "Tab").defaultPrevented).toBe(true)
     expect(document.activeElement).toBe(stops[0])
-    expect(key(stops[0], "Tab", true).defaultPrevented).toBe(true)
-    expect(document.activeElement).toBe(stops[2])
-    q(".ab-tag-panel").focus()
-    expect(key(q(".ab-tag-panel"), "Tab", true).defaultPrevented).toBe(true)
-    expect(document.activeElement).toBe(stops[2])
+  })
+
+  it("keeps Tab inside the editing view while a row is open too: the field, Save and Cancel (or Remove and Keep) are stops of the same ring", () => {
+    show({ tags: [WORK] })
+    openPen()
+    click(labelled("Rename Work"))
+    let stops = all(".ab-tag-panel button, .ab-tag-panel input")
+    expect(stops.map((s) => s.getAttribute("aria-label") ?? s.textContent)).toEqual(["Back", "New tag name", "Add", "New name for Work", "Save", "Cancel"])
+    stops[5].focus()
+    expect(key(stops[5], "Tab").defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(stops[0])
+    click(stops[5])
+    click(labelled("Remove Work"))
+    stops = all(".ab-tag-panel button, .ab-tag-panel input")
+    expect(stops.map((s) => s.getAttribute("aria-label") ?? s.textContent)).toEqual(["Back", "New tag name", "Add", "Remove Work now", "Keep"])
+    expect(document.activeElement).toBe(stops[4])
+    expect(key(stops[4], "Tab").defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(stops[0])
   })
 
   it("is off with the rest of the picker when the screen is not ready: the three dots do not open anything, so the editing view cannot be reached", () => {
@@ -654,6 +723,144 @@ describe("TagPicker: the Edit tags view", () => {
     click(q(".ab-tag-dots"))
     expect(has(".ab-tag-layer")).toBe(false)
     expect(props.onOpen).not.toHaveBeenCalled()
+  })
+})
+
+describe("TagPicker: renaming and removing a tag (Packet 10G)", () => {
+  it("hands the editing view the calls of the hook: Save goes to onRename with the id and the name as typed, the second step of Remove goes to onRemove with the id; neither chooses a tag, closes the picker, reads the list or adds", async () => {
+    const props = show()
+    openPen()
+    click(labelled("Rename Study"))
+    typeIntoRow(" Learning ")
+    await act(async () => {
+      rowButton("Save").click()
+    })
+    expect(props.onRename).toHaveBeenCalledTimes(1)
+    expect(props.onRename).toHaveBeenCalledWith("t-study", " Learning ")
+    click(labelled("Remove Reading"))
+    await act(async () => {
+      labelled("Remove Reading now").click()
+    })
+    expect(props.onRemove).toHaveBeenCalledTimes(1)
+    expect(props.onRemove).toHaveBeenCalledWith("t-read")
+    expect(props.onRename).toHaveBeenCalledTimes(1)
+    expect(props.onChoose).not.toHaveBeenCalled()
+    expect(props.onAdd).not.toHaveBeenCalled()
+    expect(props.onOpen).toHaveBeenCalledTimes(1)
+    expect(q(".ab-tag-layer").getAttribute("data-view")).toBe("edit")
+  })
+
+  it("sends nothing to the hook by only opening a row, and Cancel and Keep send nothing either", () => {
+    const props = show()
+    openPen()
+    click(labelled("Rename Work"))
+    click(rowButton("Cancel"))
+    click(labelled("Remove Work"))
+    click(rowButton("Keep"))
+    expect(props.onRename).not.toHaveBeenCalled()
+    expect(props.onRemove).not.toHaveBeenCalled()
+    expect(props.onChoose).not.toHaveBeenCalled()
+    expect(q(".ab-tag-layer").getAttribute("data-view")).toBe("edit")
+  })
+
+  it("shows the new name when the hook gives a list with the tag renamed, and the row of a removed tag is gone", () => {
+    show()
+    openPen()
+    show({ tags: [{ id: "t-work", name: "Job" }, STUDY, READ] })
+    expect(texts(".ab-tag-have-name")).toEqual(["Job", "Study", "Reading"])
+    expect(labelled("Rename Job").textContent).toBe("Rename")
+    show({ tags: [STUDY, READ] })
+    expect(texts(".ab-tag-have-name")).toEqual(["Study", "Reading"])
+  })
+
+  it("Escape in the field of a rename cancels that rename ONLY: the picker stays open in the editing view and sends nothing; the NEXT Escape (no row open) closes everything and the focus goes back to what opened it", () => {
+    const props = show()
+    openPen()
+    click(labelled("Rename Work"))
+    typeIntoRow("Zz")
+    expect(key(q(".ab-tag-row-input"), "Escape").defaultPrevented).toBe(true)
+    expect(has(".ab-tag-layer")).toBe(true)
+    expect(q(".ab-tag-layer").getAttribute("data-view")).toBe("edit")
+    expect(rowModes()).toEqual(["idle", "idle", "idle"])
+    expect(props.onRename).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(labelled("Rename Work"))
+    expect(key(labelled("Rename Work"), "Escape").defaultPrevented).toBe(false)
+    expect(has(".ab-tag-layer")).toBe(false)
+    expect(document.activeElement).toBe(q(".ab-tag-dots"))
+    expect(props.onChoose).not.toHaveBeenCalled()
+  })
+
+  it("Escape on the question about removing is Keep: the picker stays open, nothing is sent; the next Escape closes everything", () => {
+    const props = show()
+    openPen()
+    click(labelled("Remove Study"))
+    expect(key(rowButton("Keep"), "Escape").defaultPrevented).toBe(true)
+    expect(has(".ab-tag-layer")).toBe(true)
+    expect(rowModes()).toEqual(["idle", "idle", "idle"])
+    expect(props.onRemove).not.toHaveBeenCalled()
+    key(labelled("Remove Study"), "Escape")
+    expect(has(".ab-tag-layer")).toBe(false)
+  })
+
+  it("does NOT close the picker on Escape while a call of a row runs, and closes it on the next Escape after the answer", async () => {
+    const wait = held()
+    show({ onRename: vi.fn(() => wait.promise) })
+    openPen()
+    click(labelled("Rename Work"))
+    typeIntoRow("Job")
+    act(() => rowButton("Save").click())
+    expect(key(q(".ab-tag-row-input"), "Escape").defaultPrevented).toBe(true)
+    expect(has(".ab-tag-layer")).toBe(true)
+    await act(async () => {
+      wait.answer({ ok: true })
+    })
+    expect(has(".ab-tag-layer")).toBe(true)
+    key(labelled("Rename Work"), "Escape")
+    expect(has(".ab-tag-layer")).toBe(false)
+  })
+
+  it("closes the WHOLE picker on a tap of the dim layer while a row is open, sends nothing, and the next time the editing view opens no row is open", () => {
+    const props = show()
+    openPen()
+    click(labelled("Rename Work"))
+    typeIntoRow("Zz")
+    click(q(".ab-tag-scrim"))
+    expect(has(".ab-tag-layer")).toBe(false)
+    expect(props.onRename).not.toHaveBeenCalled()
+    expect(props.onChoose).not.toHaveBeenCalled()
+    openPen()
+    expect(rowModes()).toEqual(["idle", "idle", "idle"])
+    expect(has(".ab-tag-row-input")).toBe(false)
+  })
+
+  it("goes back to the list with Back while a row is open, sends nothing, and shows the rows closed when the pen opens the editing view again", () => {
+    const props = show()
+    openPen()
+    click(labelled("Remove Work"))
+    click(q(".ab-tag-back"))
+    expect(q(".ab-tag-layer").getAttribute("data-view")).toBe("list")
+    expect(has(".ab-tag-edit")).toBe(false)
+    expect(props.onRemove).not.toHaveBeenCalled()
+    click(q(".ab-tag-edit-button"))
+    expect(rowModes()).toEqual(["idle", "idle", "idle"])
+    expect(has(".ab-tag-ask")).toBe(false)
+  })
+
+  it("does not choose a tag when a rename or a removal works, and does not close the picker", async () => {
+    const props = show({ tagId: "t-work" })
+    openPen()
+    click(labelled("Rename Work"))
+    typeIntoRow("Job")
+    await act(async () => {
+      rowButton("Save").click()
+    })
+    click(labelled("Remove Work"))
+    await act(async () => {
+      labelled("Remove Work now").click()
+    })
+    expect(props.onChoose).not.toHaveBeenCalled()
+    expect(has(".ab-tag-layer")).toBe(true)
+    expect(pressed(".ab-tag-chip")).toEqual(["false", "true", "false", "false"])
   })
 })
 

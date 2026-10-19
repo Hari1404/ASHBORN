@@ -1097,10 +1097,12 @@
   list-style: none;
 }
 
-/* The tags the person has are a plain list (a hairline under each name, no box, no round edge), so that a name is not taken for a button: it cannot be pressed in this packet (renaming and removing come in Packet 10G). */
+/* The tags the person has are a plain list (a hairline under each name, no box, no round edge), so that a name is not taken for a button: the NAME cannot be pressed; the two small buttons at the end of the row rename and remove it (Packet 10G). A row that is open (a rename field, or the question about removing) wraps onto more lines. */
 .ab-tag-have-row {
   box-sizing: border-box;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   align-items: center;
   min-height: 44px;
   padding: 8px 4px;
@@ -1114,6 +1116,66 @@
 
 .ab-tag-have-row:last-child {
   border-bottom: 0;
+}
+
+.ab-tag-have-name {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The small buttons of a row (Rename, Remove, Save, Cancel, Keep): 44 px high, a thin light edge, the same look as Back. Save and the confirming Remove are the white one, like Add. */
+.ab-tag-row-button {
+  box-sizing: border-box;
+  flex: none;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ab-tag-row-save {
+  color: #000;
+  background: #fff;
+  border-color: #fff;
+}
+
+.ab-tag-row-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ab-tag-row-input {
+  flex: 1 1 140px;
+  height: 44px;
+}
+
+.ab-tag-ask {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+
+.ab-tag-note {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ab-tag-row-error {
+  flex: 1 1 100%;
+  margin: 0;
 }
 
 .ab-tag-have-empty {

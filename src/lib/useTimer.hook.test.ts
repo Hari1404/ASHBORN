@@ -13,7 +13,9 @@ const api = vi.hoisted(() => ({
   timerResume: vi.fn(),
   timerEnd: vi.fn(),
   timerTagAdd: vi.fn(),
+  timerTagArchive: vi.fn(),
   timerTagList: vi.fn(),
+  timerTagRename: vi.fn(),
   timerTagUse: vi.fn(),
 }))
 vi.mock("@/lib/supabase", () => ({ supabase: null }))
@@ -27,7 +29,7 @@ import { fillSlots } from "@/lib/lineMarkup"
 import { COMEBACK_BANKS, STOP_ALERT_BANKS, bankIdFor, isComebackBank } from "@/lib/stopAlertLines"
 import { activeSeconds, canGoBackIn, type TimerRow } from "@/lib/timerMaths"
 import { MILESTONE_BANKS, milestonePool } from "@/lib/milestoneLines"
-import { POLL_OFFLINE_MS, POLL_ONLINE_MS, problemText, useTimer, type AddTagResult, type TimerOptions, type TimerView } from "./useTimer"
+import { POLL_OFFLINE_MS, POLL_ONLINE_MS, problemText, useTimer, type AddTagResult, type TagEditResult, type TimerOptions, type TimerView } from "./useTimer"
 
 // AB:TIMER.TESTS:START
 // 2026-10-07 10:00:00 UTC is 15:30 on 7 October in Asia/Kolkata. Local midnight there is 18:30 UTC.
@@ -109,6 +111,24 @@ function installFakeServer(): void {
     const tag: TimerTag = { id: "t-" + clean.toLowerCase(), name: clean }
     server.tags = [...server.tags, tag]
     return { ...tag }
+  })
+  // Packet 10G: the same rules as timer_tag_rename and timer_tag_archive. A rename also changes the tag of the running session (the database sends the name the tag has now); a name that only changes the capitals is allowed because the tag is not compared with itself.
+  api.timerTagRename.mockImplementation(async (id: string, name: string) => {
+    guard()
+    const clean = name.trim()
+    if (clean.length < 1 || clean.length > 20 || clean.toLowerCase() === "freestyle") throw new TimerError("BAD_TAG_NAME")
+    if (!server.tags.some((tag) => tag.id === id)) throw new TimerError("TAG_NOT_FOUND")
+    if (server.tags.some((tag) => tag.id !== id && tag.name.toLowerCase() === clean.toLowerCase())) throw new TimerError("TAG_NAME_TAKEN")
+    server.tags = server.tags.map((tag) => (tag.id === id ? { ...tag, name: clean } : tag))
+    if (server.row !== null && server.row.tag?.id === id) server.row = { ...server.row, tag: { id, name: clean } }
+    return { id, name: clean }
+  })
+  api.timerTagArchive.mockImplementation(async (id: string) => {
+    guard()
+    const found = server.tags.find((tag) => tag.id === id)
+    if (found === undefined) throw new TimerError("TAG_NOT_FOUND")
+    server.tags = server.tags.filter((tag) => tag.id !== id)
+    return { ...found }
   })
   api.timerEnd.mockImplementation(async () => {
     guard()
@@ -2402,6 +2422,370 @@ describe("useTimer: the order of the tags by use (Packet 10F, CONNECTIONS.md C58
     expect(await add("Study")).toEqual({ ok: true })
     expect(view.tags).toEqual([WORK, STUDY])
     expect(view.problem).toBe("")
+  })
+})
+describe("useTimer: renaming and removing a tag (Packet 10G, CONNECTIONS.md C57)", () => {
+  const WORK: TimerTag = { id: "t-work", name: "Work" }
+  const STUDY: TimerTag = { id: "t-study", name: "Study" }
+  const READ: TimerTag = { id: "t-read", name: "Reading" }
+
+  // renameTag and archiveTag answer with a promise: the test waits for it inside act, as a person waits for the row.
+  async function rename(id: string, name: string): Promise<TagEditResult> {
+    let result: TagEditResult = { ok: false, message: "not answered" }
+    await act(async () => {
+      result = await view.renameTag(id, name)
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    return result
+  }
+  async function remove(id: string): Promise<TagEditResult> {
+    let result: TagEditResult = { ok: false, message: "not answered" }
+    await act(async () => {
+      result = await view.archiveTag(id)
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    return result
+  }
+
+  describe("renameTag", () => {
+    it("renames the tag: it answers ok, the new name stands in the same place of the list, and no problem shows", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      expect(await rename(STUDY.id, "Exams")).toEqual({ ok: true })
+      expect(api.timerTagRename).toHaveBeenCalledTimes(1)
+      expect(api.timerTagRename).toHaveBeenCalledWith(STUDY.id, "Exams")
+      expect(view.tags).toEqual([WORK, { id: STUDY.id, name: "Exams" }])
+      expect(view.problem).toBe("")
+      expect(view.link).toBe("online")
+    })
+
+    it("hands the name to the database as typed (the database cuts the spaces) and shows the name the database kept", async () => {
+      server.tags = [WORK]
+      await mount()
+      expect(await rename(WORK.id, "  Gym  ")).toEqual({ ok: true })
+      expect(api.timerTagRename).toHaveBeenCalledWith(WORK.id, "  Gym  ")
+      expect(view.tags).toEqual([{ id: WORK.id, name: "Gym" }])
+    })
+
+    it("allows a new name that only changes the capitals of the same tag", async () => {
+      server.tags = [WORK]
+      await mount()
+      expect(await rename(WORK.id, "work")).toEqual({ ok: true })
+      expect(view.tags).toEqual([{ id: WORK.id, name: "work" }])
+    })
+
+    it("reads the list again after the call, so that a tag that another device added shows too", async () => {
+      server.tags = [WORK]
+      await mount()
+      expect(api.timerTagList).toHaveBeenCalledTimes(1)
+      server.tags = [WORK, READ]
+      await rename(WORK.id, "Gym")
+      expect(api.timerTagList).toHaveBeenCalledTimes(2)
+      expect(view.tags.map((tag) => tag.name)).toEqual(["Gym", "Reading"])
+    })
+
+    it("keeps the order of the list: a rename does not move the tag", async () => {
+      server.tags = [WORK, STUDY, READ]
+      server.tagUse = { [READ.id]: 5000, [WORK.id]: 100 }
+      await mount()
+      expect(view.tags.map((tag) => tag.id)).toEqual([READ.id, WORK.id, STUDY.id])
+      await rename(WORK.id, "Gym")
+      expect(view.tags.map((tag) => tag.id)).toEqual([READ.id, WORK.id, STUDY.id])
+      expect(view.tags[1].name).toBe("Gym")
+    })
+
+    it("still shows the new name when the list cannot be read after the rename", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      server.tagListDown = true
+      expect(await rename(WORK.id, "Gym")).toEqual({ ok: true })
+      expect(view.tags).toEqual([{ id: WORK.id, name: "Gym" }, STUDY])
+      expect(view.problem).toBe("")
+    })
+
+    it("never chooses a tag and keeps the pick: renaming the picked tag leaves it picked, renaming another changes nothing", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      await rename(STUDY.id, "Exams")
+      expect(view.tagId).toBeNull()
+      await press(() => view.chooseTag(WORK.id))
+      await rename(WORK.id, "Gym")
+      expect(view.tagId).toBe(WORK.id)
+      await rename(STUDY.id, "Finals")
+      expect(view.tagId).toBe(WORK.id)
+    })
+
+    it.each(["BAD_TAG_NAME", "TAG_NAME_TAKEN", "TAG_LIMIT", "TAG_NOT_FOUND", "NOT_SIGNED_IN", "BAD_REPLY", "UNKNOWN"] as const)("gives problemText(%s) as the words of that error and shows no problem on the screen", async (kind) => {
+      server.tags = [WORK]
+      await mount()
+      api.timerTagRename.mockRejectedValueOnce(new TimerError(kind))
+      expect(await rename(WORK.id, "Gym")).toEqual({ ok: false, message: problemText(kind) })
+      expect(view.problem).toBe("")
+    })
+
+    it("refuses what the database refuses: an empty name, Freestyle, a name that another tag has, and a tag that is not there", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      expect(await rename(WORK.id, "   ")).toEqual({ ok: false, message: problemText("BAD_TAG_NAME") })
+      expect(await rename(WORK.id, "FREESTYLE")).toEqual({ ok: false, message: problemText("BAD_TAG_NAME") })
+      expect(await rename(WORK.id, "study")).toEqual({ ok: false, message: problemText("TAG_NAME_TAKEN") })
+      expect(await rename("t-nobody", "Gym")).toEqual({ ok: false, message: problemText("TAG_NOT_FOUND") })
+      expect(view.tags).toEqual([WORK, STUDY])
+    })
+
+    it("reads the list again on TAG_NOT_FOUND, so that a tag removed on another device goes away from the list", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      server.tags = [STUDY]
+      expect(await rename(WORK.id, "Gym")).toEqual({ ok: false, message: problemText("TAG_NOT_FOUND") })
+      expect(api.timerTagList).toHaveBeenCalledTimes(2)
+      expect(view.tags).toEqual([STUDY])
+    })
+
+    it("does not read the list again for any other error", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      await rename(WORK.id, "study")
+      expect(api.timerTagList).toHaveBeenCalledTimes(1)
+    })
+
+    it("answers its own words when there is no connection, and does not turn the whole screen offline", async () => {
+      server.tags = [WORK]
+      await mount()
+      api.timerTagRename.mockRejectedValueOnce(new TimerError("NO_CONNECTION"))
+      expect(await rename(WORK.id, "Gym")).toEqual({ ok: false, message: "No connection. Try again in a moment." })
+      expect(view.link).toBe("online")
+      expect(view.problem).toBe("")
+    })
+
+    it("answers Something went wrong. for an error that is not one of its own and never throws", async () => {
+      server.tags = [WORK]
+      await mount()
+      api.timerTagRename.mockRejectedValueOnce(new Error("boom"))
+      expect(await rename(WORK.id, "Gym")).toEqual({ ok: false, message: "Something went wrong." })
+    })
+
+    it("never touches the session: a running session goes on, and the state is not read again", async () => {
+      server.row = runningRow(30)
+      server.tags = [WORK]
+      await mount()
+      const reads = api.timerState.mock.calls.length
+      expect(await rename(WORK.id, "Gym")).toEqual({ ok: true })
+      expect(view.status).toBe("running")
+      expect(api.timerState.mock.calls.length).toBe(reads)
+      expect(api.timerPause).not.toHaveBeenCalled()
+      expect(api.timerEnd).not.toHaveBeenCalled()
+    })
+
+    it("lets the line of a running session follow the new name at the next reading, not before", async () => {
+      server.row = runningRow(30, { tag: WORK })
+      server.tags = [WORK]
+      await mount()
+      expect(view.runningTag).toBe("Work")
+      await rename(WORK.id, "Gym")
+      expect(view.runningTag).toBe("Work")
+      await settle(POLL_ONLINE_MS + 100)
+      expect(view.runningTag).toBe("Gym")
+    })
+
+    it("is the same function in every drawing of the screen, so that the box is not drawn again for nothing", async () => {
+      server.row = runningRow(10)
+      await mount()
+      const first = view.renameTag
+      await settle(5000)
+      expect(view.seconds).toBeGreaterThan(10)
+      expect(view.renameTag).toBe(first)
+    })
+
+    it("does not fail when its answer comes after the screen was closed", async () => {
+      const problems = vi.spyOn(console, "error").mockImplementation(() => {})
+      server.tags = [WORK]
+      await mount()
+      const pending = hold("timerTagRename")
+      let result: TagEditResult | null = null
+      await act(async () => {
+        void view.renameTag(WORK.id, "Gym").then((answer) => {
+          result = answer
+        })
+      })
+      act(() => root?.unmount())
+      root = null
+      await act(async () => {
+        pending.answer({ id: WORK.id, name: "Gym" })
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result).toEqual({ ok: true })
+      expect(problems).not.toHaveBeenCalled()
+      problems.mockRestore()
+    })
+  })
+
+  describe("archiveTag", () => {
+    it("removes the tag: it answers ok, the tag is gone from the list, the others stay in their order, and no problem shows", async () => {
+      server.tags = [WORK, STUDY, READ]
+      await mount()
+      expect(await remove(STUDY.id)).toEqual({ ok: true })
+      expect(api.timerTagArchive).toHaveBeenCalledTimes(1)
+      expect(api.timerTagArchive).toHaveBeenCalledWith(STUDY.id)
+      expect(view.tags).toEqual([WORK, READ])
+      expect(view.problem).toBe("")
+      expect(view.link).toBe("online")
+    })
+
+    it("sends the pick back to no tag when the removed tag was the pick, and keeps another pick", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      await press(() => view.chooseTag(WORK.id))
+      expect(view.tagId).toBe(WORK.id)
+      await remove(STUDY.id)
+      expect(view.tagId).toBe(WORK.id)
+      await remove(WORK.id)
+      expect(view.tagId).toBeNull()
+    })
+
+    it("then starts with no tag: the next Start does not send the removed tag", async () => {
+      server.tags = [WORK]
+      await mount()
+      await press(() => view.chooseTag(WORK.id))
+      await remove(WORK.id)
+      await press(view.start)
+      expect(api.timerStart).toHaveBeenCalledTimes(1)
+      expect(api.timerStart.mock.calls[0]).toHaveLength(1)
+      expect(view.runningTag).toBeNull()
+    })
+
+    it("reads the list again after the call, so that a tag that another device added shows too", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      expect(api.timerTagList).toHaveBeenCalledTimes(1)
+      server.tags = [WORK, STUDY, READ]
+      await remove(STUDY.id)
+      expect(api.timerTagList).toHaveBeenCalledTimes(2)
+      expect(view.tags.map((tag) => tag.name)).toEqual(["Work", "Reading"])
+    })
+
+    it("still takes the tag out of the list when the list cannot be read after the removal", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      await press(() => view.chooseTag(WORK.id))
+      server.tagListDown = true
+      expect(await remove(WORK.id)).toEqual({ ok: true })
+      expect(view.tags).toEqual([STUDY])
+      expect(view.tagId).toBeNull()
+      expect(view.problem).toBe("")
+    })
+
+    it("removes the last tag: the list is empty and the pick is no tag", async () => {
+      server.tags = [WORK]
+      await mount()
+      expect(await remove(WORK.id)).toEqual({ ok: true })
+      expect(view.tags).toEqual([])
+    })
+
+    it("never chooses a tag: no pick stays no pick", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      await remove(WORK.id)
+      expect(view.tagId).toBeNull()
+    })
+
+    it.each(["BAD_TAG_NAME", "TAG_NAME_TAKEN", "TAG_LIMIT", "TAG_NOT_FOUND", "NOT_SIGNED_IN", "BAD_REPLY", "UNKNOWN"] as const)("gives problemText(%s) as the words of that error, shows no problem on the screen and leaves the pick", async (kind) => {
+      server.tags = [WORK]
+      await mount()
+      await press(() => view.chooseTag(WORK.id))
+      api.timerTagArchive.mockRejectedValueOnce(new TimerError(kind))
+      expect(await remove(WORK.id)).toEqual({ ok: false, message: problemText(kind) })
+      expect(view.problem).toBe("")
+      expect(view.tagId).toBe(WORK.id)
+    })
+
+    it("reads the list again on TAG_NOT_FOUND, so that a tag that is not there any more goes away from the list and from the pick", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      await press(() => view.chooseTag(WORK.id))
+      server.tags = [STUDY]
+      expect(await remove(WORK.id)).toEqual({ ok: false, message: problemText("TAG_NOT_FOUND") })
+      expect(api.timerTagList).toHaveBeenCalledTimes(2)
+      expect(view.tags).toEqual([STUDY])
+      expect(view.tagId).toBeNull()
+    })
+
+    it("answers TAG_NOT_FOUND when the same tag is removed twice", async () => {
+      server.tags = [WORK, STUDY]
+      await mount()
+      expect(await remove(WORK.id)).toEqual({ ok: true })
+      expect(await remove(WORK.id)).toEqual({ ok: false, message: problemText("TAG_NOT_FOUND") })
+      expect(view.tags).toEqual([STUDY])
+    })
+
+    it("does not read the list again for any other error", async () => {
+      server.tags = [WORK]
+      await mount()
+      api.timerTagArchive.mockRejectedValueOnce(new TimerError("UNKNOWN"))
+      await remove(WORK.id)
+      expect(api.timerTagList).toHaveBeenCalledTimes(1)
+    })
+
+    it("answers its own words when there is no connection, and does not turn the whole screen offline", async () => {
+      server.tags = [WORK]
+      await mount()
+      api.timerTagArchive.mockRejectedValueOnce(new TimerError("NO_CONNECTION"))
+      expect(await remove(WORK.id)).toEqual({ ok: false, message: "No connection. Try again in a moment." })
+      expect(view.tags).toEqual([WORK])
+      expect(view.link).toBe("online")
+      expect(view.problem).toBe("")
+    })
+
+    it("answers Something went wrong. for an error that is not one of its own and never throws", async () => {
+      server.tags = [WORK]
+      await mount()
+      api.timerTagArchive.mockRejectedValueOnce(new Error("boom"))
+      expect(await remove(WORK.id)).toEqual({ ok: false, message: "Something went wrong." })
+    })
+
+    it("lets a running session go on with the tag that was removed (the database keeps it, rule 11), and does not read the state again", async () => {
+      server.row = runningRow(30, { tag: WORK })
+      server.tags = [WORK]
+      await mount()
+      const reads = api.timerState.mock.calls.length
+      expect(await remove(WORK.id)).toEqual({ ok: true })
+      expect(view.status).toBe("running")
+      expect(view.runningTag).toBe("Work")
+      expect(api.timerState.mock.calls.length).toBe(reads)
+      expect(api.timerPause).not.toHaveBeenCalled()
+      expect(api.timerEnd).not.toHaveBeenCalled()
+    })
+
+    it("is the same function in every drawing of the screen, so that the box is not drawn again for nothing", async () => {
+      server.row = runningRow(10)
+      await mount()
+      const first = view.archiveTag
+      await settle(5000)
+      expect(view.seconds).toBeGreaterThan(10)
+      expect(view.archiveTag).toBe(first)
+    })
+
+    it("does not fail when its answer comes after the screen was closed", async () => {
+      const problems = vi.spyOn(console, "error").mockImplementation(() => {})
+      server.tags = [WORK]
+      await mount()
+      const pending = hold("timerTagArchive")
+      let result: TagEditResult | null = null
+      await act(async () => {
+        void view.archiveTag(WORK.id).then((answer) => {
+          result = answer
+        })
+      })
+      act(() => root?.unmount())
+      root = null
+      await act(async () => {
+        pending.answer({ id: WORK.id, name: "Work" })
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result).toEqual({ ok: true })
+      expect(problems).not.toHaveBeenCalled()
+      problems.mockRestore()
+    })
   })
 })
 // AB:TIMER.TESTS:END

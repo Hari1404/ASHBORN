@@ -10,7 +10,9 @@ import {
   timerStart,
   timerState,
   timerTagAdd,
+  timerTagArchive,
   timerTagList,
+  timerTagRename,
   timerTagUse,
   type TimerErrorKind,
   type TimerTag,
@@ -41,6 +43,7 @@ import {
 // The milestone message (Packet 07B): when the session reaches 15, 25, 45, 60, 90, 120, 150 or 180 minutes the message WAITS until the person is looking (the page is visible), the session is running and no other milestone message is on the screen, and is then shown at once. A message that nobody saw is shown the moment the person looks again, up to 10 minutes after its milestone (timerMaths.ts, milestoneWaiting), with the number of minutes it is late when that is 5 or more (earlier); after 10 minutes it is given up for good. Only the newest milestone is shown, and each is shown at most once per session. The line about the glowing ball is only picked when the message is on time (milestoneOnTime) and the screen draws the ball (the option drawn, given by TimerScreen.tsx); a late message gets the general lines only. The screen shows it for 30 seconds (Milestone.tsx) and then calls clearMilestone.
 // The tags (Packet 10C2): the hook keeps the list of the person's live tags (read once when the screen opens and again each time the picker opens its list, never by the 30 second poll; a list that cannot be read never stops the timer) and the tag that was picked before Start (tagId: none at first, and back to none as soon as any session is running, so every session starts with no tag). Start sends the picked tag only when there is one: with no tag it is the same call as before tags. chooseTag only works while nothing runs and only for a tag that is in the list. A Start that the database refuses with TAG_NOT_FOUND (the tag was archived on another device) sets the pick back to no tag, reads the list again and shows the plain words of problemText. runningTag is the name of the tag of the running session as the database sends it (C55), or null for no tag. See CONNECTIONS.md C56.
 // Adding a tag (Packet 10D): addTag hands the name to the database as typed (timerTagAdd; the database cuts the spaces and checks the rules, so the words of the errors are the ones of problemText), reads the list again, and answers { ok: true } or { ok: false, message }. It never throws, it never shows a problem on the screen itself (the answer goes to the Manage tags box), and it NEVER chooses the new tag: every session starts with no tag, and the person picks the tag himself (DECISIONS_TAGS.md section 4).
+// Renaming and removing a tag (Packet 10G): renameTag and archiveTag hand the change to the database (timerTagRename, timerTagArchive; the database checks the name and says BAD_TAG_NAME, TAG_NAME_TAKEN or TAG_NOT_FOUND, so the words of the errors are the ones of problemText), read the list again, and answer { ok: true } or { ok: false, message } like addTag. They never throw, they never show a problem on the screen themselves (the answer goes to the row of the Edit tags box), and they NEVER choose a tag. A tag that is removed while it is the pick before Start sends the pick back to no tag. A tag that is renamed or removed while its session runs is allowed (DECISIONS_TAGS.md section 3, rule 11): the line in the dial follows the name the database sends at the next reading. TAG_NOT_FOUND also reads the list again, so the row that is not there any more goes away by itself. See CONNECTIONS.md C57.
 // What is tied to the database and the screen: see CONNECTIONS.md C28, C29, C30, C43, C45, C48, C51, C56 and C57. The names used by the screen are in TimerView.
 
 export const POLL_ONLINE_MS = 30000
@@ -122,11 +125,16 @@ export type TimerView = {
   chooseTag: (id: string | null) => void
   reloadTags: () => void
   addTag: (name: string) => Promise<AddTagResult>
+  renameTag: (id: string, name: string) => Promise<TagEditResult>
+  archiveTag: (id: string) => Promise<TagEditResult>
   retry: () => void
 }
 
 // The answer of addTag (Packet 10D): it worked, or the plain words to show.
 export type AddTagResult = { ok: true } | { ok: false; message: string }
+
+// The answer of renameTag and archiveTag (Packet 10G): the same shape as the answer of addTag.
+export type TagEditResult = AddTagResult
 
 export function problemText(kind: TimerErrorKind): string {
   switch (kind) {
@@ -297,6 +305,50 @@ export function useTimer(options: TimerOptions = {}): TimerView {
       return { ok: true }
     },
     [loadTags],
+  )
+
+  // Packet 10G, CONNECTIONS.md C57. The new name goes to the database as typed. The list is read again afterwards; when that reading fails the renamed tag is still put right in the list that the person sees. The order of the list does not change by a rename.
+  const renameTag = useCallback(
+    async (id: string, name: string): Promise<TagEditResult> => {
+      let renamed: TimerTag
+      try {
+        renamed = await timerTagRename(id, name)
+      } catch (error) {
+        const kind: TimerErrorKind = error instanceof TimerError ? error.kind : "UNKNOWN"
+        if (kind === "TAG_NOT_FOUND") await loadTags()
+        return { ok: false, message: kind === "NO_CONNECTION" ? "No connection. Try again in a moment." : problemText(kind) }
+      }
+      await loadTags()
+      if (aliveRef.current && tagsRef.current.some((tag) => tag.id === renamed.id && tag.name !== renamed.name)) {
+        const list = tagsRef.current.map((tag) => (tag.id === renamed.id ? { ...tag, name: renamed.name } : tag))
+        tagsRef.current = list
+        setTags(list)
+      }
+      return { ok: true }
+    },
+    [loadTags],
+  )
+
+  // Packet 10G, CONNECTIONS.md C57. The tag is archived, never deleted (DECISIONS_TAGS.md section 3, rule 5). The list is read again afterwards; when that reading fails the tag is still taken out of the list that the person sees. If it was the pick before Start, the pick goes back to no tag.
+  const archiveTag = useCallback(
+    async (id: string): Promise<TagEditResult> => {
+      try {
+        await timerTagArchive(id)
+      } catch (error) {
+        const kind: TimerErrorKind = error instanceof TimerError ? error.kind : "UNKNOWN"
+        if (kind === "TAG_NOT_FOUND") await loadTags()
+        return { ok: false, message: kind === "NO_CONNECTION" ? "No connection. Try again in a moment." : problemText(kind) }
+      }
+      await loadTags()
+      if (aliveRef.current && tagsRef.current.some((tag) => tag.id === id)) {
+        const list = tagsRef.current.filter((tag) => tag.id !== id)
+        tagsRef.current = list
+        setTags(list)
+      }
+      if (aliveRef.current && tagIdRef.current === id) showTagId(null)
+      return { ok: true }
+    },
+    [loadTags, showTagId],
   )
 
   const adopt = useCallback(
@@ -586,6 +638,8 @@ export function useTimer(options: TimerOptions = {}): TimerView {
     chooseTag,
     reloadTags,
     addTag,
+    renameTag,
+    archiveTag,
     retry: () => void refresh(),
   }
 }

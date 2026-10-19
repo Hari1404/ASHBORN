@@ -99,6 +99,8 @@ function makeView(over: Partial<TimerView> = {}): TimerView {
     chooseTag: vi.fn(),
     reloadTags: vi.fn(),
     addTag: vi.fn(async () => ({ ok: true as const })),
+    renameTag: vi.fn(async () => ({ ok: true as const })),
+    archiveTag: vi.fn(async () => ({ ok: true as const })),
     retry: vi.fn(),
     ...over,
   }
@@ -1260,7 +1262,7 @@ describe("the css of the tag picker (Packets 10C2, 10D and 10F)", () => {
   })
 
   it("gives every button and the field of the tag part the font of the screen, and the Back button 44 px", () => {
-    for (const selector of [".ab-tag-pill", ".ab-tag-chip", ".ab-tag-row", ".ab-tag-back", ".ab-tag-add-button", ".ab-tag-input"]) {
+    for (const selector of [".ab-tag-pill", ".ab-tag-chip", ".ab-tag-row", ".ab-tag-back", ".ab-tag-add-button", ".ab-tag-input", ".ab-tag-row-button"]) {
       expect(rule(selector), selector).toContain("font: inherit;")
     }
     expect(px(rule(".ab-tag-back"), /height:\s*(\d+)px;/)).toBe(44)
@@ -1380,7 +1382,45 @@ describe("the css of the tag picker (Packets 10C2, 10D and 10F)", () => {
     expect(px(rule(".ab-tag-add-button"), /height:\s*(\d+)px;/)).toBe(px(input, /height:\s*(\d+)px;/))
   })
 
-  it("keeps Add the one solid white button of the editing box, with a disabled look, and the Back button outlined", () => {
+  it("gives the name of a row the free room of the line (it shrinks and wraps, the buttons never do), and the question and its line and an error of a row a whole line each", () => {
+    expect(rule(".ab-tag-have-name")).toContain("flex: 1;")
+    expect(rule(".ab-tag-have-name")).toContain("min-width: 0;")
+    for (const selector of [".ab-tag-ask", ".ab-tag-note", ".ab-tag-row-error"]) {
+      expect(rule(selector), selector).toContain("flex: 1 1 100%;")
+      expect(rule(selector), selector).toContain("margin: 0;")
+    }
+    expect(rule(".ab-tag-ask")).toContain("overflow-wrap: anywhere;")
+  })
+
+  it("makes the small buttons of a row (Rename, Remove, Save, Cancel, Keep) 44 px high and 44 px wide at least, round, thinly edged like Back, never shrinking, with a disabled look", () => {
+    const button = rule(".ab-tag-row-button")
+    expect(px(button, /height:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
+    expect(px(button, /min-width:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
+    expect(button).toContain("flex: none;")
+    expect(button).toContain("background: transparent;")
+    expect(button).toMatch(/border:\s*1px solid/)
+    expect(button).toContain("border-radius: 999px;")
+    expect(rule(".ab-tag-row-button:disabled")).toContain("opacity: 0.4;")
+  })
+
+  it("draws Save and the confirming Remove in the same solid white as Add, so that a row that asks has one white button; Cancel and Keep stay outlined", () => {
+    const save = rule(".ab-tag-row-save")
+    expect(save).toContain("background: #fff;")
+    expect(save).toContain("color: #000;")
+    expect(rule(".ab-tag-add-button")).toContain("background: #fff;")
+    expect(rule(".ab-tag-row-button")).toContain("background: transparent;")
+  })
+
+  it("makes the field of a rename as high as a button of its row, 44 px, so that the row does not jump", () => {
+    expect(px(rule(".ab-tag-row-input"), /height:\s*(\d+)px;/)).toBe(44)
+    expect(px(rule(".ab-tag-row-input"), /height:\s*(\d+)px;/)).toBe(px(rule(".ab-tag-row-button"), /height:\s*(\d+)px;/))
+  })
+
+  it("gives the field of a rename a basis of 140 px that can grow, so that on a narrow phone it is not squeezed to a sliver, and a button that does not fit beside it wraps onto the next line (87 px at 320 px wide, found at the real-browser look)", () => {
+    expect(rule(".ab-tag-row-input")).toContain("flex: 1 1 140px;")
+  })
+
+  it("keeps Add the one solid white button of the editing box ABOVE the list, with a disabled look, and the Back button outlined", () => {
     expect(rule(".ab-tag-add-button")).toContain("background: #fff;")
     expect(rule(".ab-tag-add-button:disabled")).toContain("opacity: 0.4;")
     expect(rule(".ab-tag-back")).toContain("background: transparent;")
@@ -1394,9 +1434,12 @@ describe("the css of the tag picker (Packets 10C2, 10D and 10F)", () => {
     expect(error).toContain("overflow-wrap: anywhere;")
   })
 
-  it("wraps a long name in the read-only rows, gives them the height of a tag row and no pointer, and draws the list without bullets", () => {
+  it("wraps a long name in the rows of the editing list, gives a row the height of a tag row and no pointer (the NAME cannot be pressed), lets an open row wrap onto more lines, and draws the list without bullets", () => {
     const row = rule(".ab-tag-have-row")
     expect(row).toContain("overflow-wrap: anywhere;")
+    expect(row).toContain("display: flex;")
+    expect(row).toContain("flex-wrap: wrap;")
+    expect(row).toContain("align-items: center;")
     expect(px(row, /min-height:\s*(\d+)px;/)).toBeGreaterThanOrEqual(44)
     expect(row).not.toContain("cursor:")
     expect(row).not.toContain("border-radius")
@@ -1444,6 +1487,32 @@ describe("TimerScreen: editing tags from the picker (Packets 10D and 10F)", () =
     expect(view.addTag).toHaveBeenCalledTimes(1)
     expect(view.addTag).toHaveBeenCalledWith("Study")
     expect(view.chooseTag).not.toHaveBeenCalled()
+  })
+
+  it("hands the editing box the calls of the hook for renaming and removing: Save reaches renameTag with the id and the name as typed, the second step of Remove reaches archiveTag with the id, and nothing is chosen or added", async () => {
+    const view = show({ status: "idle", tags: [WORK] })
+    act(() => q(".ab-tag-dots").click())
+    act(() => q(".ab-tag-edit-button").click())
+    act(() => q('[aria-label="Rename Work"]').click())
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
+    act(() => {
+      set?.call(q(".ab-tag-row-input"), " Job ")
+      q(".ab-tag-row-input").dispatchEvent(new Event("input", { bubbles: true }))
+    })
+    await act(async () => {
+      q(".ab-tag-row-save").click()
+    })
+    expect(view.renameTag).toHaveBeenCalledTimes(1)
+    expect(view.renameTag).toHaveBeenCalledWith("t-work", " Job ")
+    act(() => q('[aria-label="Remove Work"]').click())
+    await act(async () => {
+      q(".ab-tag-row-save").click()
+    })
+    expect(view.archiveTag).toHaveBeenCalledTimes(1)
+    expect(view.archiveTag).toHaveBeenCalledWith("t-work")
+    expect(view.renameTag).toHaveBeenCalledTimes(1)
+    expect(view.chooseTag).not.toHaveBeenCalled()
+    expect(view.addTag).not.toHaveBeenCalled()
   })
 
   it("draws the three dots as the last thing inside the row of the picker (and no pen in the row), so that they stand in the buttons box above Start", () => {

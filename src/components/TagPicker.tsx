@@ -3,7 +3,7 @@ import GlassSurface from "@/components/GlassSurface"
 import TagManage from "@/components/TagManage"
 import { LITE_LEVEL } from "@/lib/lite"
 import type { TimerTag } from "@/lib/timerApi"
-import type { AddTagResult } from "@/lib/useTimer"
+import type { AddTagResult, TagEditResult } from "@/lib/useTimer"
 import "../timer.css"
 
 // AB:TIMER.TAGS:START
@@ -20,6 +20,8 @@ type TagPickerProps = {
   onChoose: (id: string | null) => void
   onOpen: () => void
   onAdd: (name: string) => Promise<AddTagResult>
+  onRename: (id: string, name: string) => Promise<TagEditResult>
+  onRemove: (id: string) => Promise<TagEditResult>
 }
 
 const NO_TAG = "No tag"
@@ -82,7 +84,7 @@ function DotsIcon() {
   )
 }
 
-export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onAdd }: TagPickerProps) {
+export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onAdd, onRename, onRemove }: TagPickerProps) {
   const [view, setView] = useState<"closed" | "list" | "edit">("closed")
   const openerRef = useRef<HTMLElement | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -116,11 +118,11 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onA
     if (view === "list") panelRef.current?.focus()
   }, [view])
 
-  // While the place is open, Escape closes everything.
+  // While the place is open, Escape closes everything, unless a row of the editing view has already used that Escape (it cancels its own rename or its question about removing, Packet 10G).
   useEffect(() => {
     if (!open) return
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !event.defaultPrevented) {
         setView("closed")
         openerRef.current?.focus()
       }
@@ -198,7 +200,7 @@ export default function TagPicker({ tags, tagId, disabled, onChoose, onOpen, onA
                 onKeyDown={trap}
               >
                 {view === "edit" ? (
-                  <TagManage tags={tags} onAdd={onAdd} onBack={() => setView("list")} />
+                  <TagManage tags={tags} onAdd={onAdd} onRename={onRename} onRemove={onRemove} onBack={() => setView("list")} />
                 ) : (
                   <>
                     <div className="ab-tag-head">
