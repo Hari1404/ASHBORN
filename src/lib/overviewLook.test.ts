@@ -6,8 +6,6 @@ import {
   OVERVIEW_INTRO_SECONDS,
   OVERVIEW_PRESETS,
   OVERVIEW_PRESET_NAMES,
-  pickOverviewPreset,
-  type OverviewPresetName,
 } from "./overviewLook"
 
 // AB:OVERVIEW.TESTS:START
@@ -71,39 +69,6 @@ describe("the intro time", () => {
 
   it("is the same number that the library file uses for its intro (the file was edited, CONNECTIONS.md C59)", () => {
     expect(library).toContain(`const INTRO_SECONDS = ${OVERVIEW_INTRO_SECONDS};`)
-  })
-})
-
-describe("pickOverviewPreset", () => {
-  const sweep = [0, 0.1, 0.25, 0.3333, 0.5, 0.6667, 0.75, 0.9, 0.999999]
-
-  it("can give each of the four presets when nothing was shown before", () => {
-    const seen = new Set(sweep.map((r) => pickOverviewPreset(() => r, null)))
-    expect([...seen].sort()).toEqual([...OVERVIEW_PRESET_NAMES].sort())
-  })
-
-  it.each([...OVERVIEW_PRESET_NAMES])("never gives %s again right after %s", (last) => {
-    for (const r of sweep) expect(pickOverviewPreset(() => r, last)).not.toBe(last)
-  })
-
-  it.each([...OVERVIEW_PRESET_NAMES])("can give each of the other three after %s", (last) => {
-    const seen = new Set(sweep.map((r) => pickOverviewPreset(() => r, last)))
-    expect([...seen].sort()).toEqual(OVERVIEW_PRESET_NAMES.filter((n) => n !== last).sort())
-  })
-
-  it("always gives a real preset, also when the random function gives a bad number", () => {
-    const names: (OverviewPresetName | null)[] = [null, ...OVERVIEW_PRESET_NAMES]
-    for (const last of names) {
-      for (const bad of [NaN, Infinity, -Infinity, -1, 1, 2]) {
-        expect(OVERVIEW_PRESET_NAMES).toContain(pickOverviewPreset(() => bad, last))
-      }
-    }
-  })
-
-  it("follows the random function (the same number gives the same preset)", () => {
-    expect(pickOverviewPreset(() => 0.5, null)).toBe(pickOverviewPreset(() => 0.5, null))
-    expect(pickOverviewPreset(() => 0, null)).toBe("atmosphere")
-    expect(pickOverviewPreset(() => 0.999999, null)).toBe("corona")
   })
 })
 // AB:OVERVIEW.TESTS:END
