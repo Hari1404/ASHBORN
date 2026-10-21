@@ -7,6 +7,7 @@ import { parseServerTimeMs, type TimerRow } from "@/lib/timerMaths"
 // What is tied to the SQL file: see CONNECTIONS.md C28 and C29. The tests are in src/lib/timerApi.test.ts.
 // The day score (supabase/day_score.sql): timerDayScore asks for the number, the word and the readouts of one day and readDayScore checks the answer (CONNECTIONS.md C29 and C54).
 // The tags (supabase/timer_schema.sql, Packets 10A and 10B): timerTagList, timerTagAdd, timerTagRename and timerTagArchive call the four tag functions, readTag and readTagList check their answers, and timerStart can send the tag chosen before Start. The last four names of DATABASE_ERRORS come from these functions. Since Packet 10E the database also counts how much each tag was used in the last 30 days (timer_tag_use): timerTagUse calls it, readTagUse checks the answer and orderTagsByUse puts the tags in the order of their use. No screen uses the calls yet (CONNECTIONS.md C28, C29, C55 and C58).
+// The sessions of one day (the day view, CONNECTIONS.md C61): timerDaySessions reads the saved sessions and the names of their tags straight from the tables timer_sessions and timer_tags (select rights and policies are in supabase/timer_schema.sql; no SQL function, no new SQL), and readDaySessionRows and joinDayTags check what came back.
 
 // The error names that the database functions raise (raise exception 'NAME'). The screen reacts to each of them.
 export const DATABASE_ERRORS = [
@@ -78,6 +79,18 @@ export type DayScore = {
   countedOverElapsed: number | null
   unconfirmedMinutes: number
   overCapMinutes: number
+}
+
+// One saved session of a day, as the day view draws it (CONNECTIONS.md C61). The times are the texts the database sent. tz is the zone the session started in (null for a session saved before Packet 09A). pauses is the pause log ([] for no pause, and for a session saved before Packet 09A). tag is the name the tag has now (also when it was archived since), null for Freestyle.
+export type DayPause = { from: string; to: string }
+export type DaySession = {
+  id: string
+  startedAt: string
+  endedAt: string
+  activeSeconds: number
+  tz: string | null
+  pauses: DayPause[]
+  tag: string | null
 }
 
 function bad(detail: string): never {
@@ -264,6 +277,59 @@ export function orderTagsByUse(tags: TimerTag[], use: TagUse[]): TimerTag[] {
     .map((item) => item.tag)
 }
 
+// The columns of timer_sessions that the day view reads: one list, tied to the SQL file (CONNECTIONS.md C61).
+export const DAY_SESSION_COLUMNS = "id, started_at, ended_at, active_seconds, pauses, tz, tag_id"
+
+// A session as the table sends it, with the tag still only an id (joinDayTags puts the name in).
+export type DaySessionRow = Omit<DaySession, "tag"> & { tagId: string | null }
+
+function readPause(value: unknown): DayPause {
+  if (!isRecord(value)) return bad("a pause is not an object")
+  const from = readTimeText(value.from, "pause from")
+  const to = readTimeText(value.to, "pause to")
+  if (readTimeMs(to, "pause to") < readTimeMs(from, "pause from")) return bad("a pause ends before it begins")
+  return { from, to }
+}
+
+// The rows of timer_sessions for one day. An empty list is fine. A row that is not what the table promises is refused: the whole day is refused, nothing is guessed. A missing pause log (a session saved before Packet 09A) is [] and a missing zone is null.
+export function readDaySessionRows(json: unknown): DaySessionRow[] {
+  if (!Array.isArray(json)) return bad("the sessions are not a list")
+  const seen = new Set<string>()
+  return json.map((item): DaySessionRow => {
+    if (!isRecord(item)) return bad("a session is not an object")
+    const id = item.id
+    if (typeof id !== "string" || !UUID_SHAPE.test(id)) return bad("the session id is not an id")
+    if (seen.has(id.toLowerCase())) return bad("the sessions hold the same session twice")
+    seen.add(id.toLowerCase())
+    const startedAt = readTimeText(item.started_at, "started_at")
+    const endedAt = readTimeText(item.ended_at, "ended_at")
+    if (readTimeMs(endedAt, "ended_at") <= readTimeMs(startedAt, "started_at")) return bad("a session ends before it begins")
+    const active = item.active_seconds
+    if (typeof active !== "number" || !Number.isInteger(active) || active < 0) return bad("active_seconds is not a whole number of 0 or more")
+    const zone = item.tz
+    if (zone !== null && zone !== undefined && (typeof zone !== "string" || zone === "")) return bad("tz is not text")
+    let pauses: DayPause[] = []
+    if (item.pauses !== null && item.pauses !== undefined) {
+      if (!Array.isArray(item.pauses)) return bad("pauses is not a list")
+      pauses = item.pauses.map(readPause)
+    }
+    const tagId = item.tag_id
+    if (tagId !== null && tagId !== undefined && (typeof tagId !== "string" || !UUID_SHAPE.test(tagId))) return bad("tag_id is not an id")
+    return { id, startedAt, endedAt, activeSeconds: active, tz: zone ?? null, pauses, tagId: tagId ?? null }
+  })
+}
+
+// Puts the name of the tag into every session. A session without a tag stays null (Freestyle). A tag id that was not sent is refused: the name is never guessed.
+export function joinDayTags(rows: DaySessionRow[], tags: TimerTag[]): DaySession[] {
+  const names = new Map(tags.map((tag) => [tag.id.toLowerCase(), tag.name]))
+  return rows.map(({ tagId, ...rest }): DaySession => {
+    if (tagId === null) return { ...rest, tag: null }
+    const name = names.get(tagId.toLowerCase())
+    if (name === undefined) return bad("the tag of a session was not sent")
+    return { ...rest, tag: name }
+  })
+}
+
 // ---- The calls ----
 function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -313,6 +379,35 @@ export async function timerDayScore(day: string): Promise<DayScore> {
   const score = readDayScore(await call("timer_day_score", { p_day: day }))
   if (score.day !== day) return bad("the answer is for " + score.day + ", not for " + day)
   return score
+}
+
+// A plain read of a table, with the same waiting time and the same error names as call() (call is for the database functions).
+async function readTable(request: PromiseLike<{ data: unknown; error: { message?: unknown; code?: unknown } | null }>): Promise<unknown> {
+  try {
+    const { data, error } = await withTimeout(request, REQUEST_TIMEOUT_MS)
+    if (error) throw new TimerError(classifyError(error, isOnline()), String(error.message ?? ""))
+    return data
+  } catch (caught) {
+    if (caught instanceof TimerError) throw caught
+    throw new TimerError(classifyError({ message: String(caught) }, isOnline()), String(caught))
+  }
+}
+
+const DAY_TEXT = /^\d{4}-\d{2}-\d{2}$/
+
+// The saved sessions of one local day (the day text is YYYY-MM-DD), earliest first, each with the name of its tag. It is the same set of sessions that timer_day_score counts for that day (the column day). The tags are asked for only when a session has one.
+export async function timerDaySessions(day: string): Promise<DaySession[]> {
+  if (!DAY_TEXT.test(day)) throw new TimerError("UNKNOWN", "the day is not YYYY-MM-DD: " + day)
+  if (supabase === null) throw new TimerError("NOT_READY", "no database connection is set up")
+  const rows = readDaySessionRows(
+    await readTable(
+      supabase.from("timer_sessions").select(DAY_SESSION_COLUMNS).eq("day", day).order("started_at", { ascending: true }),
+    ),
+  )
+  const ids = [...new Set(rows.flatMap((row) => (row.tagId === null ? [] : [row.tagId])))]
+  if (ids.length === 0) return joinDayTags(rows, [])
+  const tags = readTagList(await readTable(supabase.from("timer_tags").select("id, name").in("id", ids)))
+  return joinDayTags(rows, tags)
 }
 
 // The tag is the id of one of the person's live tags, or null for Freestyle (no tag). With null, or with the argument left out, nothing is sent for the tag: the call is the same as it was before tags.

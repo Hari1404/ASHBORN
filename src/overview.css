@@ -152,4 +152,64 @@ main.ab-stub > .ab-hud-day {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+/* The glass button, as in day-view.html: "See the whole day" under the figures of the day, and also the Close and Try again buttons of the whole day screen (dayview.css uses this class). The section ab-hud-day takes no taps, so the button asks for them itself. A phone (data-lite="on") gets a plain dark box instead of the blur: the blur over a moving picture is heavy there (the same rule as the login card, CONNECTIONS.md C22). */
+.ab-glass-button {
+  appearance: none;
+  box-sizing: border-box;
+  padding: 14px 18px;
+  border-radius: 16px;
+  color: #ece6df;
+  font: 500 14px "Space Grotesk Variable", system-ui, sans-serif;
+  text-shadow: none;
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 8px 30px rgba(255, 106, 60, 0.14);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  transition:
+    box-shadow 0.25s,
+    transform 0.25s;
+}
+
+.ab-glass-button:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 8px 40px rgba(255, 106, 60, 0.32);
+}
+
+.ab-glass-button:active {
+  transform: scale(0.98);
+}
+
+.ab-glass-button:focus-visible {
+  outline: 2px solid #e8b062;
+  outline-offset: 3px;
+}
+
+.ab-glass-button[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.ab-glass-button[data-lite="on"] {
+  background: rgba(26, 22, 24, 0.92);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.ab-hud-open {
+  pointer-events: auto;
+  width: min(320px, 100%);
+  margin-top: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ab-glass-button {
+    transition: none;
+  }
+}
 /* AB:OVERVIEW.HUD:END */

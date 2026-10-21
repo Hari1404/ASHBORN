@@ -1,0 +1,327 @@
+/* Styles of "the whole day" screen of the Overview (src/components/OverviewDayView.tsx). It is loaded together with that file, which is loaded only when the screen is opened. Tag: see CODE_MAP.md in the project root. */
+
+@import "@fontsource/instrument-serif/latin-400-italic.css";
+
+/* AB:OVERVIEW.DAYVIEW:START */
+/* The values come from day-view.html (the owner's page): the ink, the grey, the line, the sizes, the delays. The font of the text is the one of the whole app (Space Grotesk, loaded by overview.css), the font of the weekday is Instrument Serif in italic. */
+.ab-day {
+  --ab-day-line: clamp(120px, 24vh, 230px);
+  --ab-day-ink: #ece6df;
+  --ab-day-dim: #8d8780;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #000;
+  color: var(--ab-day-ink);
+  font: 400 16px/1.5 "Space Grotesk Variable", system-ui, sans-serif;
+  opacity: 0;
+  transition: opacity 0.35s;
+}
+
+.ab-day[data-on="true"] {
+  opacity: 1;
+}
+
+/* The moving background of the Overview is hidden while the screen is open: a hidden box is not drawn, so the page does not run two pictures at once. OverviewDayView.tsx sets the attribute on the html element while the screen is open and takes it away at the start of the fade out. */
+html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
+  display: none;
+}
+
+/* The beam fills the screen and takes no tap. It lands on the top edge of the empty box .ab-day-landing (the library measures that box and draws a bright rim along its edges). The box starts at the line where the day starts and reaches past the left, right and bottom of the screen, so only its top edge is seen. It is not the box that scrolls (.ab-day-surface), so the light never moves when the day is scrolled. */
+.ab-day-beam {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ab-day-landing {
+  position: absolute;
+  top: var(--ab-day-line);
+  left: -24px;
+  right: -24px;
+  bottom: -24px;
+}
+
+/* Where the browser cannot draw the beam (no WebGL 2) OverviewDayView.tsx marks the box data-gl="no" and this stands in: a glowing line at the same height, and a short beam above it. */
+.ab-day-fallback {
+  display: none;
+}
+
+.ab-day-beam[data-gl="no"] .ab-day-fallback {
+  display: block;
+}
+
+.ab-day-fallback::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  height: var(--ab-day-line);
+  left: calc(50% - 2px);
+  width: 4px;
+  background: linear-gradient(#0000, #ff6a3c);
+  box-shadow: 0 0 40px 8px rgba(255, 106, 60, 0.5);
+}
+
+.ab-day-fallback::after {
+  content: "";
+  position: absolute;
+  top: var(--ab-day-line);
+  left: 24px;
+  right: 24px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 150, 100, 0.9), transparent);
+}
+
+.ab-day-close {
+  position: fixed;
+  top: calc(14px + env(safe-area-inset-top, 0px));
+  right: 14px;
+  z-index: 3;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+/* The box that holds the day. It starts at the same line as .ab-day-landing, and the day scrolls inside it and is cut at the line. */
+.ab-day-surface {
+  position: fixed;
+  z-index: 1;
+  top: var(--ab-day-line);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ab-day-sheet {
+  box-sizing: border-box;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 36px 24px calc(56px + env(safe-area-inset-bottom, 0px));
+}
+
+.ab-day-title {
+  margin: 0 0 12px;
+  font: italic 400 clamp(52px, 11vw, 92px) / 1 "Instrument Serif", Georgia, serif;
+  letter-spacing: -0.01em;
+}
+
+.ab-day-sentence {
+  margin: 0;
+  max-width: 34ch;
+  font-size: clamp(17px, 2.6vw, 20px);
+  color: #c9c2ba;
+}
+
+.ab-day-quiet {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: rgba(236, 230, 223, 0.6);
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+
+.ab-day[data-lit="true"] .ab-day-quiet {
+  opacity: 1;
+}
+
+.ab-day-retry {
+  width: min(240px, 100%);
+}
+
+.ab-day-caps {
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--ab-day-dim);
+}
+
+/* The pieces of the day come in one after the other (the number --i is set by OverviewDayView.tsx), out of a blur. */
+.ab-day-r {
+  opacity: 0;
+  filter: blur(8px);
+  transition:
+    opacity 0.9s,
+    filter 0.9s;
+  transition-delay: calc(var(--i, 0) * 130ms);
+}
+
+.ab-day-sheet[data-reveal="true"] .ab-day-r {
+  opacity: 1;
+  filter: none;
+}
+
+.ab-day-track {
+  position: relative;
+  height: 88px;
+  margin-top: 44px;
+}
+
+.ab-day-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 34px;
+  height: 1px;
+  background: #3a3733;
+}
+
+.ab-day-woke {
+  position: absolute;
+  top: 0;
+  margin-left: -10px;
+  white-space: nowrap;
+}
+
+.ab-day-dot {
+  position: absolute;
+  top: 30px;
+  width: 9px;
+  height: 9px;
+  margin-left: -4px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  background: #000;
+}
+
+/* A pill grows out of its left end, after the text has come in. */
+.ab-day-bar {
+  position: absolute;
+  top: 27px;
+  height: 14px;
+  min-width: 14px;
+  border-radius: 999px;
+  opacity: 0;
+  transform: scaleX(0.1);
+  transform-origin: left;
+  transition:
+    transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.7s;
+  transition-delay: calc(450ms + var(--i, 0) * 220ms);
+}
+
+.ab-day-sheet[data-reveal="true"] .ab-day-bar {
+  opacity: 1;
+  transform: none;
+}
+
+.ab-day-blab {
+  position: absolute;
+  top: 54px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* The next rows, for a label that would touch the one before it (OverviewDayView.tsx sets data-lane on the label and data-lanes on the track, which is made taller for three or four rows). */
+.ab-day-blab[data-lane="1"] {
+  top: 68px;
+}
+
+.ab-day-blab[data-lane="2"] {
+  top: 82px;
+}
+
+.ab-day-blab[data-lane="3"] {
+  top: 96px;
+}
+
+.ab-day-track[data-lanes="3"] {
+  height: 102px;
+}
+
+.ab-day-track[data-lanes="4"] {
+  height: 116px;
+}
+
+.ab-day-ticks {
+  position: relative;
+  height: 14px;
+  margin-top: 6px;
+}
+
+.ab-day-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.ab-day-ticks span:first-child {
+  transform: none;
+}
+
+.ab-day-ticks span:last-child {
+  transform: translateX(-100%);
+}
+
+.ab-day-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 28px;
+}
+
+.ab-day-tags i {
+  display: block;
+  min-width: 0;
+  height: 3px;
+  background: #666;
+}
+
+.ab-day-tags i:first-child {
+  background: #fff;
+}
+
+.ab-day-tl {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.ab-day-tl span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ab-day-tl b {
+  font-weight: 600;
+  color: var(--ab-day-ink);
+  letter-spacing: 0.16em;
+}
+
+.ab-day-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 26px;
+}
+
+.ab-day-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.ab-day-swatch {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ab-day,
+  .ab-day-r,
+  .ab-day-bar,
+  .ab-day-quiet {
+    transition: none !important;
+  }
+  .ab-day-r {
+    filter: none;
+  }
+}
+/* AB:OVERVIEW.DAYVIEW:END */

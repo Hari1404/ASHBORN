@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState, type ComponentType } from "react"
 import Counter from "@/components/Counter"
 import { LITE_LEVEL } from "@/lib/lite"
 import {
@@ -21,6 +21,12 @@ import "../overview.css"
 // Both are asked again every minute, when the page comes back to the front and when the window gets focus, so the countdown changes at local midnight and a session that has just ended shows up. The running session is not in the day score (it is not saved yet), so it is not in the numbers until it ends.
 // A phone (lite level 1 or 2) draws the digits without the motion blur.
 type DayState = { kind: "loading" } | { kind: "error" } | { kind: "ready"; score: DayScore }
+// 3. A glass button "See the whole day" under the figures of the day (only when the day has sessions). It opens the full screen of the whole day (OverviewDayView.tsx, CONNECTIONS.md C63). That screen is a separate file: it is loaded at the first use of the button, or earlier when the pointer, a touch or the focus comes to the button, so the beam and the font do not weigh on the first picture of the Overview. While it loads the button says it is busy and takes no second tap; if the file cannot be loaded the line "Could not open the day" shows and the next tap tries again.
+type DayViewComponent = ComponentType<{ day: string; zone: string; onClose: () => void }>
+type DayViewLoader = () => Promise<DayViewComponent>
+const loadDayView: DayViewLoader = () => import("@/components/OverviewDayView").then((module) => module.default)
+type Opening = { kind: "closed" } | { kind: "loading" } | { kind: "failed" } | { kind: "open"; View: DayViewComponent; day: string; zone: string }
+type Opener = { busy: boolean; failed: boolean; onOpen: () => void; onWarm: () => void }
 
 function zoneOrNull(): string | null {
   try {
@@ -34,9 +40,11 @@ function countdownNow(): number {
   return daysUntilApril14(Date.now(), zoneOrNull() ?? "UTC")
 }
 
-export default function OverviewHud() {
+// The loader is a parameter only so that a test can give another one; the screen of the Overview never gives it.
+export default function OverviewHud({ load = loadDayView }: { load?: DayViewLoader }) {
   const [days, setDays] = useState<number>(countdownNow)
   const [day, setDay] = useState<DayState>({ kind: "loading" })
+  const [opening, setOpening] = useState<Opening>({ kind: "closed" })
 
   useEffect(() => {
     let alive = true
@@ -69,6 +77,26 @@ export default function OverviewHud() {
     }
   }, [])
 
+  const warm = useCallback(() => {
+    load().catch(() => undefined)
+  }, [load])
+  const openDay = useCallback(
+    (dayText: string) => {
+      const zone = zoneOrNull()
+      if (zone === null) {
+        setOpening({ kind: "failed" })
+        return
+      }
+      setOpening({ kind: "loading" })
+      load().then(
+        (View) => setOpening({ kind: "open", View, day: dayText, zone }),
+        () => setOpening({ kind: "failed" }),
+      )
+    },
+    [load],
+  )
+  const closeDay = useCallback(() => setOpening({ kind: "closed" }), [])
+
   const blur = LITE_LEVEL === 0
   return (
     <>
@@ -80,13 +108,27 @@ export default function OverviewHud() {
         <p className="ab-hud-day-title">Today in Pro Timer</p>
         {day.kind === "loading" ? <p className="ab-hud-quiet">Reading today…</p> : null}
         {day.kind === "error" ? <p className="ab-hud-quiet">Could not read today. It tries again in a minute.</p> : null}
-        {day.kind === "ready" ? <DayBody score={day.score} blur={blur} /> : null}
+        {day.kind === "ready" ? (
+          <DayBody
+            score={day.score}
+            blur={blur}
+            opener={{
+              busy: opening.kind === "loading",
+              failed: opening.kind === "failed",
+              onOpen: () => {
+                if (opening.kind !== "loading") openDay(day.score.day)
+              },
+              onWarm: warm,
+            }}
+          />
+        ) : null}
       </section>
+      {opening.kind === "open" ? <opening.View day={opening.day} zone={opening.zone} onClose={closeDay} /> : null}
     </>
   )
 }
 
-function DayBody({ score, blur }: { score: DayScore; blur: boolean }) {
+function DayBody({ score, blur, opener }: { score: DayScore; blur: boolean; opener: Opener }) {
   const waiting =
     score.unconfirmedMinutes > 0 ? (
       <p className="ab-hud-quiet">+{formatSpan(score.unconfirmedMinutes)} waiting to be confirmed</p>
@@ -144,6 +186,19 @@ function DayBody({ score, blur }: { score: DayScore; blur: boolean }) {
         </div>
       </dl>
       {waiting}
+      <button
+        className="ab-glass-button ab-hud-open"
+        type="button"
+        data-lite={LITE_LEVEL > 0 ? "on" : undefined}
+        aria-busy={opener.busy}
+        onClick={opener.onOpen}
+        onPointerEnter={opener.onWarm}
+        onPointerDown={opener.onWarm}
+        onFocus={opener.onWarm}
+      >
+        See the whole day
+      </button>
+      {opener.failed ? <p className="ab-hud-quiet">Could not open the day. Tap to try again.</p> : null}
     </>
   )
 }
