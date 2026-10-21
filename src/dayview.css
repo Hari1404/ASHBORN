@@ -161,6 +161,78 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   filter: none;
 }
 
+/* The days of this week (Monday to today), above the weekday. The row comes in with the light (data-lit), out of the same blur, a moment before the day itself; it is not part of the day, so it stays when another day is chosen. The chosen day is in the bright colour of the condition of the day that is shown (--ab-day-accent), and the colour follows that day when it changes. Today has a small dot. */
+.ab-day-week {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 28px;
+  opacity: 0;
+  filter: blur(8px);
+  transition:
+    opacity 0.9s,
+    filter 0.9s;
+}
+
+.ab-day[data-lit="true"] .ab-day-week {
+  opacity: 1;
+  filter: none;
+}
+
+.ab-day-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  border: 1px solid #2c2a27;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ab-day-dim);
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color 0.35s,
+    border-color 0.35s,
+    background-color 0.35s;
+}
+
+.ab-day-chip[aria-pressed="true"] {
+  color: var(--ab-day-accent);
+  border-color: color-mix(in srgb, var(--ab-day-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--ab-day-accent) 12%, transparent);
+}
+
+.ab-day-chip[data-today="true"]::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ab-day-chip:focus-visible {
+  outline: 2px solid var(--ab-day-accent);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) {
+  .ab-day-chip:not([aria-pressed="true"]):hover {
+    color: var(--ab-day-ink);
+  }
+}
+
+/* The day that is shown stays, a little dimmer, while another day is read (OverviewDayView.tsx sets data-busy). The pieces of the day are not built again when a day is chosen, so nothing comes in a second time. */
+.ab-day-body {
+  transition: opacity 0.25s;
+}
+
+.ab-day-body[data-busy="true"] {
+  opacity: 0.4;
+}
+
 .ab-day-track {
   position: relative;
   height: 88px;
@@ -323,10 +395,14 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   .ab-day,
   .ab-day-r,
   .ab-day-bar,
-  .ab-day-quiet {
+  .ab-day-quiet,
+  .ab-day-week,
+  .ab-day-chip,
+  .ab-day-body {
     transition: none !important;
   }
-  .ab-day-r {
+  .ab-day-r,
+  .ab-day-week {
     filter: none;
   }
 }

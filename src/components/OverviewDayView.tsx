@@ -2,18 +2,20 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, ty
 import { createPortal } from "react-dom"
 import LaserFlow from "@/components/LaserFlow"
 import { LITE_LEVEL } from "@/lib/lite"
-import { dayPaletteOf, type OverviewCondition } from "@/lib/overviewCondition"
-import { buildDayView, dayLegendFor, type DayLegendItem, type DayView } from "@/lib/overviewDay"
+import { conditionFromMinutes, dayPaletteOf, type OverviewCondition } from "@/lib/overviewCondition"
+import { buildDayView, dayLegendFor, weekDaysUpTo, type DayLegendItem, type DayView, type WeekDay } from "@/lib/overviewDay"
 import { timerDayScore, timerDaySessions } from "@/lib/timerApi"
 import "../dayview.css"
 
 // AB:OVERVIEW.DAYVIEW:START
 // "The whole day": the full black screen that opens from the glass button of "Today in Pro Timer" (OverviewHud.tsx, CONNECTIONS.md C63). The screen goes black, the Laser Flow beam (library file src/components/LaserFlow.tsx, never edited) falls from the top and lands on the top edge of an empty box (ab-day-landing) that stands where the day starts, and in that light the day appears, laid out as in day-view.html: the weekday, one sentence, the timeline of the sessions (one pill per session, the colour is its quality), the tag bar and the four colours.
 // This file is loaded only when the button is used or when the pointer or the focus comes near it (the shader and the font do not weigh on the first picture of the Overview). Everything the screen shows comes from src/lib/overviewDay.ts (the day model, C62); the day and the time zone are given by the button, so the sentence, the pills and the panel of the Overview are of the same day.
-// It asks the database for the day score and the sessions of the day when it opens, and again when "Try again" is used. A phone (lite level 1) draws the beam at a pixel ratio of 1; at lite level 2 the beam falls once and then stands still (src/lib/lite.ts).
+// It asks the database for the day score and the sessions of the day when it opens, and again when "Try again" is used.
+// THE WEEK (Week view): above the weekday there is a row of the days of this week, Monday to today (weekDaysUpTo of the day model, C62; today is the day the button gave). A tap on a day shows that day's sentence, pills and tag bar. Nothing is built again for it: the beam, the black screen and the sheet stay where they are and the reveal does not play a second time, only the content changes and the colour goes to the colours of that day. Each day has the colours of its own condition (conditionFromMinutes of its credited minutes, C64); today keeps the condition the button gave, so the screen matches the Overview behind it. While another day is read the day that is shown stays, a little dimmer, until the new one arrives. The database is asked for the chosen day only (the same two readings as for today). A phone (lite level 1) draws the beam at a pixel ratio of 1; at lite level 2 the beam falls once and then stands still (src/lib/lite.ts).
 // While it is open: the page behind it does not scroll and takes no tap or focus (the element root is inert), Escape and the Close button close it, Tab stays inside it, the moving background of the Overview is hidden (so it stops drawing, see dayview.css) and the focus goes back to the button that opened it.
 type Props = { day: string; zone: string; condition?: OverviewCondition; onClose: () => void }
-type Load = { kind: "loading" } | { kind: "error" } | { kind: "ready"; view: DayView }
+// A day that has been read: its text, the condition whose colours it is drawn in, and everything the screen draws for it.
+type Loaded = { day: string; condition: OverviewCondition; view: DayView }
 
 // The beam. beamPosition 0.5 is the middle of the screen. The COLOUR is not here: it is the beam colour of the condition (palette.beam of overviewCondition.ts, so the laser goes with the background of the same condition). The intensity is lower than the library default (1.8): at the default a bright colour burns out to white, at 0.7 it stays its colour with a white hot core. The spread is the library default (1.5): the owner looked at the shorter spread of day-view.html and chose the default. The mouse does not move the light (day-view.html has no such thing). Every other setting stays at the library default.
 const BEAM = { beamPosition: 0.5, intensity: 0.7, spread: 1.5, mouseInteraction: false }
@@ -60,21 +62,36 @@ function placeLabels(track: HTMLElement): void {
   track.dataset.lanes = String(Math.max(2, edges.length))
 }
 
+// The days of this week for the row. A day text that is not a day gives no row (the reading then gives the error, as before).
+function weekOf(day: string): WeekDay[] {
+  try {
+    return weekDaysUpTo(day)
+  } catch {
+    return []
+  }
+}
+
 export default function OverviewDayView({ day, zone, condition = "unknown", onClose }: Props) {
-  const palette = dayPaletteOf(condition)
   const [reduce] = useState(motionIsReduced)
   const [on, setOn] = useState(reduce)
   const [beam, setBeam] = useState(reduce)
   const [lit, setLit] = useState(reduce)
   const [shown, setShown] = useState(false)
   const [leaving, setLeaving] = useState(false)
-  const [load, setLoad] = useState<Load>({ kind: "loading" })
+  const [selected, setSelected] = useState(day)
+  const [loaded, setLoaded] = useState<Loaded | null>(null)
+  const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
   const beamRef = useRef<HTMLDivElement>(null)
   const landingRef = useRef<HTMLDivElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
+
+  // The colours are those of the day that is shown; before any day is shown they are those of the condition the button gave. They stay while the next day is read and change when it arrives.
+  const shownCondition = loaded?.condition ?? condition
+  const palette = dayPaletteOf(shownCondition)
+  const week = weekOf(day)
 
   const close = useCallback(() => setLeaving(true), [])
 
@@ -147,28 +164,37 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
     return () => document.removeEventListener("keydown", onKey)
   }, [close])
 
-  // The score and the sessions of the day are read together, so the sentence and the pills are of the same moment. A reading that fails, or a day that cannot be laid out (a time zone the browser does not know), gives the error.
+  // The score and the sessions of the chosen day are read together, so the sentence and the pills are of the same moment. A reading that fails, or a day that cannot be laid out (a time zone the browser does not know), gives the error. A reading that comes after another day was chosen is ignored. Today is drawn in the condition the button gave; any other day in the condition of its own credited minutes.
   useEffect(() => {
     let alive = true
-    Promise.all([timerDayScore(day), timerDaySessions(day)])
+    Promise.all([timerDayScore(selected), timerDaySessions(selected)])
       .then(([score, sessions]) => {
-        if (alive) setLoad({ kind: "ready", view: buildDayView({ day, sessions, score, deviceZone: zone, qualityColors: palette.qualities }) })
+        if (!alive) return
+        const dayCondition = selected === day ? condition : conditionFromMinutes(score.creditedMinutes)
+        const view = buildDayView({ day: selected, sessions, score, deviceZone: zone, qualityColors: dayPaletteOf(dayCondition).qualities })
+        setLoaded({ day: selected, condition: dayCondition, view })
       })
       .catch(() => {
-        if (alive) setLoad({ kind: "error" })
+        if (alive) setFailed(true)
       })
     return () => {
       alive = false
     }
-  }, [day, zone, attempt, palette])
+  }, [selected, day, zone, attempt, condition])
+
+  function pick(next: string): void {
+    if (next === selected) return
+    setSelected(next)
+    setFailed(false)
+  }
 
   function retry(): void {
-    setLoad({ kind: "loading" })
+    setFailed(false)
     setAttempt((n) => n + 1)
   }
 
   // The day comes in when the light has landed AND the day is read, whichever is later.
-  const ready = load.kind === "ready"
+  const ready = loaded !== null
   useEffect(() => {
     if (!lit || !ready) return
     const id = window.setTimeout(() => setShown(true), reduce ? 0 : REVEAL_DELAY_MS)
@@ -192,7 +218,7 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
     const watch = new ResizeObserver(() => placeLabels(track))
     watch.observe(track)
     return () => watch.disconnect()
-  }, [load])
+  }, [loaded, failed])
 
   return createPortal(
     <div
@@ -203,7 +229,7 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
       aria-label="The whole day"
       data-on={on && !leaving ? "true" : "false"}
       data-lit={lit ? "true" : "false"}
-      data-condition={condition}
+      data-condition={shownCondition}
       style={{ "--ab-day-beam": palette.beam, "--ab-day-accent": palette.accent } as CSSProperties}
     >
       <div ref={beamRef} className="ab-day-beam" aria-hidden="true">
@@ -227,12 +253,29 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
       </button>
       <div className="ab-day-surface">
         <div className="ab-day-sheet" data-reveal={shown ? "true" : "false"}>
-          {load.kind === "loading" ? (
+          {week.length > 0 ? (
+            <div className="ab-day-week" role="group" aria-label="This week">
+              {week.map((item) => (
+                <button
+                  key={item.day}
+                  className="ab-day-chip ab-day-caps"
+                  type="button"
+                  aria-pressed={item.day === selected}
+                  aria-label={item.isToday ? item.name + ", today" : item.name}
+                  data-today={item.isToday ? "true" : undefined}
+                  onClick={() => pick(item.day)}
+                >
+                  {item.short}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {loaded === null && !failed ? (
             <p className="ab-day-quiet" role="status">
               Reading the day…
             </p>
           ) : null}
-          {load.kind === "error" ? (
+          {failed ? (
             <>
               <p className="ab-day-quiet" role="alert">
                 Could not read this day.
@@ -242,7 +285,11 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
               </button>
             </>
           ) : null}
-          {load.kind === "ready" ? <DayBody view={load.view} legend={dayLegendFor(palette.qualities)} trackRef={trackRef} /> : null}
+          {loaded !== null && !failed ? (
+            <div className="ab-day-body" data-busy={loaded.day !== selected ? "true" : "false"} aria-busy={loaded.day !== selected}>
+              <DayBody view={loaded.view} legend={dayLegendFor(palette.qualities)} trackRef={trackRef} />
+            </div>
+          ) : null}
         </div>
       </div>
     </div>,
