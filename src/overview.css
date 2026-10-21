@@ -29,7 +29,7 @@ main.ab-stub > .ab-hud-countdown {
   text-shadow: 0 0 14px rgba(0, 0, 0, 0.75), 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
-/* A soft dark glow behind the countdown: two of the four looks are bright blue and pale at the top, where white digits and a light line would vanish. It sits behind the digits inside the box (the box makes its own layer) and is not a card: it has no edge. */
+/* A soft dark glow behind the countdown: one of the four looks (Atmosphere) is bright blue and pale at the top, where white digits and a light line would vanish (the other three are dark there). It sits behind the digits inside the box (the box makes its own layer) and is not a card: it has no edge. */
 .ab-hud-countdown::before {
   content: "";
   position: absolute;
