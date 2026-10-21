@@ -15,6 +15,8 @@ import {
   daySentence,
   dayTitle,
   NO_TAG_LABEL,
+  shiftDay,
+  weekDaysUpTo,
 } from "./overviewDay"
 import type { DaySession } from "./timerApi"
 import { DEEP_FROM_SECONDS, FLOW_FROM_SECONDS, SOLID_FROM_SECONDS, qualityOf } from "./timerMaths"
@@ -311,6 +313,97 @@ describe("the colours the screen gives to the day", () => {
       { quality: "flow", label: "Flow", color: "#444444" },
     ])
     expect(dayLegendFor(DAY_QUALITY_COLORS)).toEqual(DAY_LEGEND)
+  })
+})
+describe("moving a day by some days", () => {
+  it("goes back and forward inside a month", () => {
+    expect(shiftDay("2026-10-21", -2)).toBe("2026-10-19")
+    expect(shiftDay("2026-10-21", 0)).toBe("2026-10-21")
+    expect(shiftDay("2026-10-21", 3)).toBe("2026-10-24")
+  })
+
+  it("goes over the end of a month and of a year, and over a leap day", () => {
+    expect(shiftDay("2026-10-01", -1)).toBe("2026-09-30")
+    expect(shiftDay("2026-03-01", -1)).toBe("2026-02-28")
+    expect(shiftDay("2028-03-01", -1)).toBe("2028-02-29")
+    expect(shiftDay("2027-01-01", -1)).toBe("2026-12-31")
+    expect(shiftDay("2026-12-31", 1)).toBe("2027-01-01")
+  })
+
+  it("refuses text that is not a day", () => {
+    expect(() => shiftDay("21-10-2026", -1)).toThrow(/^BAD_LOCAL_DAY/)
+    expect(() => shiftDay("2026-02-30", -1)).toThrow(/^BAD_LOCAL_DAY/)
+    expect(() => shiftDay("", 1)).toThrow(/^BAD_LOCAL_DAY/)
+  })
+})
+
+describe("the days of this week up to today", () => {
+  const names = (today: string) => weekDaysUpTo(today).map((d) => d.short)
+  const days = (today: string) => weekDaysUpTo(today).map((d) => d.day)
+
+  it("on a Thursday is Monday, Tuesday, Wednesday and Thursday, and nothing before that Monday or after today", () => {
+    expect(days("2026-10-22")).toEqual(["2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22"])
+    expect(names("2026-10-22")).toEqual(["Mon", "Tue", "Wed", "Thu"])
+  })
+
+  it("is Monday alone on a Monday", () => {
+    expect(days("2026-10-19")).toEqual(["2026-10-19"])
+    expect(weekDaysUpTo("2026-10-19")).toEqual([{ day: "2026-10-19", name: "Monday", short: "Mon", isToday: true }])
+  })
+
+  it("is the whole week on a Sunday (the week ends on Sunday, Monday is the first day)", () => {
+    expect(names("2026-10-25")).toEqual(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+    expect(days("2026-10-25")[0]).toBe("2026-10-19")
+  })
+
+  it.each([
+    ["2026-10-19", 1],
+    ["2026-10-20", 2],
+    ["2026-10-21", 3],
+    ["2026-10-22", 4],
+    ["2026-10-23", 5],
+    ["2026-10-24", 6],
+    ["2026-10-25", 7],
+  ])("on %s there are %i day(s), the first is a Monday and the last is today", (today, count) => {
+    const week = weekDaysUpTo(today)
+    expect(week).toHaveLength(count)
+    expect(week[0].name).toBe("Monday")
+    expect(week[week.length - 1].day).toBe(today)
+  })
+
+  it("marks today, and only today", () => {
+    const week = weekDaysUpTo("2026-10-22")
+    expect(week.map((d) => d.isToday)).toEqual([false, false, false, true])
+  })
+
+  it("gives the full name and the three letters of each day", () => {
+    expect(weekDaysUpTo("2026-10-21").map((d) => [d.name, d.short])).toEqual([
+      ["Monday", "Mon"],
+      ["Tuesday", "Tue"],
+      ["Wednesday", "Wed"],
+    ])
+  })
+
+  it("goes back over the end of a month, of a year and of a leap day", () => {
+    expect(days("2026-10-01")).toEqual(["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"])
+    expect(days("2027-01-01")).toEqual(["2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01"])
+    expect(days("2028-03-02")).toEqual(["2028-02-28", "2028-02-29", "2028-03-01", "2028-03-02"])
+  })
+
+  it("never has a day before the Monday of its week, whatever the day is (one year of days)", () => {
+    for (let n = 0; n < 366; n += 1) {
+      const today = shiftDay("2026-01-01", n)
+      const week = weekDaysUpTo(today)
+      expect(week[0].name).toBe("Monday")
+      expect(week[week.length - 1].day).toBe(today)
+      expect(week.filter((d) => d.isToday)).toHaveLength(1)
+      for (let i = 1; i < week.length; i += 1) expect(week[i].day).toBe(shiftDay(week[i - 1].day, 1))
+    }
+  })
+
+  it("refuses text that is not a day", () => {
+    expect(() => weekDaysUpTo("21-10-2026")).toThrow(/^BAD_LOCAL_DAY/)
+    expect(() => weekDaysUpTo("2026-02-30")).toThrow(/^BAD_LOCAL_DAY/)
   })
 })
 // AB:OVERVIEW.TESTS:END

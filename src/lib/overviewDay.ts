@@ -2,7 +2,7 @@ import type { DayScore, DaySession } from "@/lib/timerApi"
 import { parseServerTimeMs, qualityOf, type Quality } from "@/lib/timerMaths"
 
 // AB:OVERVIEW.DAY:START
-// The plain values and functions behind "the whole day" view of the Overview (the full black screen with the Laser Flow beam, opened from "Today in Pro Timer"): they turn the saved sessions of one day into everything the screen draws, laid out as in day-view.html. No screen, no database and no sound here. The sessions come from timerDaySessions and the numbers of the sentence from timerDayScore (both in timerApi.ts). See CONNECTIONS.md C62.
+// The plain values and functions behind "the whole day" view of the Overview (the full black screen with the Laser Flow beam, opened from "Today in Pro Timer"): they turn the saved sessions of one day into everything the screen draws, laid out as in day-view.html. No screen, no database and no sound here. It also says which days of this week the screen lets the person open (weekDaysUpTo, Monday to today). The sessions come from timerDaySessions and the numbers of the sentence from timerDayScore (both in timerApi.ts). See CONNECTIONS.md C62.
 
 // The time axis runs from FROM to 24 o'clock in steps of 3 hours. It starts at 06 and only starts earlier (at 03 or 00) when a session or the wake time lies before 06, so nothing is ever drawn off the axis.
 export const DAY_AXIS_START_HOUR = 6
@@ -70,6 +70,30 @@ export function dayTitle(day: string): string {
   const probe = new Date(ms)
   if (probe.getUTCMonth() !== Number(hit[2]) - 1) throw new Error("BAD_LOCAL_DAY: " + day)
   return WEEKDAYS[probe.getUTCDay()]
+}
+
+// The week the whole day screen lets the person look at (Packet 12): this week only, from Monday to today. Monday is the first day of the week. Nothing before that Monday (no earlier week, no month) and nothing after today (the days that have not happened yet). On a Monday the week is Monday alone. Plain text in, plain values out: the days are day texts (YYYY-MM-DD, the local day of the database), so no time zone is involved here.
+export type WeekDay = { day: string; name: string; short: string; isToday: boolean }
+
+// A day text moved by a number of days (negative goes back): "2026-10-21", -2 -> "2026-10-19". It goes over month and year ends. Text that is not a day throws an Error that starts with BAD_LOCAL_DAY (the same check as dayTitle).
+export function shiftDay(day: string, days: number): string {
+  dayTitle(day)
+  const hit = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)
+  if (hit === null) throw new Error("BAD_LOCAL_DAY: " + day)
+  const moved = new Date(Date.UTC(Number(hit[1]), Number(hit[2]) - 1, Number(hit[3]) + days))
+  return moved.toISOString().slice(0, 10)
+}
+
+// The days of this week up to today, in the order Monday first, today last. today is the local day (YYYY-MM-DD). short is the first three letters of the name (Mon, Tue ...). isToday is true for the last one only.
+export function weekDaysUpTo(today: string): WeekDay[] {
+  const sinceMonday = (WEEKDAYS.indexOf(dayTitle(today)) + 6) % 7
+  const days: WeekDay[] = []
+  for (let back = sinceMonday; back >= 0; back -= 1) {
+    const day = shiftDay(today, -back)
+    const name = dayTitle(day)
+    days.push({ day, name, short: name.slice(0, 3), isToday: back === 0 })
+  }
+  return days
 }
 
 const clockFormats = new Map<string, Intl.DateTimeFormat>()
