@@ -14,6 +14,10 @@ vi.mock("@/components/OverviewBackground", async () => {
   const { createElement: h } = await import("react")
   return { default: () => h("canvas", { id: "ascii-stub" }) }
 })
+vi.mock("@/components/OverviewHud", async () => {
+  const { createElement: h } = await import("react")
+  return { default: () => h("div", { id: "hud-stub" }) }
+})
 vi.mock("@/components/AppMenu", async () => {
   const { createElement: h } = await import("react")
   return { default: () => h("nav", { id: "menu-stub" }) }
@@ -91,6 +95,16 @@ describe("SignedInStub: which screen is shown", () => {
     expect(container?.querySelector("#ascii-stub")?.closest("main.ab-stub")).not.toBeNull()
     expect(has(".ab-bg")).toBe(false)
     expect(container?.querySelector(".ab-stub-title")?.textContent).toBe("Overview")
+  })
+
+  it.each(["#overview", "", "#nonsense"])("shows the countdown and the day of the Pro Timer on the Overview, inside the screen, at %j", (hash) => {
+    open(hash)
+    expect(container?.querySelector("#hud-stub")?.closest("main.ab-stub")).not.toBeNull()
+  })
+
+  it.each(["#calendar", "#guide", "#timer"])("does not show the countdown and the day of the Pro Timer at %j", (hash) => {
+    open(hash)
+    expect(has("#hud-stub")).toBe(false)
   })
 
   it.each(["#calendar", "#guide"])("keeps the Dark Veil background in the half-size box ab-bg, and not the Gradient ASCII one, at %j", (hash) => {

@@ -1,4 +1,6 @@
-/* Styles of the moving background of the Overview screen. Tag: see CODE_MAP.md in the project root. */
+/* Styles of the moving background of the Overview screen and of the two things on top of it. Tag: see CODE_MAP.md in the project root. */
+
+@import "@fontsource-variable/space-grotesk";
 
 /* AB:OVERVIEW.BG:START */
 /* The box of the Gradient ASCII background: fixed behind the whole screen, and it never catches a tap. It is NOT the box ab-bg of login.css: that one is drawn at half size on a phone and scaled up, which would make the characters twice as big. The selector starts with main.ab-stub so that it is more specific than the rule of auth.css that lifts every child of the screen above the background; without that this box would become a normal box and push the text down (CONNECTIONS.md C59). */
@@ -9,3 +11,145 @@ main.ab-stub > .ab-ascii-bg {
   pointer-events: none;
 }
 /* AB:OVERVIEW.BG:END */
+
+/* AB:OVERVIEW.HUD:START */
+/* The countdown (top right) and "Today in Pro Timer" (bottom) on the Overview, CONNECTIONS.md C60. Both are fixed over the background and take no taps (only the link of an empty day does). The two main rules start with main.ab-stub for the same reason as the background box above: the rule of auth.css (.ab-stub > :not(.ab-bg)) makes every child of the screen a normal box with a layer, and these are more specific. */
+main.ab-stub > .ab-hud-countdown {
+  position: fixed;
+  top: 14px;
+  right: 120px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+  color: #f4f0ff;
+  font-family: "Space Grotesk Variable", system-ui, sans-serif;
+  text-shadow: 0 0 14px rgba(0, 0, 0, 0.75), 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+/* A soft dark glow behind the countdown: two of the four looks are bright blue and pale at the top, where white digits and a light line would vanish. It sits behind the digits inside the box (the box makes its own layer) and is not a card: it has no edge. */
+.ab-hud-countdown::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -26px -34px -22px -46px;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.45) 55%, rgba(0, 0, 0, 0) 100%);
+  pointer-events: none;
+}
+
+.ab-hud-caption {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  color: rgba(244, 240, 255, 0.88);
+}
+
+/* The day sits on a soft dark band that fades upwards, not in a card: the picture behind it changes between four looks, and the band keeps the text readable on all of them. */
+main.ab-stub > .ab-hud-day {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 64px 20px calc(22px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.6) 55%, rgba(0, 0, 0, 0) 100%);
+  pointer-events: none;
+  color: #f4f0ff;
+  font-family: "Space Grotesk Variable", system-ui, sans-serif;
+  text-align: center;
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.6);
+}
+
+.ab-hud-day-title {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(244, 240, 255, 0.6);
+}
+
+.ab-hud-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 16px;
+}
+
+.ab-hud-number {
+  margin: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.ab-hud-unit {
+  margin-right: 8px;
+  font-size: 20px;
+  color: rgba(244, 240, 255, 0.6);
+}
+
+.ab-hud-unit:last-child {
+  margin-right: 0;
+}
+
+.ab-hud-word {
+  margin: 0;
+  padding: 4px 14px;
+  font-size: 18px;
+  border: 1px solid rgba(244, 240, 255, 0.35);
+  border-radius: 999px;
+}
+
+.ab-hud-stats {
+  margin: 4px 0 0;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  justify-content: center;
+  gap: 8px 28px;
+}
+
+.ab-hud-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ab-hud-stat-label {
+  font-size: 12px;
+  color: rgba(244, 240, 255, 0.6);
+}
+
+.ab-hud-stat-value {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.ab-hud-empty {
+  margin: 0;
+  font-size: 18px;
+}
+
+.ab-hud-quiet {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(244, 240, 255, 0.7);
+}
+
+.ab-hud-link {
+  pointer-events: auto;
+  font-size: 16px;
+  color: #b69cff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* AB:OVERVIEW.HUD:END */
