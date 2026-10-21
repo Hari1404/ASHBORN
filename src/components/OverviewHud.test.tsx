@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, createElement } from "react"
+import { act, createElement, type ComponentType } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { DayScore } from "@/lib/timerApi"
@@ -313,6 +313,151 @@ describe("the motion blur of the digits", () => {
     await show()
     await answer(1, score())
     expect(counters("data-blur")).toEqual(["false", "false", "false"])
+  })
+})
+describe("the button of the whole day", () => {
+  type DayProps = { day: string; zone: string; onClose: () => void }
+  type Loader = () => Promise<ComponentType<DayProps>>
+  // The screen of the whole day is replaced by a box that shows what it was given and has a button for the end.
+  function DayStub({ day, zone, onClose }: DayProps) {
+    return createElement("div", { id: "day-stub", "data-day": day, "data-zone": zone }, createElement("button", { id: "day-stub-close", onClick: onClose }, "x"))
+  }
+  const ready: Loader = () => Promise.resolve(DayStub)
+
+  async function showWith(load: Loader): Promise<void> {
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    root = createRoot(container)
+    await act(async () => {
+      root?.render(createElement(OverviewHud, { load }))
+    })
+  }
+  const button = () => container?.querySelector<HTMLButtonElement>(".ab-hud-open") ?? null
+  const dayBox = () => document.getElementById("day-stub")
+  async function click(el: Element | null): Promise<void> {
+    await act(async () => {
+      ;(el as HTMLElement | null)?.click()
+    })
+  }
+  async function fire(type: string): Promise<void> {
+    await act(async () => {
+      button()?.dispatchEvent(new MouseEvent(type, { bubbles: true }))
+    })
+  }
+
+  it("is under the figures of a day with sessions, and says See the whole day", async () => {
+    await showWith(ready)
+    expect(button()).toBeNull()
+    await answer(0, score())
+    expect(button()?.textContent).toBe("See the whole day")
+    expect(button()?.type).toBe("button")
+    expect(button()?.classList.contains("ab-glass-button")).toBe(true)
+  })
+
+  it("is not there while the day is read, when it cannot be read, or when the day has no session", async () => {
+    await showWith(ready)
+    expect(button()).toBeNull()
+    await fail(0)
+    expect(button()).toBeNull()
+    act(() => root?.unmount())
+    container?.remove()
+    api.waiting = []
+    await showWith(ready)
+    await answer(0, score({ sessions: 0, creditedMinutes: 0, word: "NO SESSION", longestStretchMinutes: 0, countedOverElapsed: null }))
+    expect(text(".ab-hud-empty")).toBe("No session yet today.")
+    expect(button()).toBeNull()
+  })
+
+  it("is a plain dark box on a phone (lite level 1 or 2) and the glass on a laptop", async () => {
+    await showWith(ready)
+    await answer(0, score())
+    expect(button()?.getAttribute("data-lite")).toBeNull()
+    act(() => root?.unmount())
+    container?.remove()
+    api.waiting = []
+    lite.level = 2
+    await showWith(ready)
+    await answer(0, score())
+    expect(button()?.getAttribute("data-lite")).toBe("on")
+  })
+
+  it("loads the screen early when the pointer, a touch or the focus comes to the button", async () => {
+    const load = vi.fn(ready)
+    await showWith(load)
+    await answer(0, score())
+    expect(load).not.toHaveBeenCalled()
+    await fire("pointerover")
+    expect(load).toHaveBeenCalledTimes(1)
+    await fire("pointerdown")
+    expect(load).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      button()?.focus()
+    })
+    expect(load).toHaveBeenCalledTimes(3)
+    expect(dayBox()).toBeNull()
+  })
+
+  it("says nothing when the early loading fails", async () => {
+    const load = vi.fn<Loader>(() => Promise.reject(new Error("chunk")))
+    await showWith(load)
+    await answer(0, score())
+    await fire("pointerover")
+    expect(load).toHaveBeenCalledTimes(1)
+    expect(container?.textContent).not.toContain("Could not open the day")
+    expect(button()?.getAttribute("aria-busy")).toBe("false")
+  })
+
+  it("opens the screen with the day of the figures and the zone of the device, and takes it away when the screen asks for it", async () => {
+    await showWith(ready)
+    await answer(0, score({ day: "2026-10-21" }))
+    await click(button())
+    expect(dayBox()?.getAttribute("data-day")).toBe("2026-10-21")
+    expect(dayBox()?.getAttribute("data-zone")).toBe("Asia/Kolkata")
+    await click(document.getElementById("day-stub-close"))
+    expect(dayBox()).toBeNull()
+    expect(button()).not.toBeNull()
+  })
+
+  it("says that it is busy while the screen loads, and takes no second tap", async () => {
+    let release: (view: ComponentType<DayProps>) => void = () => undefined
+    const load = vi.fn<Loader>(() => new Promise((resolve) => (release = resolve)))
+    await showWith(load)
+    await answer(0, score())
+    expect(button()?.getAttribute("aria-busy")).toBe("false")
+    await click(button())
+    expect(button()?.getAttribute("aria-busy")).toBe("true")
+    await click(button())
+    expect(load).toHaveBeenCalledTimes(1)
+    expect(dayBox()).toBeNull()
+    await act(async () => {
+      release(DayStub)
+    })
+    expect(dayBox()).not.toBeNull()
+    expect(button()?.getAttribute("aria-busy")).toBe("false")
+  })
+
+  it("says so when the screen cannot be loaded, and the next tap tries again", async () => {
+    const load = vi.fn<Loader>().mockRejectedValueOnce(new Error("chunk")).mockResolvedValue(DayStub)
+    await showWith(load)
+    await answer(0, score())
+    await click(button())
+    expect(text(".ab-hud-day")).toContain("Could not open the day. Tap to try again.")
+    expect(button()?.getAttribute("aria-busy")).toBe("false")
+    await click(button())
+    expect(load).toHaveBeenCalledTimes(2)
+    expect(dayBox()).not.toBeNull()
+    expect(text(".ab-hud-day")).not.toContain("Could not open the day")
+  })
+
+  it("says so, and loads nothing, when the device no longer gives a time zone", async () => {
+    const load = vi.fn(ready)
+    await showWith(load)
+    await answer(0, score())
+    api.zone = null
+    await click(button())
+    expect(text(".ab-hud-day")).toContain("Could not open the day. Tap to try again.")
+    expect(load).not.toHaveBeenCalled()
+    expect(dayBox()).toBeNull()
   })
 })
 // AB:OVERVIEW.TESTS:END
