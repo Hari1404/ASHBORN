@@ -41,7 +41,7 @@ vi.mock("@/lib/lite", () => ({
 }))
 
 import OverviewDayView from "./OverviewDayView"
-import { dayPaletteOf, OVERVIEW_CONDITIONS, type OverviewCondition } from "@/lib/overviewCondition"
+import { conditionFromMinutes, dayPaletteOf, OVERVIEW_CONDITIONS, type OverviewCondition } from "@/lib/overviewCondition"
 import { buildDayView, dayLegendFor } from "@/lib/overviewDay"
 
 // AB:OVERVIEW.TESTS:START
@@ -567,15 +567,28 @@ describe("closing", () => {
 })
 
 describe("the keyboard", () => {
-  it("keeps the focus on Close when it is the only button", async () => {
+  it("goes round Close and the days: from the last day to Close, and back from Close to the last day", async () => {
     await show()
     await answer()
     const close = q(".ab-day-close")
-    close?.focus()
+    const last = all(".ab-day-chip")[2]
+    last.focus()
     expect((await press("Tab")).defaultPrevented).toBe(true)
     expect(document.activeElement).toBe(close)
     expect((await press("Tab", true)).defaultPrevented).toBe(true)
-    expect(document.activeElement).toBe(close)
+    expect(document.activeElement).toBe(last)
+  })
+
+  it("leaves Tab to the browser between Close and the days, and between two days", async () => {
+    await show()
+    await answer()
+    const chips = all(".ab-day-chip")
+    q(".ab-day-close")?.focus()
+    expect((await press("Tab")).defaultPrevented).toBe(false)
+    chips[0].focus()
+    expect((await press("Tab")).defaultPrevented).toBe(false)
+    chips[1].focus()
+    expect((await press("Tab", true)).defaultPrevented).toBe(false)
   })
 
   describe("with Close and Try again", () => {
@@ -733,6 +746,324 @@ describe("the colours of the condition", () => {
     await show({ condition: "good" })
     await answer()
     expect(q(".ab-day-title")?.textContent).toBe("Wednesday")
+  })
+})
+describe("the week: the days of this week up to today", () => {
+  const MON = "2026-10-19"
+  const TUE = "2026-10-20"
+  const THU = "2026-10-22"
+  const SUN = "2026-10-25"
+  const chips = () => all(".ab-day-chip")
+  const chip = (name: string) => chips().find((c) => c.getAttribute("aria-label")?.startsWith(name)) as HTMLElement
+  const pressed = () => chips().map((c) => c.getAttribute("aria-pressed"))
+  const TUE_SESSIONS = [session("09:00", 30, "MATHS"), session("13:00", 45, "MATHS")]
+  const tueScore = (minutes = 75) => score({ day: TUE, creditedMinutes: minutes, sessions: 2, shortSessions: 0, longestStretchMinutes: 45 })
+
+  it("shows one button for each day from Monday to today, with today marked and chosen", async () => {
+    await show()
+    expect(texts(".ab-day-chip")).toEqual(["Mon", "Tue", "Wed"])
+    expect(chips().map((c) => c.getAttribute("aria-label"))).toEqual(["Monday", "Tuesday", "Wednesday, today"])
+    expect(pressed()).toEqual(["false", "false", "true"])
+    expect(chips().map((c) => c.dataset.today)).toEqual([undefined, undefined, "true"])
+    expect(q(".ab-day-week")?.getAttribute("role")).toBe("group")
+    expect(q(".ab-day-week")?.getAttribute("aria-label")).toBe("This week")
+    expect(all(".ab-day-chip").every((c) => c.getAttribute("type") === "button")).toBe(true)
+  })
+
+  it("shows four days on a Thursday, Monday alone on a Monday and the whole week on a Sunday", async () => {
+    await show({ day: THU })
+    expect(texts(".ab-day-chip")).toEqual(["Mon", "Tue", "Wed", "Thu"])
+    expect(pressed()).toEqual(["false", "false", "false", "true"])
+    await unmount()
+    document.body.replaceChildren(appRoot as HTMLElement)
+    await show({ day: MON })
+    expect(texts(".ab-day-chip")).toEqual(["Mon"])
+    await unmount()
+    document.body.replaceChildren(appRoot as HTMLElement)
+    await show({ day: SUN })
+    expect(texts(".ab-day-chip")).toEqual(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+  })
+
+  it("draws no row when the day text is not a day (the reading then says so)", async () => {
+    await show({ day: "not-a-day" })
+    expect(all(".ab-day-chip")).toHaveLength(0)
+    await act(async () => {
+      api.scores[0].resolve(score())
+      api.sessions[0].resolve(HTML_SESSIONS)
+    })
+    expect(q("[role=alert]")?.textContent).toBe("Could not read this day.")
+  })
+
+  it("is there while the first day is read, and when the first day cannot be read", async () => {
+    await show()
+    expect(chips()).toHaveLength(3)
+    expect(q("[role=status]")?.textContent).toBe("Reading the day…")
+    await act(async () => {
+      api.scores[0].reject(new Error("NO_CONNECTION"))
+      api.sessions[0].resolve(HTML_SESSIONS)
+    })
+    expect(q("[role=alert]")?.textContent).toBe("Could not read this day.")
+    expect(chips()).toHaveLength(3)
+  })
+
+  it("comes in with the light and not with the day", async () => {
+    await show()
+    expect(q(".ab-day")?.dataset.lit).toBe("false")
+    await pass(LAND_MS)
+    expect(q(".ab-day")?.dataset.lit).toBe("true")
+    expect(q(".ab-day-sheet")?.dataset.reveal).toBe("false")
+  })
+
+  it("is there from the first picture with reduced motion", async () => {
+    setReducedMotion(true)
+    await show()
+    expect(q(".ab-day")?.dataset.lit).toBe("true")
+    expect(chips()).toHaveLength(3)
+  })
+
+  it("reads only the day that is chosen, with the same two readings as for today, and shows its weekday, sentence, pills and tag bar", async () => {
+    await show()
+    await answer()
+    await click(chip("Tuesday"))
+    expect(api.scoreDays).toEqual([DAY, TUE])
+    expect(api.sessionDays).toEqual([DAY, TUE])
+    await answer({ index: 1, score: tueScore(), sessions: TUE_SESSIONS })
+    expect(q(".ab-day-title")?.textContent).toBe("Tuesday")
+    expect(q(".ab-day-sentence")?.textContent).toBe("Two sessions. The longest stretch ran 45, and none lasted under ten.")
+    expect(texts(".ab-day-blab")).toEqual(["30 \u00b7 MATHS", "45 \u00b7 MATHS"])
+    expect(texts(".ab-day-tl span")).toEqual(["MATHS 75"])
+    expect(pressed()).toEqual(["false", "true", "false"])
+  })
+
+  it("asks for the days of the week by their texts (Monday of this week is the first)", async () => {
+    await show()
+    await answer()
+    await click(chip("Monday"))
+    await click(chip("Tuesday"))
+    expect(api.scoreDays).toEqual([DAY, MON, TUE])
+    expect(api.sessionDays).toEqual([DAY, MON, TUE])
+  })
+
+  it("does nothing when the chosen day is chosen again", async () => {
+    await show()
+    await answer()
+    await click(chip("Wednesday"))
+    expect(api.scoreDays).toEqual([DAY])
+    expect(pressed()).toEqual(["false", "false", "true"])
+  })
+
+  it("keeps the day that is shown, dimmer, while the chosen day is read, with the new button already chosen", async () => {
+    await show()
+    await answer()
+    expect(q(".ab-day-body")?.dataset.busy).toBe("false")
+    await click(chip("Tuesday"))
+    expect(q(".ab-day-body")?.dataset.busy).toBe("true")
+    expect(q(".ab-day-body")?.getAttribute("aria-busy")).toBe("true")
+    expect(q(".ab-day-title")?.textContent).toBe("Wednesday")
+    expect(pressed()).toEqual(["false", "true", "false"])
+    await answer({ index: 1, score: tueScore(), sessions: TUE_SESSIONS })
+    expect(q(".ab-day-body")?.dataset.busy).toBe("false")
+    expect(q(".ab-day-body")?.getAttribute("aria-busy")).toBe("false")
+    expect(q(".ab-day-title")?.textContent).toBe("Tuesday")
+  })
+
+  it("does not play the opening again: the beam, the sheet and the pieces of the day are the same elements and the reveal stays on", async () => {
+    await show()
+    await pass(BLACK_MS)
+    await answer()
+    await pass(LAND_MS)
+    await pass(REVEAL_DELAY_MS)
+    expect(q(".ab-day-sheet")?.dataset.reveal).toBe("true")
+    const before = [q("#beam-stub"), q(".ab-day"), q(".ab-day-sheet"), q(".ab-day-week"), q(".ab-day-body"), q(".ab-day-title"), q(".ab-day-sentence"), q(".ab-day-track")]
+    expect(before.every((el) => el !== null)).toBe(true)
+    await click(chip("Tuesday"))
+    expect(q(".ab-day-sheet")?.dataset.reveal).toBe("true")
+    await answer({ index: 1, score: tueScore(), sessions: TUE_SESSIONS })
+    await pass(LAND_MS)
+    await pass(REVEAL_DELAY_MS)
+    const after = [q("#beam-stub"), q(".ab-day"), q(".ab-day-sheet"), q(".ab-day-week"), q(".ab-day-body"), q(".ab-day-title"), q(".ab-day-sentence"), q(".ab-day-track")]
+    after.forEach((el, i) => expect(el).toBe(before[i]))
+    expect(q(".ab-day-sheet")?.dataset.reveal).toBe("true")
+    expect(q(".ab-day")?.dataset.lit).toBe("true")
+    expect(q(".ab-day")?.dataset.on).toBe("true")
+  })
+
+  it("never turns the reveal off while another day is read or when it cannot be read", async () => {
+    await show()
+    await answer()
+    await pass(LAND_MS)
+    await pass(REVEAL_DELAY_MS)
+    expect(q(".ab-day-sheet")?.dataset.reveal).toBe("true")
+    await click(chip("Tuesday"))
+    expect(q(".ab-day-sheet")?.dataset.reveal).toBe("true")
+    await act(async () => {
+      api.scores[1].reject(new Error("NO_CONNECTION"))
+      api.sessions[1].resolve([])
+    })
+    expect(q(".ab-day-sheet")?.dataset.reveal).toBe("true")
+  })
+
+  describe("the colours of the chosen day", () => {
+    it("stay while the day is read and go to the colours of the condition of its own minutes when it arrives", async () => {
+      await show({ condition: "good" })
+      await pass(BLACK_MS)
+      await answer()
+      expect(lastBeam().color).toBe(dayPaletteOf("good").beam)
+      await click(chip("Tuesday"))
+      expect(lastBeam().color).toBe(dayPaletteOf("good").beam)
+      expect(q(".ab-day")?.getAttribute("data-condition")).toBe("good")
+      await answer({ index: 1, score: tueScore(30), sessions: TUE_SESSIONS })
+      const rose = dayPaletteOf("notEnough")
+      expect(lastBeam().color).toBe(rose.beam)
+      const root = q(".ab-day")
+      expect(root?.style.getPropertyValue("--ab-day-beam")).toBe(rose.beam)
+      expect(root?.style.getPropertyValue("--ab-day-accent")).toBe(rose.accent)
+      expect(root?.getAttribute("data-condition")).toBe("notEnough")
+    })
+
+    it.each([
+      [0, "unknown"],
+      [60, "notEnough"],
+      [150, "okay"],
+      [300, "good"],
+    ] as const)("of a day with %i credited minutes are those of the condition %s, in the beam, the pills and the legend", async (minutes, expected) => {
+      expect(conditionFromMinutes(minutes)).toBe(expected)
+      await show({ condition: "okay" })
+      await pass(BLACK_MS)
+      await answer()
+      await click(chip("Tuesday"))
+      await answer({ index: 1, score: tueScore(minutes), sessions: TUE_SESSIONS })
+      const colors = dayPaletteOf(expected).qualities
+      expect(lastBeam().color).toBe(dayPaletteOf(expected).beam)
+      const bars = all(".ab-day-bar")
+      expect(bars).toHaveLength(2)
+      for (const bar of bars) expect(bar.style.background).toBe(drawn(colors[bar.dataset.quality as keyof typeof colors]))
+      expect(all(".ab-day-swatch").map((swatch) => swatch.style.background)).toEqual([colors.meh, colors.solid, colors.deep, colors.flow].map(drawn))
+    })
+
+    it("of today are always the condition the button gave, also when today is chosen again and its minutes now say another condition", async () => {
+      await show({ condition: "good" })
+      await pass(BLACK_MS)
+      await answer()
+      await click(chip("Tuesday"))
+      await answer({ index: 1, score: tueScore(30), sessions: TUE_SESSIONS })
+      expect(lastBeam().color).toBe(dayPaletteOf("notEnough").beam)
+      await click(chip("Wednesday"))
+      await answer({ index: 2, score: score({ creditedMinutes: 30 }) })
+      expect(lastBeam().color).toBe(dayPaletteOf("good").beam)
+      expect(q(".ab-day")?.getAttribute("data-condition")).toBe("good")
+      expect(q(".ab-day-title")?.textContent).toBe("Wednesday")
+      expect(api.scoreDays).toEqual([DAY, TUE, DAY])
+    })
+
+    it("go to the colours of the condition unknown for a day without a session", async () => {
+      await show({ condition: "good" })
+      await pass(BLACK_MS)
+      await answer()
+      await click(chip("Monday"))
+      await answer({ index: 1, score: score({ day: MON, creditedMinutes: 0, sessions: 0, shortSessions: 0, longestStretchMinutes: 0 }), sessions: [] })
+      expect(q(".ab-day-title")?.textContent).toBe("Monday")
+      expect(q(".ab-day-sentence")?.textContent).toBe("No session this day.")
+      expect(all(".ab-day-track")).toHaveLength(0)
+      expect(lastBeam().color).toBe(dayPaletteOf("unknown").beam)
+    })
+  })
+
+  it("ignores a reading of a day that is not chosen any more", async () => {
+    await show()
+    await answer()
+    await click(chip("Tuesday"))
+    await click(chip("Monday"))
+    expect(api.scoreDays).toEqual([DAY, TUE, MON])
+    await answer({ index: 2, score: score({ day: MON, creditedMinutes: 150 }), sessions: [session("08:00", 30, "NPTEL")] })
+    expect(q(".ab-day-title")?.textContent).toBe("Monday")
+    await answer({ index: 1, score: tueScore(), sessions: TUE_SESSIONS })
+    expect(q(".ab-day-title")?.textContent).toBe("Monday")
+    expect(texts(".ab-day-blab")).toEqual(["30 \u00b7 NPTEL"])
+    expect(pressed()).toEqual(["true", "false", "false"])
+  })
+
+  it("lets the first day be left before it is read, and shows the day that was chosen", async () => {
+    await show()
+    await click(chip("Monday"))
+    await act(async () => {
+      api.scores[0].resolve(score())
+      api.sessions[0].resolve(HTML_SESSIONS)
+    })
+    expect(q("[role=status]")?.textContent).toBe("Reading the day…")
+    await answer({ index: 1, score: score({ day: MON, creditedMinutes: 150 }), sessions: [session("08:00", 30, "NPTEL")] })
+    expect(q(".ab-day-title")?.textContent).toBe("Monday")
+    expect(pressed()).toEqual(["true", "false", "false"])
+  })
+
+  it("says so, with Try again, when the chosen day cannot be read, keeps the row, and Try again reads that day and not today", async () => {
+    await show()
+    await answer()
+    await click(chip("Tuesday"))
+    await act(async () => {
+      api.scores[1].reject(new Error("NO_CONNECTION"))
+      api.sessions[1].resolve(TUE_SESSIONS)
+    })
+    expect(q("[role=alert]")?.textContent).toBe("Could not read this day.")
+    expect(all(".ab-day-body")).toHaveLength(0)
+    expect(chips()).toHaveLength(3)
+    expect(pressed()).toEqual(["false", "true", "false"])
+    await click(q(".ab-day-retry"))
+    expect(api.scoreDays).toEqual([DAY, TUE, TUE])
+    await answer({ index: 2, score: tueScore(), sessions: TUE_SESSIONS })
+    expect(q("[role=alert]")).toBeNull()
+    expect(q(".ab-day-title")?.textContent).toBe("Tuesday")
+  })
+
+  it("lets another day be chosen after a day could not be read, and shows the day before again when it is chosen", async () => {
+    await show()
+    await answer()
+    await click(chip("Tuesday"))
+    await act(async () => {
+      api.scores[1].reject(new Error("NO_CONNECTION"))
+      api.sessions[1].resolve(TUE_SESSIONS)
+    })
+    await click(chip("Wednesday"))
+    expect(q("[role=alert]")).toBeNull()
+    expect(q(".ab-day-title")?.textContent).toBe("Wednesday")
+    expect(q(".ab-day-body")?.dataset.busy).toBe("false")
+    await answer({ index: 2 })
+    expect(q(".ab-day-title")?.textContent).toBe("Wednesday")
+  })
+
+  it("places the labels of the pills of the new day (the rows are worked out again)", async () => {
+    await show()
+    await answer()
+    await click(chip("Tuesday"))
+    await answer({ index: 1, score: tueScore(), sessions: TUE_SESSIONS })
+    expect(all(".ab-day-blab").every((label) => label.dataset.lane !== undefined)).toBe(true)
+    expect(q(".ab-day-track")?.dataset.lanes).toBe("2")
+  })
+
+  it("works in StrictMode too (two readings at the start, then one for each chosen day)", async () => {
+    await show({ strict: true })
+    expect(api.scoreDays).toEqual([DAY, DAY])
+    await answer({ index: 1 })
+    expect(q(".ab-day-title")?.textContent).toBe("Wednesday")
+    await click(chip("Tuesday"))
+    expect(api.scoreDays.slice(2).every((d) => d === TUE)).toBe(true)
+    await answer({ index: api.scores.length - 1, score: tueScore(), sessions: TUE_SESSIONS })
+    expect(q(".ab-day-title")?.textContent).toBe("Tuesday")
+  })
+
+  it("takes the row, the chosen day, the dimming and the colour of the chosen day from the css, and stops their motion with reduced motion", () => {
+    const css = readFileSync("src/dayview.css", "utf8")
+    expect(css).toMatch(/\.ab-day\[data-lit="true"\] \.ab-day-week \{[^}]*opacity: 1;/)
+    expect(css).toMatch(/\.ab-day-chip\[aria-pressed="true"\] \{[^}]*color: var\(--ab-day-accent\);/)
+    expect(css).toMatch(/\.ab-day-chip\[data-today="true"\]::after \{/)
+    expect(css).toMatch(/\.ab-day-body\[data-busy="true"\] \{[^}]*opacity: 0\.4;/)
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"))
+    for (const name of [".ab-day-week", ".ab-day-chip", ".ab-day-body"]) expect(reduced).toContain(name)
+  })
+
+  it("does not ask the database for anything else: the HUD is not part of this screen and no other function is imported", () => {
+    const source = readFileSync("src/components/OverviewDayView.tsx", "utf8")
+    expect(source).toContain('import { timerDayScore, timerDaySessions } from "@/lib/timerApi"')
   })
 })
 // AB:OVERVIEW.TESTS:END

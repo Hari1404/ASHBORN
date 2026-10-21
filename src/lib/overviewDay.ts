@@ -72,7 +72,7 @@ export function dayTitle(day: string): string {
   return WEEKDAYS[probe.getUTCDay()]
 }
 
-// The week the whole day screen lets the person look at (Packet 12): this week only, from Monday to today. Monday is the first day of the week. Nothing before that Monday (no earlier week, no month) and nothing after today (the days that have not happened yet). On a Monday the week is Monday alone. Plain text in, plain values out: the days are day texts (YYYY-MM-DD, the local day of the database), so no time zone is involved here.
+// The week the whole day screen lets the person look at (Week view): this week only, from Monday to today. Monday is the first day of the week. Nothing before that Monday (no earlier week, no month) and nothing after today (the days that have not happened yet). On a Monday the week is Monday alone. Plain text in, plain values out: the days are day texts (YYYY-MM-DD, the local day of the database), so no time zone is involved here.
 export type WeekDay = { day: string; name: string; short: string; isToday: boolean }
 
 // A day text moved by a number of days (negative goes back): "2026-10-21", -2 -> "2026-10-19". It goes over month and year ends. Text that is not a day throws an Error that starts with BAD_LOCAL_DAY (the same check as dayTitle).
