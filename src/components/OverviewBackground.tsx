@@ -8,7 +8,7 @@ import "../overview.css"
 // AB:OVERVIEW.BG:START
 // The moving background of the Overview screen: the React Bits animation Gradient ASCII (library file src/components/GradientASCII.tsx) in one of the four Studio presets, with the sound of its intro.
 // Every time the Overview opens, one of the four presets is picked at random, never the one of the last opening while the page stays open (a reload of the page starts fresh and may give the same one; the choice and the settings are in src/lib/overviewLook.ts). The mouse does nothing here: no scramble under the cursor and no wave on a click.
-// The sound of the intro (src/lib/overviewSound.ts) starts with the intro and is stopped when the Overview goes away.
+// The sound of the intro (src/lib/overviewSound.ts) starts with the intro (never after it) and is stopped when the Overview goes away. It plays at most once a minute (the one minute rule of that file); the picture is the same either way.
 // A phone (lite level 1 or 2, src/lib/lite.ts) draws the characters at a pixel ratio of 1 instead of up to 2, which is a quarter of the pixels on a phone screen. The size of the cells stays 19 px: it is NOT drawn in the half-size box of the other backgrounds (CONNECTIONS.md C21), which would make the characters twice as big. The background never stands still, at any lite level.
 // See CONNECTIONS.md C59.
 let lastPreset: OverviewPresetName | null = null

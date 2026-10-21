@@ -5,7 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const engine = vi.hoisted(() => ({ renderSound: vi.fn() }))
 vi.mock("@/lib/react-bits-sound", () => ({ renderSound: engine.renderSound }))
 
-import { REVEAL, SOUND_VOLUME, forgetIntroSound, startIntroSound } from "./overviewSound"
+import { REVEAL, SOUND_COOLDOWN_MS, SOUND_STAMP_KEY, SOUND_VOLUME, forgetIntroSound, prepareIntroSound, startIntroSound as startForReal } from "./overviewSound"
+
+// Every opening that a test makes is closed again when the test ends, as the screen does when it goes away: a waiting sound that is left behind would still answer the tap of the next test, and would take the minute of the one minute rule.
+const openings: (() => void)[] = []
+const startIntroSound = () => {
+  const stop = startForReal()
+  openings.push(stop)
+  return stop
+}
 
 // AB:OVERVIEW.TESTS:START
 // A fake audio context that writes down what it is asked to do. `permission.allowed` plays the browser: while it is false the context stays suspended and a resume does nothing, until a test calls allow() (a tap).
@@ -79,7 +87,11 @@ class FakeContext {
 
 const buffer = { duration: 6, name: "the-sound" }
 let now = 0
+let wall = 1_800_000_000_000
 let reduce = false
+
+// The time in the browser (the clock), as the number the stamp of the one minute rule is made of.
+const stamp = () => window.localStorage.getItem(SOUND_STAMP_KEY)
 
 // Lets the waiting parts of startIntroSound (the sound is "drawn", the context is "resumed") finish.
 async function flush() {
@@ -93,18 +105,23 @@ function tap(type = "pointerdown") {
 
 beforeEach(() => {
   forgetIntroSound()
+  window.localStorage.clear()
   made.contexts = []
   permission.allowed = true
   now = 0
+  wall = 1_800_000_000_000
   reduce = false
   engine.renderSound.mockReset()
   engine.renderSound.mockImplementation(async () => buffer)
   vi.spyOn(performance, "now").mockImplementation(() => now)
+  vi.spyOn(Date, "now").mockImplementation(() => wall)
   vi.stubGlobal("AudioContext", FakeContext)
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: reduce && query.includes("reduced-motion") }))
 })
 
 afterEach(() => {
+  for (const stop of openings.splice(0)) stop()
+  forgetIntroSound()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -185,6 +202,7 @@ describe("startIntroSound when the browser allows a sound", () => {
     startIntroSound()
     await flush()
     expect(only().sources.length).toBe(0)
+    expect(stamp()).toBeNull()
   })
 
   it("plays the rest of the sound when drawing it took long but some of it is left (a sound is not dropped just because the 2 second picture is over)", async () => {
@@ -200,9 +218,10 @@ describe("startIntroSound when the browser allows a sound", () => {
     expect(ctx.sources[0].stops).toEqual([])
   })
 
-  it("makes one audio context and draws the sound once for several openings of the Overview", async () => {
+  it("makes one audio context and draws the sound once for several openings of the Overview (a minute apart)", async () => {
     startIntroSound()
     await flush()
+    wall += SOUND_COOLDOWN_MS
     startIntroSound()
     await flush()
     expect(made.contexts.length).toBe(1)
@@ -281,21 +300,31 @@ describe("startIntroSound when the browser does not allow a sound yet", () => {
     expect(ctx.sources.length).toBe(0)
   })
 
-  it.each(["pointerdown", "keydown", "touchend"])("plays the sound from its start at the first %s, once", async (type) => {
+  it.each(["pointerdown", "keydown", "touchend"])("joins in step with the picture at the first %s (never late from its start), once", async (type) => {
     startIntroSound()
     await flush()
-    now = 20000
+    now = 1500
     tap(type)
     await flush()
     const ctx = only()
     expect(ctx.sources.length).toBe(1)
-    expect(ctx.sources[0].starts[0].offset).toBe(0)
+    expect(ctx.sources[0].starts[0].offset).toBe(1.5)
     expect(ctx.sources[0].stops).toEqual([])
     tap("pointerdown")
     tap("keydown")
     tap("touchend")
     await flush()
     expect(ctx.sources.length).toBe(1)
+  })
+
+  it("leaves the sound out when the first tap comes after the sound is over: it is never played late from its start", async () => {
+    startIntroSound()
+    await flush()
+    now = 20000
+    tap()
+    await flush()
+    expect(only().sources.length).toBe(0)
+    expect(stamp()).toBeNull()
   })
 
   it("resumes the context inside the tap itself, which Safari needs", async () => {
@@ -323,6 +352,265 @@ describe("startIntroSound when the browser does not allow a sound yet", () => {
     window.dispatchEvent(new Event("pointerdown"))
     await flush()
     expect(only().sources.length).toBe(0)
+  })
+})
+
+describe("prepareIntroSound: everything is ready before the Overview opens, so the sound starts with the picture and not after it", () => {
+  it("makes the audio context and draws the sound at its rate before any opening, and plays nothing yet", async () => {
+    prepareIntroSound()
+    await flush()
+    const ctx = only()
+    expect(ctx.options).toEqual({ latencyHint: "interactive" })
+    expect(engine.renderSound).toHaveBeenCalledTimes(1)
+    expect(engine.renderSound).toHaveBeenCalledWith(REVEAL, {}, { sampleRate: 48000 })
+    expect(ctx.sources.length).toBe(0)
+    expect(stamp()).toBeNull()
+  })
+
+  it("lets the opening start the sound at its very start, and draws nothing again", async () => {
+    prepareIntroSound()
+    await flush()
+    startIntroSound()
+    await flush()
+    const ctx = only()
+    expect(engine.renderSound).toHaveBeenCalledTimes(1)
+    expect(ctx.sources.length).toBe(1)
+    expect(ctx.sources[0].starts[0].offset).toBe(0)
+  })
+
+  it("wakes a sleeping context at the first tap, inside the tap itself, and then stops listening", async () => {
+    permission.allowed = false
+    prepareIntroSound()
+    await flush()
+    const ctx = only()
+    expect(ctx.state).toBe("suspended")
+    expect(ctx.resumes).toBe(0)
+    permission.allowed = true
+    window.dispatchEvent(new Event("pointerdown"))
+    expect(ctx.resumes).toBe(1)
+    await flush()
+    expect(ctx.state).toBe("running")
+    tap("keydown")
+    tap("touchend")
+    await flush()
+    expect(ctx.resumes).toBe(1)
+  })
+
+  it("starts the sound at its very start when the tap came before the Overview opened (for example the tap on the sign-in button)", async () => {
+    permission.allowed = false
+    prepareIntroSound()
+    await flush()
+    tap()
+    await flush()
+    startIntroSound()
+    await flush()
+    const ctx = only()
+    expect(ctx.sources.length).toBe(1)
+    expect(ctx.sources[0].starts[0].offset).toBe(0)
+    expect(stamp()).toBe(String(wall))
+  })
+
+  it("keeps waiting when a tap does not unlock the browser: the next one still wakes it", async () => {
+    permission.allowed = false
+    prepareIntroSound()
+    await flush()
+    window.dispatchEvent(new Event("pointerdown"))
+    await flush()
+    window.dispatchEvent(new Event("pointerdown"))
+    await flush()
+    const ctx = only()
+    expect(ctx.resumes).toBe(2)
+    expect(ctx.state).toBe("suspended")
+    tap()
+    await flush()
+    expect(ctx.state).toBe("running")
+  })
+
+  it("does not listen twice when it is called twice", async () => {
+    permission.allowed = false
+    prepareIntroSound()
+    prepareIntroSound()
+    await flush()
+    window.dispatchEvent(new Event("pointerdown"))
+    expect(only().resumes).toBe(1)
+    expect(engine.renderSound).toHaveBeenCalledTimes(1)
+  })
+
+  it("draws the sound again at the opening when the first drawing failed, without an error", async () => {
+    engine.renderSound.mockImplementationOnce(async () => {
+      throw new Error("no offline audio")
+    })
+    expect(() => prepareIntroSound()).not.toThrow()
+    await flush()
+    startIntroSound()
+    await flush()
+    expect(engine.renderSound).toHaveBeenCalledTimes(2)
+    expect(only().sources.length).toBe(1)
+  })
+
+  it("makes nothing for a person who asked for less motion", async () => {
+    reduce = true
+    prepareIntroSound()
+    await flush()
+    expect(made.contexts.length).toBe(0)
+    expect(engine.renderSound).not.toHaveBeenCalled()
+  })
+
+  it("does nothing, without an error, in a browser with no audio", async () => {
+    vi.stubGlobal("AudioContext", undefined)
+    expect(() => prepareIntroSound()).not.toThrow()
+    await flush()
+    expect(engine.renderSound).not.toHaveBeenCalled()
+  })
+})
+
+describe("the one minute rule", () => {
+  it("writes down the time at the moment the sound starts", async () => {
+    expect(stamp()).toBeNull()
+    startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(1)
+    expect(stamp()).toBe(String(wall))
+  })
+
+  it("leaves the sound out when the Overview opens again less than a minute later in the same page (and the picture is not touched: only the sound is gone)", async () => {
+    startIntroSound()
+    await flush()
+    wall += 30_000
+    startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(1)
+    expect(stamp()).toBe(String(wall - 30_000))
+  })
+
+  it("counts a reload and another tab too, because the time is kept in the browser: nothing is made or drawn for the sound that is left out", async () => {
+    startIntroSound()
+    await flush()
+    forgetIntroSound()
+    made.contexts = []
+    engine.renderSound.mockClear()
+    wall += SOUND_COOLDOWN_MS - 1
+    startIntroSound()
+    await flush()
+    expect(made.contexts.length).toBe(0)
+    expect(engine.renderSound).not.toHaveBeenCalled()
+  })
+
+  it("plays again once a full minute has passed, and writes down the new time", async () => {
+    startIntroSound()
+    await flush()
+    wall += SOUND_COOLDOWN_MS
+    startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(2)
+    expect(stamp()).toBe(String(wall))
+  })
+
+  it("is still silent one millisecond before the minute is over", async () => {
+    startIntroSound()
+    await flush()
+    wall += SOUND_COOLDOWN_MS - 1
+    startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(1)
+  })
+
+  it.each(["", "abc", "-5", "0", "NaN", "Infinity"])("takes the stored value %j for a sound that never played, never as a reason for silence", async (value) => {
+    window.localStorage.setItem(SOUND_STAMP_KEY, value)
+    startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(1)
+    expect(stamp()).toBe(String(wall))
+  })
+
+  it("takes a time in the future (the clock was set back) for long ago, and puts the real time in its place", async () => {
+    window.localStorage.setItem(SOUND_STAMP_KEY, String(wall + 5 * SOUND_COOLDOWN_MS))
+    startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(1)
+    expect(stamp()).toBe(String(wall))
+  })
+
+  it("keeps the minute in a plain variable when the browser does not allow storage, and never throws", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("SecurityError")
+    })
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("SecurityError")
+    })
+    startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(1)
+    wall += 30_000
+    startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(1)
+    wall += SOUND_COOLDOWN_MS
+    startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(2)
+  })
+
+  it("does not count a sound that never played: the browser did not allow it and the Overview went away, and the next opening still plays", async () => {
+    permission.allowed = false
+    const stop = startIntroSound()
+    await flush()
+    expect(stamp()).toBeNull()
+    stop()
+    permission.allowed = true
+    startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(1)
+    expect(stamp()).toBe(String(wall))
+  })
+
+  it("does not count a sound that is left out because nothing was left of it", async () => {
+    engine.renderSound.mockImplementation(async () => {
+      now = 5990
+      return buffer
+    })
+    startIntroSound()
+    await flush()
+    expect(stamp()).toBeNull()
+  })
+
+  it("counts a sound that starts at a tap (not before)", async () => {
+    permission.allowed = false
+    startIntroSound()
+    await flush()
+    expect(stamp()).toBeNull()
+    now = 800
+    tap()
+    await flush()
+    expect(only().sources[0].starts[0].offset).toBe(0.8)
+    expect(stamp()).toBe(String(wall))
+  })
+
+  it("leaves the sound out when another tab started its own while this one was drawing the sound", async () => {
+    engine.renderSound.mockImplementation(async () => {
+      window.localStorage.setItem(SOUND_STAMP_KEY, String(wall))
+      return buffer
+    })
+    startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(0)
+  })
+
+  it("does not take the minute for a first opening that React StrictMode takes away at once: the second one plays", async () => {
+    const first = startIntroSound()
+    first()
+    const second = startIntroSound()
+    await flush()
+    expect(only().sources.length).toBe(1)
+    expect(stamp()).toBe(String(wall))
+    second()
+  })
+
+  it("writes nothing down for a person who asked for less motion", async () => {
+    reduce = true
+    startIntroSound()
+    await flush()
+    expect(stamp()).toBeNull()
   })
 })
 
