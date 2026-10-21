@@ -985,6 +985,15 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `src/menu.css = padding: 20px 24px;`
 - Check by hand: open the Overview on a phone and on a laptop. The number of days sits to the left of the Menu button and does not touch it. The panel at the bottom is readable on all four looks (reload until each one has come). A day with a session shows the time as rolling digits, the word and the three figures; a day without one shows "No session yet today." and a link that opens the Pro Timer. The checker does not see how it looks.
 
+### C61: The day's sessions are read straight from the tables timer_sessions and timer_tags: the table and column names in timerApi.ts are the ones of the SQL file, and the read needs the select rights and policies that are there
+- Tags: `AB:TIMER.API`
+- If you change: the columns that the day view reads (DAY_SESSION_COLUMNS in timerApi.ts), the names of the two tables, or the rights in supabase/timer_schema.sql (the grant of select on timer_sessions and on timer_tags to authenticated, the two policies timer_sessions_select_own and timer_tags_select_own, the columns day, pauses, tz and tag_id of timer_sessions)
+- Then also: change both ends together: the SQL file and timerApi.ts (the names in DAY_SESSION_COLUMNS, the two table names, the key names that readDaySessionRows reads). The tests in src/lib/timerApi.test.ts read the SQL file and fail when a column, a grant or a policy is gone. The day that is asked for is the column day, the same one that timer_day_score uses (C54), so the sessions of the day view and the numbers of the day always belong together.
+- If you forget: the day view shows an error for every day (the database refuses the read, or a key is missing and the strict reader refuses the answer), or it shows sessions without their tags or pauses.
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = export const DAY_SESSION_COLUMNS = "id, started_at, ended_at, active_seconds, pauses, tz, tag_id"`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = supabase.from("timer_sessions")`
+- Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = supabase.from("timer_tags")`
+
 ## Things to know (no check is possible)
 - The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).
 - Sign-ups are OFF in the Supabase dashboard. Users are created there by hand, with "Auto Confirm User" ticked.

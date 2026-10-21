@@ -5,7 +5,7 @@ import dayScoreDecisions from "../../DECISIONS_DAY_SCORE.md?raw"
 import tagsDecisions from "../../DECISIONS_TAGS.md?raw"
 
 // The database client is replaced by a fake one, so no test ever calls the network.
-const holder = vi.hoisted(() => ({ client: null as null | { rpc: (...args: unknown[]) => unknown } }))
+const holder = vi.hoisted(() => ({ client: null as null | { rpc: (...args: unknown[]) => unknown; from?: (table: string) => unknown } }))
 vi.mock("@/lib/supabase", () => ({
   get supabase() {
     return holder.client
@@ -14,14 +14,17 @@ vi.mock("@/lib/supabase", () => ({
 
 import {
   DATABASE_ERRORS,
+  DAY_SESSION_COLUMNS,
   DAY_WORDS,
   REQUEST_TIMEOUT_MS,
   TimerError,
   classifyError,
   deviceTimeZone,
   isOnline,
+  joinDayTags,
   orderTagsByUse,
   readDayScore,
+  readDaySessionRows,
   readDayTotal,
   readEndReply,
   readRunningReply,
@@ -31,6 +34,7 @@ import {
   readTagUse,
   readTimerRow,
   timerDayScore,
+  timerDaySessions,
   timerDayTotal,
   timerEnd,
   timerPause,
@@ -967,6 +971,186 @@ describe("the day score reply and the call (Packet 09C)", () => {
     const words = [...body.matchAll(/(?:then|else) '([A-Z ]+)'/g)].map((m) => m[1])
     expect(words).toEqual([...DAY_WORDS])
     expect([...DAY_WORDS]).toEqual(["NO SESSION", "LIGHT", "BELOW USUAL", "USUAL", "ABOVE USUAL", "BIG"])
+  })
+})
+
+// The sessions of one day for the day view (CONNECTIONS.md C61): the strict reader, the join of the tag names, the direct read of the two tables, and the SQL file that gives the right to read them.
+describe("the sessions of a day", () => {
+  const A = "11111111-1111-4111-8111-111111111111"
+  const B = "22222222-2222-4222-8222-222222222222"
+  const TAG = "33333333-3333-4333-8333-333333333333"
+  const row = (over: Record<string, unknown> = {}) => ({
+    id: A,
+    started_at: "2026-10-21T01:40:00+00:00",
+    ended_at: "2026-10-21T02:32:00+00:00",
+    active_seconds: 3120,
+    pauses: [],
+    tz: "Asia/Kolkata",
+    tag_id: null,
+    ...over,
+  })
+
+  // A fake client that answers a table read. It writes down every step of the request so a test can look at it.
+  function tables(answers: Record<string, { data?: unknown; error?: unknown }>) {
+    const requests: { table: string; steps: unknown[][] }[] = []
+    holder.client = {
+      rpc: vi.fn(),
+      from: (table: string) => {
+        const request = { table, steps: [] as unknown[][] }
+        requests.push(request)
+        const builder: Record<string, unknown> = {}
+        for (const step of ["select", "eq", "in", "order"]) {
+          builder[step] = (...args: unknown[]) => {
+            request.steps.push([step, ...args])
+            return builder
+          }
+        }
+        builder.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+          Promise.resolve({ data: answers[table]?.data ?? null, error: answers[table]?.error ?? null }).then(resolve, reject)
+        return builder
+      },
+    }
+    return requests
+  }
+
+  async function kindOfCall(run: () => Promise<unknown>): Promise<TimerErrorKind | "no error" | "not a TimerError"> {
+    try {
+      await run()
+      return "no error"
+    } catch (error) {
+      return error instanceof TimerError ? error.kind : "not a TimerError"
+    }
+  }
+
+  it("reads a row with the names the app uses", () => {
+    expect(readDaySessionRows([row()])).toEqual([
+      {
+        id: A,
+        startedAt: "2026-10-21T01:40:00+00:00",
+        endedAt: "2026-10-21T02:32:00+00:00",
+        activeSeconds: 3120,
+        tz: "Asia/Kolkata",
+        pauses: [],
+        tagId: null,
+      },
+    ])
+  })
+
+  it("an empty list is fine", () => {
+    expect(readDaySessionRows([])).toEqual([])
+  })
+
+  it("a session saved before Packet 09A has no pause log and no zone: [] and null", () => {
+    const [one] = readDaySessionRows([row({ pauses: null, tz: null })])
+    expect(one.pauses).toEqual([])
+    expect(one.tz).toBeNull()
+  })
+
+  it("keeps the pause log as it is", () => {
+    const pauses = [{ from: "2026-10-21T01:50:00+00:00", to: "2026-10-21T01:55:00+00:00" }]
+    expect(readDaySessionRows([row({ pauses })])[0].pauses).toEqual(pauses)
+  })
+
+  it.each([
+    ["the sessions are not a list", { rows: [] }],
+    ["a row is not an object", [5]],
+    ["the id is not an id", [row({ id: "abc" })]],
+    ["the same session twice", [row(), row()]],
+    ["started_at is not a time", [row({ started_at: "yesterday" })]],
+    ["ended_at is missing", [row({ ended_at: undefined })]],
+    ["the session ends before it begins", [row({ ended_at: "2026-10-21T01:40:00+00:00" })]],
+    ["active_seconds has a fraction", [row({ active_seconds: 12.5 })]],
+    ["active_seconds is negative", [row({ active_seconds: -1 })]],
+    ["active_seconds is text", [row({ active_seconds: "3120" })]],
+    ["tz is empty", [row({ tz: "" })]],
+    ["pauses is not a list", [row({ pauses: {} })]],
+    ["a pause is not an object", [row({ pauses: [1] })]],
+    ["a pause ends before it begins", [row({ pauses: [{ from: "2026-10-21T01:55:00+00:00", to: "2026-10-21T01:50:00+00:00" }] })]],
+    ["tag_id is not an id", [row({ tag_id: "study" })]],
+  ])("refuses: %s", (_why, json) => {
+    expect(kindOf(() => readDaySessionRows(json))).toBe("BAD_REPLY")
+  })
+
+  it("puts the tag name into a session, and a session without a tag stays null (Freestyle)", () => {
+    const rows = readDaySessionRows([row({ tag_id: TAG.toUpperCase() }), row({ id: B })])
+    const joined = joinDayTags(rows, [{ id: TAG, name: "NPTEL" }])
+    expect(joined.map((session) => session.tag)).toEqual(["NPTEL", null])
+    expect("tagId" in joined[0]).toBe(false)
+  })
+
+  it("refuses a tag id that was not sent: the name is never guessed", () => {
+    const rows = readDaySessionRows([row({ tag_id: TAG })])
+    expect(kindOf(() => joinDayTags(rows, []))).toBe("BAD_REPLY")
+  })
+
+  it("asks timer_sessions for that day, earliest first, with the columns of the list", async () => {
+    const requests = tables({ timer_sessions: { data: [row()] } })
+    const sessions = await timerDaySessions("2026-10-21")
+    expect(sessions).toHaveLength(1)
+    expect(requests).toHaveLength(1)
+    expect(requests[0].table).toBe("timer_sessions")
+    expect(requests[0].steps).toEqual([
+      ["select", DAY_SESSION_COLUMNS],
+      ["eq", "day", "2026-10-21"],
+      ["order", "started_at", { ascending: true }],
+    ])
+  })
+
+  it("does not ask for tags when no session has one", async () => {
+    const requests = tables({ timer_sessions: { data: [row(), row({ id: B })] } })
+    await timerDaySessions("2026-10-21")
+    expect(requests.map((request) => request.table)).toEqual(["timer_sessions"])
+  })
+
+  it("asks timer_tags once, for the tags of the day without doubles, and gives the names", async () => {
+    const requests = tables({
+      timer_sessions: { data: [row({ tag_id: TAG }), row({ id: B, tag_id: TAG }), row({ id: "44444444-4444-4444-8444-444444444444" })] },
+      timer_tags: { data: [{ id: TAG, name: "NPTEL" }] },
+    })
+    const sessions = await timerDaySessions("2026-10-21")
+    expect(sessions.map((session) => session.tag)).toEqual(["NPTEL", "NPTEL", null])
+    expect(requests.map((request) => request.table)).toEqual(["timer_sessions", "timer_tags"])
+    expect(requests[1].steps).toEqual([
+      ["select", "id, name"],
+      ["in", "id", [TAG]],
+    ])
+  })
+
+  it("refuses a day that is not YYYY-MM-DD before it asks anything", async () => {
+    const requests = tables({})
+    expect(await kindOfCall(() => timerDaySessions("21-10-2026"))).toBe("UNKNOWN")
+    expect(requests).toHaveLength(0)
+  })
+
+  it("says NOT_READY when there is no database connection", async () => {
+    holder.client = null
+    expect(await kindOfCall(() => timerDaySessions("2026-10-21"))).toBe("NOT_READY")
+  })
+
+  it("turns a database error into a name of ours", async () => {
+    tables({ timer_sessions: { error: { message: "JWT expired", code: "PGRST303" } } })
+    expect(await kindOfCall(() => timerDaySessions("2026-10-21"))).toBe("NOT_SIGNED_IN")
+    tables({ timer_sessions: { error: { message: "Failed to fetch" } } })
+    expect(await kindOfCall(() => timerDaySessions("2026-10-21"))).toBe("NO_CONNECTION")
+  })
+
+  it("refuses a reply that is not a list of sessions", async () => {
+    tables({ timer_sessions: { data: { oops: true } } })
+    expect(await kindOfCall(() => timerDaySessions("2026-10-21"))).toBe("BAD_REPLY")
+  })
+
+  it("the columns of the list are all in timer_sessions of the SQL file, and the right to read the two tables is there", () => {
+    const table = schemaSql.split("create table if not exists public.timer_sessions (")[1].split(");")[0]
+    for (const column of ["id", "started_at", "ended_at", "active_seconds"]) expect(table).toContain("  " + column + " ")
+    expect(schemaSql).toContain("alter table public.timer_sessions add column if not exists pauses jsonb;")
+    expect(schemaSql).toContain("alter table public.timer_sessions add column if not exists tz text;")
+    expect(schemaSql).toContain("alter table public.timer_sessions add column if not exists tag_id uuid references public.timer_tags (id);")
+    expect(DAY_SESSION_COLUMNS.split(", ")).toEqual(["id", "started_at", "ended_at", "active_seconds", "pauses", "tz", "tag_id"])
+    expect(schemaSql).toContain("create policy timer_sessions_select_own on public.timer_sessions")
+    expect(schemaSql).toContain("create policy timer_tags_select_own on public.timer_tags")
+    expect(schemaSql).toContain("grant select, delete on public.timer_sessions to authenticated;")
+    expect(schemaSql).toContain("grant select on public.timer_tags to authenticated;")
+    expect(schemaSql).toContain("  day date not null,")
   })
 })
 // AB:TIMER.TESTS:END
