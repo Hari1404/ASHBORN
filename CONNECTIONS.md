@@ -994,6 +994,20 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = supabase.from("timer_sessions")`
 - Anchor: `AB:TIMER.API @ src/lib/timerApi.ts = supabase.from("timer_tags")`
 
+### C62: The day model of the whole day view (overviewDay.ts): the numbers of its sentence come from the day score, its quality and cut-offs from timerMaths.ts, and the words "under ten" and "No tag" are tied to the SQL file and to the tag decisions
+- Tags: `AB:OVERVIEW.DAY`, `AB:OVERVIEW.HUD`, `AB:TIMER.MATHS`, `AB:TIMER.API`
+- If you change: the keys of the day score that the sentence reads (sessions, shortSessions and longestStretchMinutes in DayScore, C54), the short rule of the day score in supabase/day_score.sql (now under 600 seconds), the cut-offs or the names of the qualities in timerMaths.ts (SOLID_FROM_SECONDS and the others, C34), the shape of a saved session (DaySession in timerApi.ts, C61), or the word for a session without a tag
+- Then also: (1) Every number in the sentence comes from the day score, the same one the Overview panel shows (C60), so the view and the panel always agree: daySentence reads sessions, shortSessions and longestStretchMinutes. The longest stretch is NOT worked out again from the sessions: the database cuts it at the pauses and at the cap of 180 minutes (C54). (2) The words "under ten" mean the short rule: ten minutes is SOLID_FROM_SECONDS (600, timerMaths.ts) and the database counts a short session as active_seconds < 600; the test in src/lib/overviewDay.test.ts reads the SQL file and fails when the rule moves. A new cut-off needs a new wording here. (3) The quality of a pill is qualityOf of its active seconds; the cut-offs are never copied (the prototype HTML used 60 minutes for flow, the app uses 90). DAY_QUALITY_COLORS is a Record of the quality names, so a new quality name fails the type check until it has a colour. (4) The word for a session without a tag is "No tag" (DECISIONS_TAGS.md section 4): an empty tag_id means Freestyle or a session from before tags, and the two cannot be told apart (C61). (5) A pill is placed on the clock of the zone saved with the session (tz), or of the device when there is none, and the sessions of the day are the ones of the column day (C61). (6) The app has no wake time yet: buildDayView draws a Woke mark only when it is given wokeMinutes.
+- If you forget: the sentence disagrees with the panel of the Overview (another number of sessions or another longest stretch), "under ten" is wrong after the short rule changed, a pill has no colour or the wrong one after a new quality, or a session without a tag shows an empty label.
+- Anchor: `src/lib/overviewDay.ts = import type { DayScore, DaySession } from "@/lib/timerApi"`
+- Anchor: `src/lib/overviewDay.ts = import { parseServerTimeMs, qualityOf, type Quality } from "@/lib/timerMaths"`
+- Anchor: `AB:OVERVIEW.DAY @ src/lib/overviewDay.ts = export const DAY_QUALITY_COLORS: Record<Quality, string> = {`
+- Anchor: `AB:OVERVIEW.DAY @ src/lib/overviewDay.ts = export const NO_TAG_LABEL = "No tag"`
+- Anchor: `AB:OVERVIEW.DAY @ src/lib/overviewDay.ts = const quality = qualityOf(session.activeSeconds)`
+- Anchor: `AB:OVERVIEW.DAY @ src/lib/overviewDay.ts = The longest stretch ran`
+- Anchor: `AB:OVERVIEW.DAY @ src/lib/overviewDay.ts = under ten.`
+- Anchor: `AB:TIMER.MATHS @ src/lib/timerMaths.ts = export const SOLID_FROM_SECONDS = 600`
+
 ## Things to know (no check is possible)
 - The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).
 - Sign-ups are OFF in the Supabase dashboard. Users are created there by hand, with "Auto Confirm User" ticked.
