@@ -3,12 +3,16 @@ import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// The menu, the Pro Timer screen, the background and the database client are replaced by small stand-ins: this file only tests which screen the stub chooses and where the menu sits.
+// The menu, the Pro Timer screen, the two backgrounds and the database client are replaced by small stand-ins: this file only tests which screen the stub chooses, which background it has and where the menu sits.
 vi.mock("@/lib/supabase", () => ({ supabase: null }))
 vi.mock("@/lib/lite", () => ({ LITE_LEVEL: 1 }))
 vi.mock("@/components/DarkVeil", async () => {
   const { createElement: h } = await import("react")
   return { default: () => h("canvas", { id: "veil-stub" }) }
+})
+vi.mock("@/components/OverviewBackground", async () => {
+  const { createElement: h } = await import("react")
+  return { default: () => h("canvas", { id: "ascii-stub" }) }
 })
 vi.mock("@/components/AppMenu", async () => {
   const { createElement: h } = await import("react")
@@ -77,8 +81,30 @@ describe("SignedInStub: which screen is shown", () => {
     open(hash)
     expect(has(".ab-stub")).toBe(true)
     expect(has("#timer-stub")).toBe(false)
-    expect(has("#veil-stub")).toBe(true)
     expect(container?.querySelector("#menu-stub")?.closest("main")).toBeNull()
+  })
+
+  it.each(["#overview", "", "#nonsense"])("has the Gradient ASCII background of the Overview, and not Dark Veil, at %j", (hash) => {
+    open(hash)
+    expect(has("#ascii-stub")).toBe(true)
+    expect(has("#veil-stub")).toBe(false)
+    expect(container?.querySelector("#ascii-stub")?.closest("main.ab-stub")).not.toBeNull()
+    expect(has(".ab-bg")).toBe(false)
+    expect(container?.querySelector(".ab-stub-title")?.textContent).toBe("Overview")
+  })
+
+  it.each(["#calendar", "#guide"])("keeps the Dark Veil background in the half-size box ab-bg, and not the Gradient ASCII one, at %j", (hash) => {
+    open(hash)
+    expect(has("#veil-stub")).toBe(true)
+    expect(has("#ascii-stub")).toBe(false)
+    expect(container?.querySelector("#veil-stub")?.closest(".ab-bg")).not.toBeNull()
+  })
+
+  it("keeps the title, the line with the email, the note and the Sign out button on the Overview", () => {
+    open("#overview")
+    expect(container?.querySelector(".ab-stub-line")?.textContent).toBe("owner@example.com")
+    expect(has(".ab-stub-note")).toBe(true)
+    expect(container?.querySelector(".ab-stub-button")?.textContent).toBe("Sign out")
   })
 
   it("follows the page address when the menu changes it", () => {
@@ -95,6 +121,24 @@ describe("SignedInStub: which screen is shown", () => {
     })
     expect(has("#timer-stub")).toBe(false)
     expect(container?.querySelector(".ab-stub-title")?.textContent).toBe("Guide")
+  })
+
+  it("changes the background with the screen: Gradient ASCII on the Overview, Dark Veil on the Guide, and back", () => {
+    open("#overview")
+    expect(has("#ascii-stub")).toBe(true)
+    expect(has("#veil-stub")).toBe(false)
+    act(() => {
+      window.location.hash = "#guide"
+      window.dispatchEvent(new Event("hashchange"))
+    })
+    expect(has("#ascii-stub")).toBe(false)
+    expect(has("#veil-stub")).toBe(true)
+    act(() => {
+      window.location.hash = "#overview"
+      window.dispatchEvent(new Event("hashchange"))
+    })
+    expect(has("#ascii-stub")).toBe(true)
+    expect(has("#veil-stub")).toBe(false)
   })
 })
 

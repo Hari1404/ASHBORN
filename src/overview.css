@@ -1,0 +1,11 @@
+/* Styles of the moving background of the Overview screen. Tag: see CODE_MAP.md in the project root. */
+
+/* AB:OVERVIEW.BG:START */
+/* The box of the Gradient ASCII background: fixed behind the whole screen, and it never catches a tap. It is NOT the box ab-bg of login.css: that one is drawn at half size on a phone and scaled up, which would make the characters twice as big. The selector starts with main.ab-stub so that it is more specific than the rule of auth.css that lifts every child of the screen above the background; without that this box would become a normal box and push the text down (CONNECTIONS.md C59). */
+main.ab-stub > .ab-ascii-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+/* AB:OVERVIEW.BG:END */

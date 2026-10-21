@@ -13,7 +13,7 @@ Full rules: TAGGING_RULES.md
 |---|---|
 | LOGIN | Front page: the login screen |
 | MENU | The menu: a button in the top right corner that opens a panel with the four screens |
-| OVERVIEW | Overview / Hub page (not built yet) |
+| OVERVIEW | Overview / Hub page (only its moving background and the sound of its intro are built, since Packet 11A; the real screen is not built yet) |
 | TIMER | Pro Timer: the maths, the database calls, the live state, the screen (page address #timer) with its glowing ball and its moving background, the stop alert (what Hold to end session opens), the comeback message (shown for a few seconds after GO BACK IN), the quick opening (the warm-up, the two reads at once and the look while loading), the staggered making of the glowing ball and the moving background (the background 300 ms and the heavy ball 600 ms after a session lights them, so the press of Start does not freeze the page) and their tests are built; the text effects of the lines (glow, heat, shake, strike, ghost, rise) are built too; the lines of the milestone messages (288 lines for the minutes 15, 25, 45, 60, 90, 120, 150 and 180, with the choice of one line) are built, and the milestone message that shows them (it waits until the page is visible, is shown late with a tag when it was missed, and is given up after 10 minutes) is built too |
 | CALENDAR | Calendar (not built yet) |
 | GUIDE | Guide (not built yet) |
@@ -40,7 +40,7 @@ Full rules: TAGGING_RULES.md
 | `AB:AUTH.CLIENT` | The one connection to Supabase, and the rule that turns a User ID into an email | `src/lib/supabase.ts` | what a User ID may contain; the three settings themselves are in the file .env |
 | `AB:AUTH.SESSION` | Reads the saved sign-in and follows sign in and sign out | `src/lib/useSession.ts` | nothing yet |
 | `AB:AUTH.GATE` | Chooses the screen: blank while loading, the front page, or the signed-in screen | `src/App.tsx` | which screen follows a sign in (the real app later) |
-| `AB:AUTH.STUB` | The temporary signed-in screen with a Sign out button, on a Dark Veil background; its title is the name of the screen chosen in the menu; when Pro Timer is chosen it shows the Pro Timer screen instead (see CONNECTIONS.md C30); once, a moment after the first picture, it starts the warm-up of the Pro Timer (see CONNECTIONS.md C44) | `src/components/SignedInStub.tsx`, `src/auth.css` | the Dark Veil props: speed, noiseIntensity, warpAmount, hueShift, scanlineIntensity, scanlineFrequency (resolutionScale must stay 1 and lightMode must stay false, see CONNECTIONS.md C23); the screen itself is thrown away when the real app shell is built |
+| `AB:AUTH.STUB` | The temporary signed-in screen with a Sign out button, on a Dark Veil background (the Overview screen has the Gradient ASCII background of OVERVIEW.BG instead, see CONNECTIONS.md C59); its title is the name of the screen chosen in the menu; when Pro Timer is chosen it shows the Pro Timer screen instead (see CONNECTIONS.md C30); once, a moment after the first picture, it starts the warm-up of the Pro Timer (see CONNECTIONS.md C44) | `src/components/SignedInStub.tsx`, `src/auth.css` | the Dark Veil props: speed, noiseIntensity, warpAmount, hueShift, scanlineIntensity, scanlineFrequency (resolutionScale must stay 1 and lightMode must stay false, see CONNECTIONS.md C23); the screen itself is thrown away when the real app shell is built |
 
 ## MENU (the menu)
 | Tag | What it is | Files | What you can change there |
@@ -48,6 +48,14 @@ Full rules: TAGGING_RULES.md
 | `AB:MENU.NAV` | The list of the four screens (id and name) and the reading of the page address (#timer) that chooses one | `src/lib/screens.ts` | the names of the screens; a new screen needs a new line here (see CONNECTIONS.md C24) |
 | `AB:MENU.PANEL` | The menu itself: the Staggered Menu with its settings (side, layer colours, button colour, items) | `src/components/AppMenu.tsx` | the side it opens from (position), the colours of the sliding layers (colors); isFixed and displayItemNumbering must stay as they are (see CONNECTIONS.md C25) |
 | `AB:MENU.LOOK` | The dark look of the menu: panel colour, text size, button size, the box that holds it | `src/menu.css` | colours and sizes; the blur must stay switched off (see CONNECTIONS.md C25) |
+
+## OVERVIEW (the Overview screen)
+| Tag | What it is | Files | What you can change there |
+|---|---|---|---|
+| `AB:OVERVIEW.BG` | The moving background of the Overview screen: the React Bits animation Gradient ASCII in one of the four Studio presets (Atmosphere, Lagoon, Rose, Corona), picked at random each time the Overview opens (never the same one twice in a row while the page stays open; a reload may repeat), with the sound of its intro started with it and stopped when the screen goes away. The mouse does nothing. It is a fixed box behind the whole screen, NOT the half-size box ab-bg; a phone draws it at a pixel ratio of 1 | `src/components/OverviewBackground.tsx`, `src/overview.css` | the props given to the animation and the one place that starts the sound, in OverviewBackground.tsx; the box in the css must keep its selector main.ab-stub > .ab-ascii-bg, which is more specific than the rule of auth.css that lifts the children of the screen (see CONNECTIONS.md C59) |
+| `AB:OVERVIEW.LOOK` | The look of the Overview background as plain values and one plain function: the four presets (shape, colours, characters, copied from the Studio), what the owner changed (cell size 19, softness 0.8, no mouse, no click effect, intro on), the length of the intro (2 seconds) and the choice of the preset (pickOverviewPreset) | `src/lib/overviewLook.ts` | the softness (OVERVIEW_ASCII.softness, the owner asked for it softer than the Studio 0.5), the cell size, the colours or characters of a preset; the intro length is tied to the library file and to the sound, see CONNECTIONS.md C59 |
+| `AB:OVERVIEW.SOUND` | The sound of the intro: the recipe of the Sound Lab sound reveal (as the owner pasted it), the drawing of it once for the whole page, the playing of all of it from the start of the intro, letting it ring out to its natural end (it is not cut at the end of the 2 second picture), the wait for the first tap or key when the browser does not allow a sound yet, and the stop when the screen goes away | `src/lib/overviewSound.ts` | the volume (SOUND_VOLUME); the recipe must stay as pasted; the sound is no longer tied to OVERVIEW_INTRO_SECONDS, it rings out to its natural end, see CONNECTIONS.md C59 |
+| `AB:OVERVIEW.TESTS` | The automated tests of the Overview background: the look and the choice of the preset, the sound (when it starts, how it ends, the wait for a tap, the stop, StrictMode), the background component (settings, preset, sound, phone) and the library file Gradient ASCII with its three edits (the 2 second intro, its own canvas in StrictMode, no answer to the mouse) | `src/lib/overviewLook.test.ts`, `src/lib/overviewSound.test.ts`, `src/components/OverviewBackground.test.tsx`, `src/components/GradientASCII.test.tsx` | add tests when the background changes |
 
 ## TIMER (the Pro Timer)
 | Tag | What it is | Files | What you can change there |
@@ -78,7 +86,7 @@ To change how one looks or moves, change its props where it is used, at the tag 
 | Component | File | Settings live at |
 |---|---|---|
 | Pattern Waves (moving background) | `src/components/PatternWaves.tsx` | `AB:LOGIN.BG` |
-| Dark Veil (moving background of the signed-in screen) | `src/components/DarkVeil.tsx` | `AB:AUTH.STUB` |
+| Dark Veil (moving background of the signed-in screen, now only on Calendar and Guide) | `src/components/DarkVeil.tsx` | `AB:AUTH.STUB` |
 | BlurText (animated line) | `src/components/BlurText.tsx` | `AB:LOGIN.HERO` |
 | GlassSurface (glass card and glass panel of the tag picker) | `src/components/GlassSurface.tsx` | `AB:LOGIN.GLASS`, `AB:TIMER.TAGS` |
 | FuzzyText (the ASHBORN name) | `src/components/FuzzyText.tsx` | `AB:LOGIN.BRAND` |
@@ -86,6 +94,8 @@ To change how one looks or moves, change its props where it is used, at the tag 
 | CrystalizedBall (the glowing ball of the Pro Timer) | `src/components/CrystalizedBall.tsx` | `AB:TIMER.BALL` |
 | Grainient (the moving background of the Pro Timer until Packet 08A; since Packet 08C our own canvas draws it and this file is not used, but it stays, never edited) | `src/components/Grainient.tsx` | none |
 | Hold Button (the End Session button) | `src/components/HoldButton.tsx` | `AB:TIMER.SCREEN` |
+| Gradient ASCII (moving background of the Overview). THIS ONE IS EDITED, in three places marked ASHBORN edit 1 of 3, 2 of 3 and 3 of 3 (Packet 11A): the intro lasts 2 seconds instead of 2.4, and its canvas is made in the effect and taken away in the cleanup, so that React StrictMode does not leave it empty. If it is installed again from React Bits, the three edits must be made again (the tests in GradientASCII.test.tsx fail until then) | `src/components/GradientASCII.tsx` | `AB:OVERVIEW.BG`, `AB:OVERVIEW.LOOK` |
+| Sound Lab engine (draws a sound recipe into a sound; never edited) | `src/lib/react-bits-sound.ts` | `AB:OVERVIEW.SOUND` |
 
 ## Untagged files
 Setup and config files (package.json, vite and tsconfig files, index.html, src/env.d.ts, the file .env which is never committed), `src/index.css`, `src/main.tsx`, AGENTS.md, PROGRESS.md, CODE_MAP.md, CONNECTIONS.md, TAGGING_RULES.md, the packets folder, the scripts folder.
