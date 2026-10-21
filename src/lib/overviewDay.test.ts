@@ -11,6 +11,7 @@ import {
   DAY_LEGEND,
   DAY_QUALITY_COLORS,
   dayAxis,
+  dayLegendFor,
   daySentence,
   dayTitle,
   NO_TAG_LABEL,
@@ -287,6 +288,29 @@ describe("what the day view is tied to", () => {
     expect(SOLID_FROM_SECONDS).toBe(600)
     expect(dayScoreSql).toContain("(count(*) filter (where active_seconds < 600))::integer as short_sessions")
     expect(daySentence({ sessions: 1, shortSessions: 0, longestStretchMinutes: 20 })).toContain("under ten")
+  })
+})
+describe("the colours the screen gives to the day", () => {
+  const mine = { meh: "#111111", solid: "#222222", deep: "#333333", flow: "#444444" }
+  const score = { sessions: 3, shortSessions: 0, longestStretchMinutes: 90 }
+
+  it("draws the pills in the colours it is given, by quality, and in the colours of day-view.html when it is given none", () => {
+    const sessions = [session("09:00", 95, null), session("12:00", 40, null), session("15:00", 20, null), session("18:00", 5, null)]
+    const given = buildDayView({ day: DAY, sessions, score, deviceZone: KOLKATA, qualityColors: mine })
+    expect(given.bars.map((b) => b.quality)).toEqual(["flow", "deep", "solid", "meh"])
+    expect(given.bars.map((b) => b.color)).toEqual(["#444444", "#333333", "#222222", "#111111"])
+    const plain = buildDayView({ day: DAY, sessions, score, deviceZone: KOLKATA })
+    expect(plain.bars.map((b) => b.color)).toEqual(plain.bars.map((b) => DAY_QUALITY_COLORS[b.quality]))
+  })
+
+  it("gives the legend in the order meh, solid, deep, flow, in the colours it is given", () => {
+    expect(dayLegendFor(mine)).toEqual([
+      { quality: "meh", label: "Meh", color: "#111111" },
+      { quality: "solid", label: "Solid", color: "#222222" },
+      { quality: "deep", label: "Deep", color: "#333333" },
+      { quality: "flow", label: "Flow", color: "#444444" },
+    ])
+    expect(dayLegendFor(DAY_QUALITY_COLORS)).toEqual(DAY_LEGEND)
   })
 })
 // AB:OVERVIEW.TESTS:END

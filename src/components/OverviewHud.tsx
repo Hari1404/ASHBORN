@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react"
 import Counter from "@/components/Counter"
 import { LITE_LEVEL } from "@/lib/lite"
+import { conditionFromMinutes, type OverviewCondition } from "@/lib/overviewCondition"
 import {
   countdownCaption,
   daysUntilApril14,
@@ -22,10 +23,10 @@ import "../overview.css"
 // A phone (lite level 1 or 2) draws the digits without the motion blur.
 type DayState = { kind: "loading" } | { kind: "error" } | { kind: "ready"; score: DayScore }
 // 3. A glass button "See the whole day" under the figures of the day (only when the day has sessions). It opens the full screen of the whole day (OverviewDayView.tsx, CONNECTIONS.md C63). That screen is a separate file: it is loaded at the first use of the button, or earlier when the pointer, a touch or the focus comes to the button, so the beam and the font do not weigh on the first picture of the Overview. While it loads the button says it is busy and takes no second tap; if the file cannot be loaded the line "Could not open the day" shows and the next tap tries again.
-type DayViewComponent = ComponentType<{ day: string; zone: string; onClose: () => void }>
+type DayViewComponent = ComponentType<{ day: string; zone: string; condition?: OverviewCondition; onClose: () => void }>
 type DayViewLoader = () => Promise<DayViewComponent>
 const loadDayView: DayViewLoader = () => import("@/components/OverviewDayView").then((module) => module.default)
-type Opening = { kind: "closed" } | { kind: "loading" } | { kind: "failed" } | { kind: "open"; View: DayViewComponent; day: string; zone: string }
+type Opening = { kind: "closed" } | { kind: "loading" } | { kind: "failed" } | { kind: "open"; View: DayViewComponent; day: string; zone: string; condition: OverviewCondition }
 type Opener = { busy: boolean; failed: boolean; onOpen: () => void; onWarm: () => void }
 
 function zoneOrNull(): string | null {
@@ -81,7 +82,7 @@ export default function OverviewHud({ load = loadDayView }: { load?: DayViewLoad
     load().catch(() => undefined)
   }, [load])
   const openDay = useCallback(
-    (dayText: string) => {
+    (dayText: string, condition: OverviewCondition) => {
       const zone = zoneOrNull()
       if (zone === null) {
         setOpening({ kind: "failed" })
@@ -89,7 +90,7 @@ export default function OverviewHud({ load = loadDayView }: { load?: DayViewLoad
       }
       setOpening({ kind: "loading" })
       load().then(
-        (View) => setOpening({ kind: "open", View, day: dayText, zone }),
+        (View) => setOpening({ kind: "open", View, day: dayText, zone, condition }),
         () => setOpening({ kind: "failed" }),
       )
     },
@@ -116,14 +117,14 @@ export default function OverviewHud({ load = loadDayView }: { load?: DayViewLoad
               busy: opening.kind === "loading",
               failed: opening.kind === "failed",
               onOpen: () => {
-                if (opening.kind !== "loading") openDay(day.score.day)
+                if (opening.kind !== "loading") openDay(day.score.day, conditionFromMinutes(day.score.creditedMinutes))
               },
               onWarm: warm,
             }}
           />
         ) : null}
       </section>
-      {opening.kind === "open" ? <opening.View day={opening.day} zone={opening.zone} onClose={closeDay} /> : null}
+      {opening.kind === "open" ? <opening.View day={opening.day} zone={opening.zone} condition={opening.condition} onClose={closeDay} /> : null}
     </>
   )
 }

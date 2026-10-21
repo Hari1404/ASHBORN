@@ -8,6 +8,9 @@
   --ab-day-line: clamp(120px, 24vh, 230px);
   --ab-day-ink: #ece6df;
   --ab-day-dim: #8d8780;
+  /* The colours of the condition (overviewCondition.ts): OverviewDayView.tsx sets both on this element. The values here are only the ones of the condition unknown, for a screen that is drawn without them. */
+  --ab-day-beam: #38bdf8;
+  --ab-day-accent: #a5d8ff;
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -58,8 +61,8 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   height: var(--ab-day-line);
   left: calc(50% - 2px);
   width: 4px;
-  background: linear-gradient(#0000, #ff6a3c);
-  box-shadow: 0 0 40px 8px rgba(255, 106, 60, 0.5);
+  background: linear-gradient(#0000, var(--ab-day-beam));
+  box-shadow: 0 0 40px 8px color-mix(in srgb, var(--ab-day-beam) 50%, transparent);
 }
 
 .ab-day-fallback::after {
@@ -69,7 +72,7 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   left: 24px;
   right: 24px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 150, 100, 0.9), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ab-day-beam) 90%, transparent), transparent);
 }
 
 .ab-day-close {
@@ -102,10 +105,13 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   padding: 36px 24px calc(56px + env(safe-area-inset-bottom, 0px));
 }
 
+/* The weekday is drawn in the bright colour of the condition (--ab-day-accent) with a soft glow of the same colour. */
 .ab-day-title {
   margin: 0 0 12px;
   font: italic 400 clamp(52px, 11vw, 92px) / 1 "Instrument Serif", Georgia, serif;
   letter-spacing: -0.01em;
+  color: var(--ab-day-accent);
+  text-shadow: 0 0 32px color-mix(in srgb, var(--ab-day-accent) 35%, transparent);
 }
 
 .ab-day-sentence {
@@ -271,7 +277,7 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
 }
 
 .ab-day-tags i:first-child {
-  background: #fff;
+  background: var(--ab-day-accent);
 }
 
 .ab-day-tl {

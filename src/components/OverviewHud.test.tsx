@@ -2,6 +2,7 @@
 import { act, createElement, type ComponentType } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { OverviewCondition } from "@/lib/overviewCondition"
 import type { DayScore } from "@/lib/timerApi"
 
 // The rolling digits, the database call and the lite level are replaced by stand-ins: this file only tests what the screen shows, which day it asks for and when it asks again.
@@ -316,11 +317,11 @@ describe("the motion blur of the digits", () => {
   })
 })
 describe("the button of the whole day", () => {
-  type DayProps = { day: string; zone: string; onClose: () => void }
+  type DayProps = { day: string; zone: string; condition?: OverviewCondition; onClose: () => void }
   type Loader = () => Promise<ComponentType<DayProps>>
   // The screen of the whole day is replaced by a box that shows what it was given and has a button for the end.
-  function DayStub({ day, zone, onClose }: DayProps) {
-    return createElement("div", { id: "day-stub", "data-day": day, "data-zone": zone }, createElement("button", { id: "day-stub-close", onClick: onClose }, "x"))
+  function DayStub({ day, zone, condition, onClose }: DayProps) {
+    return createElement("div", { id: "day-stub", "data-day": day, "data-zone": zone, "data-condition": condition }, createElement("button", { id: "day-stub-close", onClick: onClose }, "x"))
   }
   const ready: Loader = () => Promise.resolve(DayStub)
 
@@ -416,6 +417,18 @@ describe("the button of the whole day", () => {
     await click(document.getElementById("day-stub-close"))
     expect(dayBox()).toBeNull()
     expect(button()).not.toBeNull()
+  })
+
+  it.each([
+    [0, "unknown"],
+    [107.4, "notEnough"],
+    [150, "okay"],
+    [300, "good"],
+  ] as const)("gives the screen the condition of the figures: %s credited minutes is %s", async (creditedMinutes, condition) => {
+    await showWith(ready)
+    await answer(0, score({ creditedMinutes }))
+    await click(button())
+    expect(dayBox()?.getAttribute("data-condition")).toBe(condition)
   })
 
   it("says that it is busy while the screen loads, and takes no second tap", async () => {

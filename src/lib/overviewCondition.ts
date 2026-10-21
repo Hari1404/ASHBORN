@@ -1,4 +1,5 @@
 import type { OverviewPresetName } from "@/lib/overviewLook"
+import type { Quality } from "@/lib/timerMaths"
 
 // AB:OVERVIEW.CONDITION:START
 // The four conditions of the Overview and the one rule that picks one. The condition decides which look (preset) the moving background of the Overview gets: it replaces the old random pick. Plain values and plain functions: no screen, no database and no sound here. The screen is src/components/OverviewBackground.tsx. See CONNECTIONS.md C64.
@@ -18,6 +19,23 @@ export const OVERVIEW_CONDITION_PRESET: Record<OverviewCondition, OverviewPreset
 
 export function presetOfCondition(condition: OverviewCondition): OverviewPresetName {
   return OVERVIEW_CONDITION_PRESET[condition]
+}
+
+// The colours of "the whole day" screen (the Laser Flow beam, the pills of the timeline and the legend, and the weekday) for each condition. They go with the look of the background of the same condition: every colour comes from the colours of that preset (overviewLook.ts), and the dark end of the preset is lifted a little, so that a pill is seen on the black screen. beam is the colour of the laser; accent is the bright colour of the weekday and of the first part of the tag bar; qualities are the four colours of the pills and of the legend, from the dimmest (meh) to the brightest (flow). It is a Record on purpose: a new condition fails the type check until it has its colours.
+export type OverviewDayPalette = { beam: string; accent: string; qualities: Record<Quality, string> }
+export const OVERVIEW_DAY_PALETTE: Record<OverviewCondition, OverviewDayPalette> = {
+  // Atmosphere: blue and white
+  unknown: { beam: "#38bdf8", accent: "#a5d8ff", qualities: { meh: "#3d63e0", solid: "#38bdf8", deep: "#a5d8ff", flow: "#f6f8ff" } },
+  // Rose: red and pink
+  notEnough: { beam: "#f43f5e", accent: "#fda4af", qualities: { meh: "#c12448", solid: "#f43f5e", deep: "#fda4af", flow: "#fff1f2" } },
+  // Corona: brown and amber
+  okay: { beam: "#f59e0b", accent: "#f59e0b", qualities: { meh: "#b66a0d", solid: "#f59e0b", deep: "#facd7b", flow: "#fffbeb" } },
+  // Lagoon: teal
+  good: { beam: "#5eead4", accent: "#5eead4", qualities: { meh: "#0d9488", solid: "#36bfae", deep: "#5eead4", flow: "#f0fdfa" } },
+}
+
+export function dayPaletteOf(condition: OverviewCondition): OverviewDayPalette {
+  return OVERVIEW_DAY_PALETTE[condition]
 }
 
 // DEFAULT numbers of the rule below, hardcoded for now (the owner said the rule will change later): the minutes of the day from which the condition is okay and good.

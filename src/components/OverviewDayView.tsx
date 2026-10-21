@@ -2,7 +2,8 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, ty
 import { createPortal } from "react-dom"
 import LaserFlow from "@/components/LaserFlow"
 import { LITE_LEVEL } from "@/lib/lite"
-import { buildDayView, DAY_LEGEND, type DayView } from "@/lib/overviewDay"
+import { dayPaletteOf, type OverviewCondition } from "@/lib/overviewCondition"
+import { buildDayView, dayLegendFor, type DayLegendItem, type DayView } from "@/lib/overviewDay"
 import { timerDayScore, timerDaySessions } from "@/lib/timerApi"
 import "../dayview.css"
 
@@ -11,11 +12,11 @@ import "../dayview.css"
 // This file is loaded only when the button is used or when the pointer or the focus comes near it (the shader and the font do not weigh on the first picture of the Overview). Everything the screen shows comes from src/lib/overviewDay.ts (the day model, C62); the day and the time zone are given by the button, so the sentence, the pills and the panel of the Overview are of the same day.
 // It asks the database for the day score and the sessions of the day when it opens, and again when "Try again" is used. A phone (lite level 1) draws the beam at a pixel ratio of 1; at lite level 2 the beam falls once and then stands still (src/lib/lite.ts).
 // While it is open: the page behind it does not scroll and takes no tap or focus (the element root is inert), Escape and the Close button close it, Tab stays inside it, the moving background of the Overview is hidden (so it stops drawing, see dayview.css) and the focus goes back to the button that opened it.
-type Props = { day: string; zone: string; onClose: () => void }
+type Props = { day: string; zone: string; condition?: OverviewCondition; onClose: () => void }
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ready"; view: DayView }
 
-// The beam. beamPosition 0.5 is the middle of the screen. The colour is the deep orange of day-view.html, and the intensity is lower than the library default (1.8): at the default the orange burns out to white, at 0.7 it stays orange with a white hot core. The spread is the library default (1.5): the owner looked at the shorter spread of day-view.html and chose the default. The mouse does not move the light (day-view.html has no such thing). Every other setting stays at the library default.
-const BEAM = { beamPosition: 0.5, color: "#ff5a1f", intensity: 0.7, spread: 1.5, mouseInteraction: false }
+// The beam. beamPosition 0.5 is the middle of the screen. The COLOUR is not here: it is the beam colour of the condition (palette.beam of overviewCondition.ts, so the laser goes with the background of the same condition). The intensity is lower than the library default (1.8): at the default a bright colour burns out to white, at 0.7 it stays its colour with a white hot core. The spread is the library default (1.5): the owner looked at the shorter spread of day-view.html and chose the default. The mouse does not move the light (day-view.html has no such thing). Every other setting stays at the library default.
+const BEAM = { beamPosition: 0.5, intensity: 0.7, spread: 1.5, mouseInteraction: false }
 
 // The timing, in milliseconds after the screen opens: the screen fades to black, a moment of pure black, then the beam starts to fall (the library has its own fall of about a second), then the light has landed (the library's beam reaches the line about 0.8 seconds after it starts) and the day comes in (the pieces come one after the other, their delays are in dayview.css). The fade is the same one in and out.
 const FADE_MS = 350
@@ -59,7 +60,8 @@ function placeLabels(track: HTMLElement): void {
   track.dataset.lanes = String(Math.max(2, edges.length))
 }
 
-export default function OverviewDayView({ day, zone, onClose }: Props) {
+export default function OverviewDayView({ day, zone, condition = "unknown", onClose }: Props) {
+  const palette = dayPaletteOf(condition)
   const [reduce] = useState(motionIsReduced)
   const [on, setOn] = useState(reduce)
   const [beam, setBeam] = useState(reduce)
@@ -150,7 +152,7 @@ export default function OverviewDayView({ day, zone, onClose }: Props) {
     let alive = true
     Promise.all([timerDayScore(day), timerDaySessions(day)])
       .then(([score, sessions]) => {
-        if (alive) setLoad({ kind: "ready", view: buildDayView({ day, sessions, score, deviceZone: zone }) })
+        if (alive) setLoad({ kind: "ready", view: buildDayView({ day, sessions, score, deviceZone: zone, qualityColors: palette.qualities }) })
       })
       .catch(() => {
         if (alive) setLoad({ kind: "error" })
@@ -158,7 +160,7 @@ export default function OverviewDayView({ day, zone, onClose }: Props) {
     return () => {
       alive = false
     }
-  }, [day, zone, attempt])
+  }, [day, zone, attempt, palette])
 
   function retry(): void {
     setLoad({ kind: "loading" })
@@ -201,13 +203,15 @@ export default function OverviewDayView({ day, zone, onClose }: Props) {
       aria-label="The whole day"
       data-on={on && !leaving ? "true" : "false"}
       data-lit={lit ? "true" : "false"}
+      data-condition={condition}
+      style={{ "--ab-day-beam": palette.beam, "--ab-day-accent": palette.accent } as CSSProperties}
     >
       <div ref={beamRef} className="ab-day-beam" aria-hidden="true">
         {beam ? (
           <LaserFlow
             surfaceRef={landingRef}
             beamPosition={BEAM.beamPosition}
-            color={BEAM.color}
+            color={palette.beam}
             intensity={BEAM.intensity}
             spread={BEAM.spread}
             mouseInteraction={BEAM.mouseInteraction}
@@ -238,7 +242,7 @@ export default function OverviewDayView({ day, zone, onClose }: Props) {
               </button>
             </>
           ) : null}
-          {load.kind === "ready" ? <DayBody view={load.view} trackRef={trackRef} /> : null}
+          {load.kind === "ready" ? <DayBody view={load.view} legend={dayLegendFor(palette.qualities)} trackRef={trackRef} /> : null}
         </div>
       </div>
     </div>,
@@ -246,7 +250,7 @@ export default function OverviewDayView({ day, zone, onClose }: Props) {
   )
 }
 
-function DayBody({ view, trackRef }: { view: DayView; trackRef: RefObject<HTMLDivElement | null> }) {
+function DayBody({ view, legend, trackRef }: { view: DayView; legend: DayLegendItem[]; trackRef: RefObject<HTMLDivElement | null> }) {
   return (
     <>
       <h1 className="ab-day-title ab-day-r" style={step(0)}>
@@ -306,7 +310,7 @@ function DayBody({ view, trackRef }: { view: DayView; trackRef: RefObject<HTMLDi
             ))}
           </div>
           <div className="ab-day-legend ab-day-caps ab-day-r" style={step(4)}>
-            {DAY_LEGEND.map((item) => (
+            {legend.map((item) => (
               <span key={item.quality}>
                 <i className="ab-day-swatch" style={{ background: item.color }} />
                 {item.label}

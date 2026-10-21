@@ -9,19 +9,24 @@ export const DAY_AXIS_START_HOUR = 6
 export const DAY_AXIS_END_HOUR = 24
 export const DAY_AXIS_STEP_HOURS = 3
 
-// The four colours of the quality of a session, as in day-view.html. They are written here once: the bars and the legend both take them from here. The names are the ones of qualityOf (timerMaths.ts), and the legend is in the order meh, solid, deep, flow.
+// The four colours of the quality of a session, as in day-view.html. They are written here once: the bars and the legend both take them from here. These are the colours of day-view.html and the default; the screen gives the colours of the condition instead (qualityColors of buildDayView and dayLegendFor). The names are the ones of qualityOf (timerMaths.ts), and the legend is in the order meh, solid, deep, flow.
 export const DAY_QUALITY_COLORS: Record<Quality, string> = {
   meh: "#a0705c",
   solid: "#e8b062",
   deep: "#ff6a3c",
   flow: "#fff3de",
 }
-export const DAY_LEGEND: { quality: Quality; label: string; color: string }[] = [
-  { quality: "meh", label: "Meh", color: DAY_QUALITY_COLORS.meh },
-  { quality: "solid", label: "Solid", color: DAY_QUALITY_COLORS.solid },
-  { quality: "deep", label: "Deep", color: DAY_QUALITY_COLORS.deep },
-  { quality: "flow", label: "Flow", color: DAY_QUALITY_COLORS.flow },
-]
+export type DayLegendItem = { quality: Quality; label: string; color: string }
+// The legend in the order meh, solid, deep, flow, in the given colours (the screen gives the colours of the condition, overviewCondition.ts). DAY_LEGEND is the legend in the colours of day-view.html.
+export function dayLegendFor(colors: Record<Quality, string>): DayLegendItem[] {
+  return [
+    { quality: "meh", label: "Meh", color: colors.meh },
+    { quality: "solid", label: "Solid", color: colors.solid },
+    { quality: "deep", label: "Deep", color: colors.deep },
+    { quality: "flow", label: "Flow", color: colors.flow },
+  ]
+}
+export const DAY_LEGEND: DayLegendItem[] = dayLegendFor(DAY_QUALITY_COLORS)
 
 // The word for a session that has no tag (DECISIONS_TAGS.md section 4: "No tag"; a session saved without a tag is Freestyle or from before tags, and the two cannot be told apart).
 export const NO_TAG_LABEL = "No tag"
@@ -130,8 +135,10 @@ export function buildDayView(input: {
   score: Pick<DayScore, "sessions" | "shortSessions" | "longestStretchMinutes">
   deviceZone: string
   wokeMinutes?: number | null
+  qualityColors?: Record<Quality, string>
 }): DayView {
   const woke = input.wokeMinutes ?? null
+  const colors = input.qualityColors ?? DAY_QUALITY_COLORS
   const placed = input.sessions
     .map((session) => {
       const startMs = parseServerTimeMs(session.startedAt)
@@ -153,7 +160,7 @@ export function buildDayView(input: {
     return {
       id: session.id,
       quality,
-      color: DAY_QUALITY_COLORS[quality],
+      color: colors[quality],
       leftPercent: left,
       widthPercent: Math.round((right - left) * 1000) / 1000,
       centerPercent: Math.round(((left + right) / 2) * 1000) / 1000,

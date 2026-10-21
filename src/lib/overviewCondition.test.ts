@@ -4,7 +4,9 @@ import {
   CONDITION_WAIT_MS,
   OVERVIEW_CONDITIONS,
   OVERVIEW_CONDITION_PRESET,
+  OVERVIEW_DAY_PALETTE,
   conditionFromMinutes,
+  dayPaletteOf,
   presetOfCondition,
 } from "./overviewCondition"
 import { OVERVIEW_PRESETS } from "./overviewLook"
@@ -66,6 +68,56 @@ describe("the wait for the answer", () => {
   it("is a positive number of milliseconds, short enough for an opening screen", () => {
     expect(CONDITION_WAIT_MS).toBeGreaterThan(0)
     expect(CONDITION_WAIT_MS).toBeLessThanOrEqual(3000)
+  })
+})
+// How bright a #rrggbb colour is (the relative luminance of the web content guidelines).
+function brightness(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+describe("the colours of the whole day screen for each condition", () => {
+  it("are written for every condition", () => {
+    expect(Object.keys(OVERVIEW_DAY_PALETTE).sort()).toEqual([...OVERVIEW_CONDITIONS].sort())
+    for (const condition of OVERVIEW_CONDITIONS) expect(dayPaletteOf(condition)).toBe(OVERVIEW_DAY_PALETTE[condition])
+  })
+
+  it("give the beam, the bright colour and the four pill colours as #rrggbb", () => {
+    for (const condition of OVERVIEW_CONDITIONS) {
+      const palette = dayPaletteOf(condition)
+      expect(Object.keys(palette.qualities).sort()).toEqual(["deep", "flow", "meh", "solid"])
+      for (const color of [palette.beam, palette.accent, ...Object.values(palette.qualities)]) expect(color).toMatch(/^#[0-9a-f]{6}$/)
+    }
+  })
+
+  it("go with the preset of the same condition: the beam, the bright colour and the flow colour are colours of that preset", () => {
+    for (const condition of OVERVIEW_CONDITIONS) {
+      const palette = dayPaletteOf(condition)
+      const colors = OVERVIEW_PRESETS[presetOfCondition(condition)].colors
+      expect(colors).toContain(palette.beam)
+      expect(colors).toContain(palette.accent)
+      expect(colors).toContain(palette.qualities.flow)
+    }
+  })
+
+  it("get brighter from meh to solid to deep to flow, so that a better session is always the brighter pill", () => {
+    for (const condition of OVERVIEW_CONDITIONS) {
+      const { meh, solid, deep, flow } = dayPaletteOf(condition).qualities
+      const steps = [meh, solid, deep, flow].map(brightness)
+      for (let i = 1; i < steps.length; i += 1) expect(steps[i]).toBeGreaterThan(steps[i - 1])
+    }
+  })
+
+  it("keep the dimmest pill and the bright colour visible on black", () => {
+    for (const condition of OVERVIEW_CONDITIONS) {
+      const palette = dayPaletteOf(condition)
+      expect((brightness(palette.qualities.meh) + 0.05) / 0.05).toBeGreaterThanOrEqual(3)
+      expect((brightness(palette.accent) + 0.05) / 0.05).toBeGreaterThanOrEqual(7)
+    }
+  })
+
+  it("are different for each condition (the four days do not look alike)", () => {
+    expect(new Set(OVERVIEW_CONDITIONS.map((c) => dayPaletteOf(c).beam)).size).toBe(OVERVIEW_CONDITIONS.length)
   })
 })
 // AB:OVERVIEW.TESTS:END

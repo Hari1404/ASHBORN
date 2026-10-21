@@ -41,7 +41,8 @@ vi.mock("@/lib/lite", () => ({
 }))
 
 import OverviewDayView from "./OverviewDayView"
-import { buildDayView, DAY_LEGEND } from "@/lib/overviewDay"
+import { dayPaletteOf, OVERVIEW_CONDITIONS, type OverviewCondition } from "@/lib/overviewCondition"
+import { buildDayView, dayLegendFor } from "@/lib/overviewDay"
 
 // AB:OVERVIEW.TESTS:START
 // Tests of "the whole day" screen of the Overview (src/components/OverviewDayView.tsx, CONNECTIONS.md C63): how it opens and what it does to the page behind it (scroll, inert, focus, the moving background), the settings and the timing of the beam, the day it draws (from the day model, C62), the errors and Try again, closing, the keyboard, and the rows of the labels of the pills. The clocks are the test's own (fake timers), the beam is a stand-in, and the sizes of the labels are given by the test (a screen that is not laid out has none).
@@ -102,11 +103,11 @@ function score(over: Partial<DayScore> = {}): DayScore {
   }
 }
 
-async function show(options: { day?: string; zone?: string; strict?: boolean } = {}): Promise<void> {
+async function show(options: { day?: string; zone?: string; strict?: boolean; condition?: OverviewCondition } = {}): Promise<void> {
   container = document.createElement("div")
   document.body.appendChild(container)
   root = createRoot(container)
-  const screen = createElement(OverviewDayView, { day: options.day ?? DAY, zone: options.zone ?? KOLKATA, onClose })
+  const screen = createElement(OverviewDayView, { day: options.day ?? DAY, zone: options.zone ?? KOLKATA, condition: options.condition, onClose })
   await act(async () => {
     root?.render(options.strict ? createElement(StrictMode, null, screen) : screen)
   })
@@ -277,7 +278,7 @@ describe("the beam", () => {
     expect(beam.props).toHaveLength(0)
     await pass(1)
     expect(beam.props.length).toBeGreaterThan(0)
-    expect(lastBeam()).toMatchObject({ beamPosition: 0.5, color: "#ff5a1f", intensity: 0.7, mouseInteraction: false })
+    expect(lastBeam()).toMatchObject({ beamPosition: 0.5, color: dayPaletteOf("unknown").beam, intensity: 0.7, mouseInteraction: false })
   })
 
   it("keeps the spread of the library (the owner's choice) and a lower intensity than the library default", async () => {
@@ -431,7 +432,7 @@ describe("the day", () => {
   it("draws the four colours, and no Woke mark (the app has no wake time)", async () => {
     await show()
     await answer()
-    expect(texts(".ab-day-legend span")).toEqual(DAY_LEGEND.map((item) => item.label))
+    expect(texts(".ab-day-legend span")).toEqual(dayLegendFor(dayPaletteOf("unknown").qualities).map((item) => item.label))
     expect(all(".ab-day-swatch")).toHaveLength(4)
     expect(q(".ab-day-woke")).toBeNull()
   })
@@ -678,6 +679,60 @@ describe("the rows of the labels of the pills", () => {
     await lay(["AA", "BB"], [[0, 0], [100, 160]])
     expect(rows()).toEqual(["0", "0"])
     expect(q(".ab-day-track")?.dataset.lanes).toBe("2")
+  })
+})
+// How the browser writes a colour back (a hex colour comes back as rgb(...)), so that a written colour and a drawn one can be compared.
+function drawn(color: string): string {
+  const probe = document.createElement("i")
+  probe.style.background = color
+  return probe.style.background
+}
+
+describe("the colours of the condition", () => {
+  it.each([...OVERVIEW_CONDITIONS])("gives the beam the laser colour of the condition %s", async (condition) => {
+    await show({ condition })
+    await pass(BLACK_MS)
+    expect(lastBeam().color).toBe(dayPaletteOf(condition).beam)
+  })
+
+  it.each([...OVERVIEW_CONDITIONS])("draws the pills and the legend in the four colours of the condition %s", async (condition) => {
+    await show({ condition })
+    await answer()
+    const colors = dayPaletteOf(condition).qualities
+    const bars = all(".ab-day-bar")
+    expect(bars.length).toBeGreaterThan(0)
+    for (const bar of bars) expect(bar.style.background).toBe(drawn(colors[bar.dataset.quality as keyof typeof colors]))
+    expect(all(".ab-day-swatch").map((swatch) => swatch.style.background)).toEqual([colors.meh, colors.solid, colors.deep, colors.flow].map(drawn))
+  })
+
+  it("sets the beam colour and the bright colour of the condition on the screen, for the css to use", async () => {
+    await show({ condition: "notEnough" })
+    const root = q(".ab-day")
+    expect(root?.style.getPropertyValue("--ab-day-beam")).toBe(dayPaletteOf("notEnough").beam)
+    expect(root?.style.getPropertyValue("--ab-day-accent")).toBe(dayPaletteOf("notEnough").accent)
+    expect(root?.getAttribute("data-condition")).toBe("notEnough")
+  })
+
+  it("uses the colours of the condition unknown when it is given no condition", async () => {
+    await show()
+    await pass(BLACK_MS)
+    expect(lastBeam().color).toBe(dayPaletteOf("unknown").beam)
+    expect(q(".ab-day")?.getAttribute("data-condition")).toBe("unknown")
+  })
+
+  it("writes the weekday in the bright colour, and the fallback beam and the first part of the tag bar in the colours of the condition, in the css", () => {
+    const css = readFileSync("src/dayview.css", "utf8")
+    expect(css).toMatch(/\.ab-day-title \{[^}]*color: var\(--ab-day-accent\);/)
+    expect(css).toMatch(/\.ab-day-fallback::before \{[^}]*var\(--ab-day-beam\)/)
+    expect(css).toMatch(/\.ab-day-fallback::after \{[^}]*var\(--ab-day-beam\)/)
+    expect(css).toMatch(/\.ab-day-tags i:first-child \{[^}]*background: var\(--ab-day-accent\);/)
+    expect(css).not.toMatch(/#ff6a3c|rgba\(255, 106, 60|rgba\(255, 150, 100/)
+  })
+
+  it("still says the weekday as a word, for the css to colour", async () => {
+    await show({ condition: "good" })
+    await answer()
+    expect(q(".ab-day-title")?.textContent).toBe("Wednesday")
   })
 })
 // AB:OVERVIEW.TESTS:END
