@@ -12,10 +12,11 @@ import "../dayview.css"
 // This file is loaded only when the button is used or when the pointer or the focus comes near it (the shader and the font do not weigh on the first picture of the Overview). Everything the screen shows comes from src/lib/overviewDay.ts (the day model, C62); the day and the time zone are given by the button, so the sentence, the pills and the panel of the Overview are of the same day.
 // It asks the database for the day score and the sessions of the day when it opens, and again when "Try again" is used.
 // THE WEEK (Week view): above the weekday there is a row of the days of this week, Monday to today (weekDaysUpTo of the day model, C62; today is the day the button gave). A tap on a day shows that day's sentence, pills and tag bar. Nothing is built again for it: the beam, the black screen and the sheet stay where they are and the reveal does not play a second time, only the content changes and the colour goes to the colours of that day. Each day has the colours of its own condition (conditionFromMinutes of its credited minutes, C64); today keeps the condition the button gave, so the screen matches the Overview behind it. While another day is read the day that is shown stays, a little dimmer, until the new one arrives. The database is asked for the chosen day only (the same two readings as for today). A phone (lite level 1) draws the beam at a pixel ratio of 1; at lite level 2 the beam falls once and then stands still (src/lib/lite.ts).
+// THE TIME AXIS (Day screen idea 2): the timeline is zoomed to the window of the day by default (from an hour before the first session to an hour after the last one, in whole steps of 3 hours, at least 6 hours, never wider than the full axis; zoomedDayAxis of the day model, C62), because the full axis of 06 to 24 leaves most of the line empty and the pills thin. A small \"Full day\" button under the hour marks (ab-day-full, only for a day where the zoom is shorter than the full axis) switches to the full axis and back; the choice stays when another day is chosen. Both axes are laid out when the day is read, so the switch asks the database for nothing and plays no opening.
 // While it is open: the page behind it does not scroll and takes no tap or focus (the element root is inert), Escape and the Close button close it, Tab stays inside it, the moving background of the Overview is hidden (so it stops drawing, see dayview.css) and the focus goes back to the button that opened it.
 type Props = { day: string; zone: string; condition?: OverviewCondition; onClose: () => void }
 // A day that has been read: its text, the condition whose colours it is drawn in, and everything the screen draws for it.
-type Loaded = { day: string; condition: OverviewCondition; view: DayView }
+type Loaded = { day: string; condition: OverviewCondition; views: { zoom: DayView; full: DayView } }
 
 // The beam. beamPosition 0.5 is the middle of the screen. The COLOUR is not here: it is the beam colour of the condition (palette.beam of overviewCondition.ts, so the laser goes with the background of the same condition). The intensity is lower than the library default (1.8): at the default a bright colour burns out to white, at 0.7 it stays its colour with a white hot core. The spread is the library default (1.5): the owner looked at the shorter spread of day-view.html and chose the default. The mouse does not move the light (day-view.html has no such thing). Every other setting stays at the library default.
 const BEAM = { beamPosition: 0.5, intensity: 0.7, spread: 1.5, mouseInteraction: false }
@@ -82,6 +83,8 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  // The zoomed axis is the default; true shows the full day (06 to 24). It belongs to the screen, not to a day, so it stays when another day is chosen.
+  const [fullDay, setFullDay] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const beamRef = useRef<HTMLDivElement>(null)
   const landingRef = useRef<HTMLDivElement>(null)
@@ -171,8 +174,9 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
       .then(([score, sessions]) => {
         if (!alive) return
         const dayCondition = selected === day ? condition : conditionFromMinutes(score.creditedMinutes)
-        const view = buildDayView({ day: selected, sessions, score, deviceZone: zone, qualityColors: dayPaletteOf(dayCondition).qualities })
-        setLoaded({ day: selected, condition: dayCondition, view })
+        const base = { day: selected, sessions, score, deviceZone: zone, qualityColors: dayPaletteOf(dayCondition).qualities }
+        const views = { zoom: buildDayView({ ...base, axisMode: "zoom" }), full: buildDayView({ ...base, axisMode: "full" }) }
+        setLoaded({ day: selected, condition: dayCondition, views })
       })
       .catch(() => {
         if (alive) setFailed(true)
@@ -218,7 +222,7 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
     const watch = new ResizeObserver(() => placeLabels(track))
     watch.observe(track)
     return () => watch.disconnect()
-  }, [loaded, failed])
+  }, [loaded, failed, fullDay])
 
   return createPortal(
     <div
@@ -287,7 +291,14 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
           ) : null}
           {loaded !== null && !failed ? (
             <div className="ab-day-body" data-busy={loaded.day !== selected ? "true" : "false"} aria-busy={loaded.day !== selected}>
-              <DayBody view={loaded.view} legend={dayLegendFor(palette.qualities)} trackRef={trackRef} />
+              <DayBody
+                view={fullDay ? loaded.views.full : loaded.views.zoom}
+                zoomable={loaded.views.zoom.zoomable}
+                fullDay={fullDay}
+                onToggleFullDay={() => setFullDay((value) => !value)}
+                legend={dayLegendFor(palette.qualities)}
+                trackRef={trackRef}
+              />
             </div>
           ) : null}
         </div>
@@ -297,7 +308,16 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
   )
 }
 
-function DayBody({ view, legend, trackRef }: { view: DayView; legend: DayLegendItem[]; trackRef: RefObject<HTMLDivElement | null> }) {
+type DayBodyProps = {
+  view: DayView
+  zoomable: boolean
+  fullDay: boolean
+  onToggleFullDay: () => void
+  legend: DayLegendItem[]
+  trackRef: RefObject<HTMLDivElement | null>
+}
+
+function DayBody({ view, zoomable, fullDay, onToggleFullDay, legend, trackRef }: DayBodyProps) {
   return (
     <>
       <h1 className="ab-day-title ab-day-r" style={step(0)}>
@@ -344,6 +364,13 @@ function DayBody({ view, legend, trackRef }: { view: DayView; legend: DayLegendI
               </span>
             ))}
           </div>
+          {zoomable ? (
+            <div className="ab-day-axisrow ab-day-r" style={step(2)}>
+              <button className="ab-day-full ab-day-caps" type="button" aria-pressed={fullDay} onClick={onToggleFullDay}>
+                Full day
+              </button>
+            </div>
+          ) : null}
           <div className="ab-day-tags ab-day-r" style={step(3)} aria-hidden="true">
             {view.tagBar.map((part) => (
               <i key={part.label} style={{ flex: Math.max(part.seconds, 1) }} />

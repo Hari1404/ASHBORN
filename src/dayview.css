@@ -341,6 +341,49 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   transform: translateX(-100%);
 }
 
+/* The "Full day" switch under the hour marks (OverviewDayView.tsx, only for a day where the zoomed axis is shorter than the full one). Pressed means the full axis (06 to 24) is shown; it is in the bright colour of the condition like the chosen day of the week row. */
+.ab-day-axisrow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.ab-day-full {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: 1px solid #2c2a27;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ab-day-dim);
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color 0.35s,
+    border-color 0.35s,
+    background-color 0.35s;
+}
+
+.ab-day-full[aria-pressed="true"] {
+  color: var(--ab-day-accent);
+  border-color: color-mix(in srgb, var(--ab-day-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--ab-day-accent) 12%, transparent);
+}
+
+.ab-day-full:focus-visible {
+  outline: 2px solid var(--ab-day-accent);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) {
+  .ab-day-full:not([aria-pressed="true"]):hover {
+    color: var(--ab-day-ink);
+  }
+}
+
 .ab-day-tags {
   display: flex;
   gap: 6px;
@@ -404,6 +447,7 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   .ab-day-quiet,
   .ab-day-week,
   .ab-day-chip,
+  .ab-day-full,
   .ab-day-body {
     transition: none !important;
   }
