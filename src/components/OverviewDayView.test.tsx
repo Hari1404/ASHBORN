@@ -470,6 +470,230 @@ describe("the day", () => {
   })
 })
 
+describe("the time axis: zoomed by default, Full day for the whole of it (Day screen idea 2)", () => {
+  // Two early sessions (05:40 and 06:20; the helper session() cannot make a time before 05:30 in India), so the full axis (03 to 24) is mostly empty and the zoomed one is 03 to 09.
+  const EARLY = [session("05:40", 22, "STUDY"), session("06:20", 27, "STUDY")]
+  const earlyScore = () => score({ creditedMinutes: 49, sessions: 2, shortSessions: 0, longestStretchMinutes: 27 })
+  const earlyView = (axisMode: "zoom" | "full") => buildDayView({ day: DAY, sessions: EARLY, score: earlyScore(), deviceZone: KOLKATA, axisMode })
+  const toggle = () => q(".ab-day-full")
+  const wholeDay = (view: { bars: { leftPercent: number; widthPercent: number }[] }) => ({
+    lefts: view.bars.map((bar) => bar.leftPercent + "%"),
+    widths: view.bars.map((bar) => bar.widthPercent + "%"),
+  })
+  const drawnBars = () => ({ lefts: all(".ab-day-bar").map((bar) => bar.style.left), widths: all(".ab-day-bar").map((bar) => bar.style.width) })
+
+  it("draws the zoomed axis first: the hour marks and the pills are those of the zoomed day", async () => {
+    await show()
+    await answer({ score: earlyScore(), sessions: EARLY })
+    expect(texts(".ab-day-ticks span")).toEqual(["03", "06", "09"])
+    expect(drawnBars()).toEqual(wholeDay(earlyView("zoom")))
+    expect(drawnBars()).not.toEqual(wholeDay(earlyView("full")))
+  })
+
+  it("has a Full day button, not pressed, under the hour marks", async () => {
+    await show()
+    await answer({ score: earlyScore(), sessions: EARLY })
+    expect(toggle()?.textContent).toBe("Full day")
+    expect(toggle()?.getAttribute("type")).toBe("button")
+    expect(toggle()?.getAttribute("aria-pressed")).toBe("false")
+    const ticks = q(".ab-day-ticks") as HTMLElement
+    const row = q(".ab-day-axisrow") as HTMLElement
+    expect(ticks.nextElementSibling).toBe(row)
+    expect(row.nextElementSibling).toBe(q(".ab-day-tags"))
+  })
+
+  it("shows the whole day (03 to 24) with Full day, and the zoom again with a second press", async () => {
+    await show()
+    await answer({ score: earlyScore(), sessions: EARLY })
+    await click(toggle())
+    expect(toggle()?.getAttribute("aria-pressed")).toBe("true")
+    expect(texts(".ab-day-ticks span")).toEqual(["03", "06", "09", "12", "15", "18", "21", "24"])
+    expect(drawnBars()).toEqual(wholeDay(earlyView("full")))
+    await click(toggle())
+    expect(toggle()?.getAttribute("aria-pressed")).toBe("false")
+    expect(texts(".ab-day-ticks span")).toEqual(["03", "06", "09"])
+    expect(drawnBars()).toEqual(wholeDay(earlyView("zoom")))
+  })
+
+  it("does not read the database again and does not play the opening again when the axis is switched", async () => {
+    await show()
+    await answer({ score: earlyScore(), sessions: EARLY })
+    await pass(LAND_MS)
+    await pass(REVEAL_DELAY_MS)
+    const readings = api.scores.length
+    const beamDraws = beam.props.length
+    const barsBefore = all(".ab-day-bar")
+    const sheet = q(".ab-day-sheet")
+    expect(sheet?.getAttribute("data-reveal")).toBe("true")
+    await click(toggle())
+    expect(api.scores.length).toBe(readings)
+    expect(api.sessions.length).toBe(readings)
+    expect(sheet?.getAttribute("data-reveal")).toBe("true")
+    expect(all(".ab-day-bar")).toEqual(barsBefore)
+    expect(q(".ab-day-sheet")).toBe(sheet)
+    expect(beam.props.length).toBeGreaterThanOrEqual(beamDraws)
+    expect(q(".ab-day")?.getAttribute("data-lit")).toBe("true")
+  })
+
+  it("gives the labels of the pills their rows again for the axis that is shown", async () => {
+    await show()
+    await answer({ score: earlyScore(), sessions: EARLY })
+    const track = q(".ab-day-track") as HTMLElement
+    const seen: string[] = []
+    const original = track.querySelectorAll.bind(track)
+    // Count how often the labels are walked: a switch of the axis must walk them again.
+    track.querySelectorAll = ((selector: string) => {
+      if (selector === ".ab-day-blab") seen.push("walked")
+      return original(selector)
+    }) as typeof track.querySelectorAll
+    await click(toggle())
+    expect(seen.length).toBeGreaterThan(0)
+  })
+
+  it("has no Full day button when the day already fills the axis (the day of day-view.html)", async () => {
+    await show()
+    await answer()
+    expect(texts(".ab-day-ticks span")).toEqual(["06", "09", "12", "15", "18", "21", "24"])
+    expect(toggle()).toBeNull()
+    expect(q(".ab-day-axisrow")).toBeNull()
+  })
+
+  it("has no Full day button for a day without a session", async () => {
+    await show()
+    await answer({ score: score({ creditedMinutes: 0, sessions: 0, longestStretchMinutes: 0 }), sessions: [] })
+    expect(q(".ab-day-sentence")?.textContent).toBe("No session this day.")
+    expect(toggle()).toBeNull()
+  })
+
+  it("keeps the choice when another day of the week is chosen, and shows no button for a day that cannot be zoomed", async () => {
+    await show()
+    await answer({ score: earlyScore(), sessions: EARLY })
+    await click(toggle())
+    expect(toggle()?.getAttribute("aria-pressed")).toBe("true")
+    const tuesday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Tuesday") as HTMLElement
+    await click(tuesday)
+    await answer({ index: api.scores.length - 1, score: earlyScore(), sessions: EARLY })
+    expect(q(".ab-day-title")?.textContent).toBe("Tuesday")
+    expect(toggle()?.getAttribute("aria-pressed")).toBe("true")
+    expect(texts(".ab-day-ticks span")).toEqual(["03", "06", "09", "12", "15", "18", "21", "24"])
+    await click(toggle())
+    expect(texts(".ab-day-ticks span")).toEqual(["03", "06", "09"])
+    const monday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Monday") as HTMLElement
+    await click(monday)
+    await answer({ index: api.scores.length - 1, score: score({ creditedMinutes: 142 }), sessions: HTML_SESSIONS })
+    expect(q(".ab-day-title")?.textContent).toBe("Monday")
+    expect(toggle()).toBeNull()
+  })
+
+  it("lets the keyboard reach the Full day button inside the screen (Tab stays inside)", async () => {
+    await show()
+    await answer({ score: earlyScore(), sessions: EARLY })
+    const button = toggle() as HTMLElement
+    button.focus()
+    expect(document.activeElement).toBe(button)
+    const event = await press("Tab")
+    expect(event.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(q(".ab-day-close"))
+    const back = await press("Tab", true)
+    expect(back.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(button)
+  })
+
+  it("is written in the css: a small pill, in the bright colour when pressed, and no motion with reduced motion", () => {
+    const css = readFileSync("src/dayview.css", "utf8")
+    expect(css).toMatch(/\.ab-day-axisrow \{[^}]*justify-content: flex-end;/)
+    expect(css).toMatch(/\.ab-day-full\[aria-pressed="true"\] \{[^}]*color: var\(--ab-day-accent\);/)
+    expect(css).toMatch(/\.ab-day-full:focus-visible \{[^}]*outline: 2px solid var\(--ab-day-accent\);/)
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"))
+    expect(reduced).toContain(".ab-day-full")
+  })
+})
+
+describe("the note under the sentence: the distance to the next level (Day screen idea 3)", () => {
+  const note = () => q(".ab-day-note")
+
+  it("says how far a Rose day is from Corona, as a second line right under the sentence", async () => {
+    await show({ condition: "notEnough" })
+    await answer({ score: score({ creditedMinutes: 50 }) })
+    expect(note()?.textContent).toBe("About 70 minutes to Corona.")
+    expect(note()?.tagName).toBe("P")
+    expect(q(".ab-day-sentence")?.nextElementSibling).toBe(note())
+    // The sentence stays as it was: the note never replaces it.
+    expect(q(".ab-day-sentence")?.textContent).toBe("Four sessions. The longest stretch ran 52, and none lasted under ten.")
+  })
+
+  it("says how far a Corona day is from Lagoon", async () => {
+    await show({ condition: "okay" })
+    await answer({ score: score({ creditedMinutes: 142 }) })
+    expect(note()?.textContent).toBe("About 100 minutes to Lagoon.")
+  })
+
+  it("has no note on Lagoon, on Atmosphere, for a day with no time, and when the minutes already reach the next level", async () => {
+    await show({ condition: "good" })
+    await answer({ score: score({ creditedMinutes: 300 }) })
+    expect(note()).toBeNull()
+    await unmount()
+    document.body.replaceChildren(appRoot as HTMLElement)
+    api.scores = []
+    api.sessions = []
+    await show()
+    await answer()
+    expect(note()).toBeNull()
+    await unmount()
+    document.body.replaceChildren(appRoot as HTMLElement)
+    api.scores = []
+    api.sessions = []
+    await show({ condition: "notEnough" })
+    await answer({ score: score({ creditedMinutes: 0, sessions: 0, longestStretchMinutes: 0 }), sessions: [] })
+    expect(q(".ab-day-sentence")?.textContent).toBe("No session this day.")
+    expect(note()).toBeNull()
+    await unmount()
+    document.body.replaceChildren(appRoot as HTMLElement)
+    api.scores = []
+    api.sessions = []
+    await show({ condition: "notEnough" })
+    await answer({ score: score({ creditedMinutes: 142 }) })
+    expect(note()).toBeNull()
+  })
+
+  it("follows the day that is shown: \"short of\" for a day that is over, and back to \"to\" for today", async () => {
+    await show({ condition: "notEnough" })
+    await answer({ score: score({ creditedMinutes: 50 }) })
+    expect(note()?.textContent).toBe("About 70 minutes to Corona.")
+    const tuesday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Tuesday") as HTMLElement
+    await click(tuesday)
+    await answer({ index: api.scores.length - 1, score: score({ day: "2026-10-20", creditedMinutes: 75 }), sessions: HTML_SESSIONS })
+    expect(q(".ab-day-title")?.textContent).toBe("Tuesday")
+    expect(note()?.textContent).toBe("About 45 minutes short of Corona.")
+    const monday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Monday") as HTMLElement
+    await click(monday)
+    await answer({ index: api.scores.length - 1, score: score({ day: "2026-10-19", creditedMinutes: 200 }), sessions: HTML_SESSIONS })
+    expect(note()?.textContent).toBe("About 40 minutes short of Lagoon.")
+    const wednesday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Wednesday, today") as HTMLElement
+    await click(wednesday)
+    await answer({ index: api.scores.length - 1, score: score({ creditedMinutes: 50 }), sessions: HTML_SESSIONS })
+    expect(note()?.textContent).toBe("About 70 minutes to Corona.")
+  })
+
+  it("is part of the day that is shown, so it is dimmed with it while another day is read", async () => {
+    await show({ condition: "notEnough" })
+    await answer({ score: score({ creditedMinutes: 50 }) })
+    expect(note()?.closest(".ab-day-body")).not.toBeNull()
+    expect(note()?.classList.contains("ab-day-r")).toBe(true)
+    const tuesday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Tuesday") as HTMLElement
+    await click(tuesday)
+    expect(q(".ab-day-body")?.getAttribute("data-busy")).toBe("true")
+    expect(note()?.textContent).toBe("About 70 minutes to Corona.")
+  })
+
+  it("is written in the css as a smaller and dimmer line than the sentence", () => {
+    const css = readFileSync("src/dayview.css", "utf8")
+    expect(css).toMatch(/\.ab-day-note \{[^}]*margin: 8px 0 0;/)
+    expect(css).toMatch(/\.ab-day-note \{[^}]*font-size: clamp\(14px, 2\.1vw, 16px\);/)
+    expect(css).toMatch(/\.ab-day-note \{[^}]*color: rgba\(236, 230, 223, 0\.55\);/)
+  })
+})
+
 describe("when the day cannot be read", () => {
   it("says so, with Try again, when the score cannot be read", async () => {
     await show()
@@ -740,6 +964,13 @@ describe("the colours of the condition", () => {
     expect(css).toMatch(/\.ab-day-fallback::after \{[^}]*var\(--ab-day-beam\)/)
     expect(css).toMatch(/\.ab-day-tags i:first-child \{[^}]*background: var\(--ab-day-accent\);/)
     expect(css).not.toMatch(/#ff6a3c|rgba\(255, 106, 60|rgba\(255, 150, 100/)
+  })
+
+  it("draws the focus ring of Close and Try again in the bright colour, and leaves the gold ring of the shared glass button to the Overview", () => {
+    const css = readFileSync("src/dayview.css", "utf8")
+    const overviewCss = readFileSync("src/overview.css", "utf8")
+    expect(css).toMatch(/\.ab-glass-button\.ab-day-close:focus-visible,\s*\.ab-glass-button\.ab-day-retry:focus-visible \{[^}]*outline-color: var\(--ab-day-accent\);/)
+    expect(overviewCss).toMatch(/\.ab-glass-button:focus-visible \{[^}]*outline: 2px solid #e8b062;/)
   })
 
   it("still says the weekday as a word, for the css to colour", async () => {

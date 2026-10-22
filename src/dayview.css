@@ -121,6 +121,14 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   color: #c9c2ba;
 }
 
+/* The one extra line under the sentence (OverviewDayView.tsx, dayNote of the day model): smaller and dimmer than the sentence, so the sentence stays the record and this is the observation. It comes in a half step after the sentence. */
+.ab-day-note {
+  margin: 8px 0 0;
+  max-width: 34ch;
+  font-size: clamp(14px, 2.1vw, 16px);
+  color: rgba(236, 230, 223, 0.55);
+}
+
 .ab-day-quiet {
   margin: 0 0 16px;
   font-size: 14px;
@@ -135,6 +143,12 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
 
 .ab-day-retry {
   width: min(240px, 100%);
+}
+
+/* The focus ring of Close and Try again takes the bright colour of the condition (--ab-day-accent). The gold ring comes from .ab-glass-button in overview.css, which the "See the whole day" button of the Overview uses too, so it is changed here and not there; the two classes in the selector make it win whichever css file is read last. */
+.ab-glass-button.ab-day-close:focus-visible,
+.ab-glass-button.ab-day-retry:focus-visible {
+  outline-color: var(--ab-day-accent);
 }
 
 .ab-day-caps {
@@ -335,6 +349,49 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   transform: translateX(-100%);
 }
 
+/* The "Full day" switch under the hour marks (OverviewDayView.tsx, only for a day where the zoomed axis is shorter than the full one). Pressed means the full axis (06 to 24) is shown; it is in the bright colour of the condition like the chosen day of the week row. */
+.ab-day-axisrow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.ab-day-full {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: 1px solid #2c2a27;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ab-day-dim);
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color 0.35s,
+    border-color 0.35s,
+    background-color 0.35s;
+}
+
+.ab-day-full[aria-pressed="true"] {
+  color: var(--ab-day-accent);
+  border-color: color-mix(in srgb, var(--ab-day-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--ab-day-accent) 12%, transparent);
+}
+
+.ab-day-full:focus-visible {
+  outline: 2px solid var(--ab-day-accent);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) {
+  .ab-day-full:not([aria-pressed="true"]):hover {
+    color: var(--ab-day-ink);
+  }
+}
+
 .ab-day-tags {
   display: flex;
   gap: 6px;
@@ -398,6 +455,7 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   .ab-day-quiet,
   .ab-day-week,
   .ab-day-chip,
+  .ab-day-full,
   .ab-day-body {
     transition: none !important;
   }

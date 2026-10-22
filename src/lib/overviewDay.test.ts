@@ -14,10 +14,16 @@ import {
   dayLegendFor,
   daySentence,
   dayTitle,
+  DAY_AXIS_ZOOM_MARGIN_MINUTES,
+  DAY_AXIS_ZOOM_MIN_HOURS,
+  DAY_NOTE_ROUND_MINUTES,
+  dayNote,
   NO_TAG_LABEL,
   shiftDay,
   weekDaysUpTo,
+  zoomedDayAxis,
 } from "./overviewDay"
+import { CONDITION_MINUTES, OVERVIEW_CONDITIONS, presetOfCondition } from "./overviewCondition"
 import type { DaySession } from "./timerApi"
 import { DEEP_FROM_SECONDS, FLOW_FROM_SECONDS, SOLID_FROM_SECONDS, qualityOf } from "./timerMaths"
 
@@ -152,6 +158,187 @@ describe("the axis", () => {
     expect(axisPercent(5 * 60, a)).toBe(0)
     expect(axisPercent(24 * 60 + 30, a)).toBe(100)
     expect(axisPercent(15 * 60, a)).toBe(50)
+  })
+})
+
+describe("the zoomed axis (Day screen idea 2)", () => {
+  const hours = (a: { fromHour: number; toHour: number }) => [a.fromHour, a.toHour]
+  const at = (clock: string) => {
+    const [h, m] = clock.split(":").map(Number)
+    return h * 60 + m
+  }
+
+  it("is the full axis when the day has no moment at all", () => {
+    expect(zoomedDayAxis(null, null)).toEqual(dayAxis(null))
+    expect(DAY_AXIS_ZOOM_MARGIN_MINUTES).toBe(60)
+    expect(DAY_AXIS_ZOOM_MIN_HOURS).toBe(6)
+  })
+
+  it("runs from one hour before the first moment to one hour after the last, moved out to whole 3 hour steps", () => {
+    // 10:25 to 15:26: 09:25 and 16:26 become 09 and 18.
+    const a = zoomedDayAxis(at("10:25"), at("15:26"))
+    expect(hours(a)).toEqual([9, 18])
+    expect(a.ticks.map((t) => t.label)).toEqual(["09", "12", "15", "18"])
+    expect(a.ticks.map((t) => Math.round(t.leftPercent))).toEqual([0, 33, 67, 100])
+    // The margin of one hour is taken first and then moved out: 12:00 to 15:00 is 11:00 to 16:00, which goes out to 09 and 18.
+    expect(hours(zoomedDayAxis(at("12:00"), at("15:00")))).toEqual([9, 18])
+    // A margin that lands exactly on a mark stays on it: 10:00 to 14:00 is 09:00 to 15:00.
+    expect(hours(zoomedDayAxis(at("10:00"), at("14:00")))).toEqual([9, 15])
+  })
+
+  it("is never shorter than 6 hours, and the extra room goes to the side where the day has less room", () => {
+    // 04:35 to 04:57 (03 to 06 would be 3 hours): there is less room after it than before it, so the end moves.
+    expect(hours(zoomedDayAxis(at("04:35"), at("04:57")))).toEqual([3, 9])
+    // 06:20 to 06:50 on a day that cannot start before 06: the end moves.
+    expect(hours(zoomedDayAxis(at("06:20"), at("06:50")))).toEqual([6, 12])
+    // 22:30 to 23:10: the axis cannot go past 24, so the start moves.
+    expect(hours(zoomedDayAxis(at("22:30"), at("23:10")))).toEqual([18, 24])
+    // 13:00 to 13:30: 12 to 15 is 3 hours; there is less room before the day (1 hour) than after it (1.5), so the start moves to 09.
+    expect(hours(zoomedDayAxis(at("13:00"), at("13:30")))).toEqual([9, 15])
+    for (const [from, to] of [["03:10", "03:20"], ["09:00", "09:05"], ["23:30", "23:59"], ["00:05", "00:20"]]) {
+      const a = zoomedDayAxis(at(from), at(to))
+      expect(a.toHour - a.fromHour).toBeGreaterThanOrEqual(6)
+      expect(a.fromHour).toBeLessThanOrEqual(at(from) / 60)
+      expect(a.toHour).toBeGreaterThanOrEqual(Math.min(24, at(to) / 60))
+    }
+  })
+
+  it("is never wider than the full axis: not before its start, not past 24", () => {
+    // The full axis of a day that starts at 06:30 starts at 06, the zoom would otherwise reach back to 03.
+    expect(hours(zoomedDayAxis(at("06:30"), at("07:00")))).toEqual([6, 12])
+    // A session over midnight (it ends at 24:20) is held at 24.
+    const over = zoomedDayAxis(at("23:50"), at("23:50") + 30)
+    expect(over.toHour).toBe(24)
+    expect(over.fromHour).toBe(18)
+    // A day with a very early moment can still use the earlier start of its own full axis (01:00 less an hour is 00:00); 20:00 and the hour after it is 21:00.
+    expect(hours(zoomedDayAxis(at("01:00"), at("20:00")))).toEqual([0, 21])
+  })
+
+  it("always has its first mark at 0 percent and its last at 100, with a mark every 3 hours", () => {
+    for (const [from, to] of [["04:35", "04:57"], ["10:25", "15:26"], ["22:30", "23:10"], ["00:05", "23:59"]]) {
+      const a = zoomedDayAxis(at(from), at(to))
+      expect(a.ticks[0].leftPercent).toBe(0)
+      expect(a.ticks[a.ticks.length - 1].leftPercent).toBe(100)
+      for (let i = 1; i < a.ticks.length; i++) expect(a.ticks[i].hour - a.ticks[i - 1].hour).toBe(3)
+    }
+  })
+
+  describe("in the view of a day", () => {
+    const early = [session("04:35", 22, "STUDY"), session("05:20", 27, "STUDY")]
+    const earlyScore = { sessions: 2, shortSessions: 0, longestStretchMinutes: 27 }
+
+    it("keeps the full axis unless the zoom is asked for (the day of day-view.html is the full one)", () => {
+      expect(hours(view(HTML_SESSIONS).axis)).toEqual([6, 24])
+      expect(hours(buildDayView({ day: DAY, sessions: HTML_SESSIONS, score: HTML_SCORE, deviceZone: KOLKATA, axisMode: "full" }).axis)).toEqual([6, 24])
+      expect(hours(view(early, earlyScore).axis)).toEqual([3, 24])
+    })
+
+    it("draws the zoomed axis when it is asked for, and the pills are wider on it", () => {
+      const full = view(early, earlyScore)
+      const zoomed = buildDayView({ day: DAY, sessions: early, score: earlyScore, deviceZone: KOLKATA, axisMode: "zoom" })
+      expect(hours(zoomed.axis)).toEqual([3, 9])
+      expect(zoomed.bars.length).toBe(2)
+      for (let i = 0; i < 2; i++) {
+        expect(zoomed.bars[i].widthPercent).toBeGreaterThan(full.bars[i].widthPercent * 3)
+        expect(zoomed.bars[i].leftPercent).toBeGreaterThanOrEqual(0)
+        expect(zoomed.bars[i].leftPercent + zoomed.bars[i].widthPercent).toBeLessThanOrEqual(100)
+      }
+      // The sentence, the labels and the tag bar do not depend on the axis.
+      expect(zoomed.sentence).toBe(full.sentence)
+      expect(zoomed.bars.map((b) => b.label)).toEqual(full.bars.map((b) => b.label))
+      expect(zoomed.tagBar).toEqual(full.tagBar)
+    })
+
+    it("says that the zoom changes something only when the zoomed axis is shorter than the full one", () => {
+      expect(view(early, earlyScore).zoomable).toBe(true)
+      expect(view([session("10:00", 30, "A")], { sessions: 1, shortSessions: 0, longestStretchMinutes: 30 }).zoomable).toBe(true)
+      // The day of day-view.html fills the whole full axis (06 to 24).
+      expect(view(HTML_SESSIONS).zoomable).toBe(false)
+      // No session: nothing to zoom to.
+      expect(view([], { sessions: 0, shortSessions: 0, longestStretchMinutes: 0 }).zoomable).toBe(false)
+    })
+
+    it("draws the full axis when the zoom is asked for and changes nothing", () => {
+      const zoomed = buildDayView({ day: DAY, sessions: HTML_SESSIONS, score: HTML_SCORE, deviceZone: KOLKATA, axisMode: "zoom" })
+      expect(zoomed).toEqual(view(HTML_SESSIONS))
+    })
+
+    it("counts the end of the last session and the wake time as moments of the day", () => {
+      // One session 10:00 to 10:30 and a wake time at 05:10: the axis must hold both.
+      const one = [session("10:00", 30, "A")]
+      const oneScore = { sessions: 1, shortSessions: 0, longestStretchMinutes: 30 }
+      const woke = buildDayView({ day: DAY, sessions: one, score: oneScore, deviceZone: KOLKATA, wokeMinutes: 5 * 60 + 10, axisMode: "zoom" })
+      expect(hours(woke.axis)).toEqual([3, 12])
+      expect(woke.woke?.leftPercent).toBeGreaterThan(0)
+      // A long last session decides the end of the axis, not only its start: 12:00 to 17:30.
+      const long = buildDayView({ day: DAY, sessions: [session("12:00", 330, "A", { activeSeconds: 330 * 60 })], score: oneScore, deviceZone: KOLKATA, axisMode: "zoom" })
+      expect(hours(long.axis)).toEqual([9, 21])
+    })
+  })
+})
+
+describe("the note under the sentence: the distance to the next level (Day screen idea 3)", () => {
+  const today = (condition: "unknown" | "notEnough" | "okay" | "good", creditedMinutes: number | null) => dayNote({ condition, creditedMinutes, isToday: true })
+  const over = (condition: "unknown" | "notEnough" | "okay" | "good", creditedMinutes: number | null) => dayNote({ condition, creditedMinutes, isToday: false })
+
+  it("says how far a Rose day is from Corona, and a Corona day from Lagoon, rounded to 5 minutes", () => {
+    expect(today("notEnough", 50)).toBe("About 70 minutes to Corona.")
+    expect(today("notEnough", 100)).toBe("About 20 minutes to Corona.")
+    expect(today("okay", 142)).toBe("About 100 minutes to Lagoon.")
+    expect(today("okay", 200)).toBe("About 40 minutes to Lagoon.")
+    expect(DAY_NOTE_ROUND_MINUTES).toBe(5)
+  })
+
+  it("rounds to the nearest 5 and says Under 5 when less than 5 is left", () => {
+    expect(today("notEnough", 112.4)).toBe("About 10 minutes to Corona.")
+    expect(today("notEnough", 115)).toBe("About 5 minutes to Corona.")
+    expect(today("notEnough", 116)).toBe("Under 5 minutes to Corona.")
+    expect(today("notEnough", 119.9)).toBe("Under 5 minutes to Corona.")
+    expect(today("okay", 237.5)).toBe("Under 5 minutes to Lagoon.")
+    expect(today("notEnough", 1)).toBe("About 120 minutes to Corona.")
+  })
+
+  it("uses the minutes of the rule of the conditions, not numbers of its own", () => {
+    expect(today("notEnough", CONDITION_MINUTES.okayFrom - 30)).toBe("About 30 minutes to Corona.")
+    expect(today("okay", CONDITION_MINUTES.goodFrom - 30)).toBe("About 30 minutes to Lagoon.")
+  })
+
+  it("names the next level by the name of its look", () => {
+    const name = (condition: "okay" | "good") => presetOfCondition(condition).charAt(0).toUpperCase() + presetOfCondition(condition).slice(1)
+    expect(today("notEnough", 60)).toContain(name("okay"))
+    expect(today("okay", 150)).toContain(name("good"))
+  })
+
+  it("says \"short of\" for a day that is over, and \"to\" for today", () => {
+    expect(over("notEnough", 50)).toBe("About 70 minutes short of Corona.")
+    expect(over("okay", 142)).toBe("About 100 minutes short of Lagoon.")
+    expect(over("notEnough", 118)).toBe("Under 5 minutes short of Corona.")
+  })
+
+  it("gives no line on the top level, on unknown, and for no time at all", () => {
+    expect(today("good", 300)).toBeNull()
+    expect(today("unknown", 50)).toBeNull()
+    expect(today("notEnough", 0)).toBeNull()
+    expect(today("notEnough", null)).toBeNull()
+    expect(today("notEnough", Number.NaN)).toBeNull()
+    expect(today("notEnough", -5)).toBeNull()
+    for (const condition of OVERVIEW_CONDITIONS) {
+      if (condition === "unknown" || condition === "good") expect(today(condition, 100)).toBeNull()
+    }
+  })
+
+  it("gives no line when the minutes are already at the next level (the condition given and the minutes disagree)", () => {
+    expect(today("notEnough", CONDITION_MINUTES.okayFrom)).toBeNull()
+    expect(today("notEnough", 142)).toBeNull()
+    expect(today("okay", CONDITION_MINUTES.goodFrom)).toBeNull()
+    expect(today("okay", 300)).toBeNull()
+  })
+
+  it("is only a fact: no verdict words, no emoji, one short sentence that ends with a full stop", () => {
+    for (const note of [today("notEnough", 50), today("okay", 142), over("notEnough", 50), today("notEnough", 118)]) {
+      expect(note).toMatch(/^(About \d+|Under 5) minutes (to|short of) [A-Z][a-z]+\.$/)
+      expect(note).not.toMatch(/better|should|only|just|keep|!/i)
+    }
   })
 })
 
