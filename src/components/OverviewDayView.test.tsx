@@ -1517,6 +1517,8 @@ describe("the motion of the data: pills, tag bar and figures (Day screen idea 4)
     const open = wanted.slice(0, wanted.indexOf("/* At lite level 2"))
     expect(open).toContain('.ab-day:not([data-lite-level="2"]) .ab-day-sheet[data-reveal="true"] .ab-day-count {')
     expect(open).toContain("color: transparent;")
+    // The figure is an inline-block, so the counter drawn over it (top: 0) lands exactly on the line of the text and is not raised and clipped by the label's overflow: hidden.
+    expect(open).toContain("display: inline-block;")
     expect(open).toContain("counter-reset: ab-day-n var(--ab-day-n);")
     expect(open).toContain("animation: ab-day-count 0.9s")
     expect(open).toContain("content: counter(ab-day-n);")

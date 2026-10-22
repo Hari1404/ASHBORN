@@ -562,6 +562,7 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
 @media (prefers-reduced-motion: no-preference) {
   .ab-day:not([data-lite-level="2"]) .ab-day-sheet[data-reveal="true"] .ab-day-count {
     position: relative;
+    display: inline-block;
     color: transparent;
     counter-reset: ab-day-n var(--ab-day-n);
     animation: ab-day-count 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) var(--ab-day-tagwait) both;
