@@ -307,6 +307,53 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   inset: -15px -4px;
 }
 
+/* The breaks between two pills (Day screen idea 6, OverviewDayView.tsx, DayView.gaps of the day model): a thin connector over the line, and above it the length of the break. Both take no tap. Like a pill they are hidden before the reveal and come in with a keyframe animation (not a transition), after the pill that follows the break has grown (--i is the place of that pill). */
+.ab-day-gap {
+  position: absolute;
+  top: 33px;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ab-day-accent) 45%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ab-day-gaplab {
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* A break whose words do not fit between its two pills keeps the connector and loses the words (OverviewDayView.tsx works out data-fits). */
+.ab-day-gaplab[data-fits="false"] {
+  visibility: hidden;
+}
+
+@keyframes ab-day-gapin {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.ab-day-sheet[data-reveal="true"] .ab-day-gap,
+.ab-day-sheet[data-reveal="true"] .ab-day-gaplab {
+  opacity: 1;
+  animation: ab-day-gapin 0.5s ease-out both;
+  animation-delay: calc(800ms + var(--i, 0) * 220ms);
+}
+
+.ab-day-sheet[data-reveal="true"] .ab-day-track[data-again="true"] .ab-day-gap,
+.ab-day-sheet[data-reveal="true"] .ab-day-track[data-again="true"] .ab-day-gaplab {
+  animation-duration: 0.3s;
+  animation-delay: calc(200ms + var(--i, 0) * 70ms);
+}
+
 .ab-day-bar[aria-pressed="true"],
 .ab-day-bar:focus-visible {
   outline: 2px solid var(--ab-day-accent);
@@ -576,3 +623,16 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   }
 }
 /* AB:OVERVIEW.DAYVIEW:END */
+
+/* Nothing of the breaks moves at lite level 2 or with reduced motion (the pills, tag bar and figures have their own lists above). */
+.ab-day[data-lite-level="2"] .ab-day-gap,
+.ab-day[data-lite-level="2"] .ab-day-gaplab {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ab-day-gap,
+  .ab-day-gaplab {
+    animation: none !important;
+  }
+}

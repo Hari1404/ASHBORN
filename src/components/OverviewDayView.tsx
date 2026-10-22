@@ -16,6 +16,7 @@ import "../dayview.css"
 // THE NOTE (Day screen idea 3): under the sentence there can be ONE more line, in a smaller and dimmer voice, that says how far the day is from the next level (\"About 70 minutes to Corona.\"; for a day that is over \"About 70 minutes short of Corona.\"). It comes from dayNote of the day model (C62) and never replaces the sentence; it is there only on the levels that have a next one (Rose and Corona) and only while the minutes are short of it.
 // THE MOTION OF THE DATA (Day screen idea 4): after the light has landed the pills grow out of their left end one after another, the tag bar wipes in from the left and the minutes of the tags count up from 0 (all in dayview.css; the numbers in the text are always the final ones, the counting is drawn over them by the css). When another day of the week is chosen the beam, the sheet and the sentence are NOT played again; only the pills of the new day grow in again, shorter and quicker (the track says data-again), and the tag bar and the minutes stay as they are. With reduced motion, and at lite level 2 (data-lite-level on the screen), nothing moves: the final picture is there at once. A phone (lite level 1) keeps the motion, it is only css.
 // THE TIMES OF A PILL (Day screen idea 5): every pill is a button (a tap or the keyboard). It shows one line under the hour marks with the clock times, the tag and the quality of that session (\"04:35 to 04:57 \u00b7 Study \u00b7 solid\", from DayBar.detail of the day model, C62); a tap on the same pill again, or on another day of the week, takes the line away (switching Full day keeps it), a tap on another pill moves it. The line has its own place (it keeps its height), so nothing below it moves. Escape still closes the whole screen.
+// THE BREAKS (Day screen idea 6): between two pills there is a thin connector over the line, and above it the length of the break (\"5 min\", \"1 h 20 min\"), from DayView.gaps of the day model (C62). The connectors are drawn before the pills, so a pill covers the ends. The words are shown only where they fit between the two pills (data-fits, worked out together with the rows of the labels, with the width of the track); a break too narrow for its words keeps its connector and loses the words. The connectors come in after the pills have grown (a keyframe animation, none with reduced motion and at lite level 2).
 // While it is open: the page behind it does not scroll and takes no tap or focus (the element root is inert), Escape and the Close button close it, Tab stays inside it, the moving background of the Overview is hidden (so it stops drawing, see dayview.css) and the focus goes back to the button that opened it.
 type Props = { day: string; zone: string; condition?: OverviewCondition; onClose: () => void }
 // A day that has been read: its text, the condition whose colours it is drawn in, and everything the screen draws for it.
@@ -34,6 +35,8 @@ const REVEAL_DELAY_MS = 40
 const LABEL_GAP_PX = 8
 const LABEL_ROWS = 4
 const LABEL_EDGE_PX = 8
+// The words of a break between two pills ("5 min") are shown only when they fit between the pills with this much room on each side (Day screen idea 6).
+const GAP_LABEL_PAD_PX = 6
 
 function motionIsReduced(): boolean {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
@@ -63,6 +66,13 @@ function placeLabels(track: HTMLElement): void {
     edges[lane] = rect.right + shift
     label.dataset.lane = String(lane)
     if (shift !== 0) label.style.translate = shift + "px"
+  }
+  // The words of the breaks: shown only where they fit between the two pills (data-fits). A track or a label that has no size (a screen that is not laid out) keeps them shown.
+  const trackWidth = track.getBoundingClientRect().width
+  for (const gap of track.querySelectorAll<HTMLElement>(".ab-day-gaplab")) {
+    const room = (trackWidth * Number(gap.dataset.width)) / 100
+    const width = gap.getBoundingClientRect().width
+    gap.dataset.fits = trackWidth === 0 || width === 0 || width + 2 * GAP_LABEL_PAD_PX <= room ? "true" : "false"
   }
   track.dataset.lanes = String(Math.max(2, edges.length))
 }
@@ -358,7 +368,7 @@ function DayBody({ view, note, again, zoomable, fullDay, onToggleFullDay, openBa
       ) : null}
       {view.bars.length > 0 ? (
         <>
-          <div ref={trackRef} className="ab-day-track ab-day-r" data-again={again ? "true" : "false"} style={step(2)}>
+          <div ref={trackRef} className="ab-day-track ab-day-r" data-again={again ? "true" : "false"} style={{ ...step(2), "--pills": view.bars.length } as CSSProperties}>
             <div className="ab-day-line" />
             {view.woke !== null ? (
               <>
@@ -368,6 +378,14 @@ function DayBody({ view, note, again, zoomable, fullDay, onToggleFullDay, openBa
                 <span className="ab-day-dot" style={{ left: view.woke.leftPercent + "%" }} />
               </>
             ) : null}
+            {view.gaps.map((gap) => (
+              <Fragment key={gap.id}>
+                <span className="ab-day-gap" style={{ ...step(gap.afterIndex), left: gap.leftPercent + "%", width: gap.widthPercent + "%" }} aria-hidden="true" />
+                <span className="ab-day-caps ab-day-gaplab" data-width={gap.widthPercent} data-fits="true" style={{ ...step(gap.afterIndex), left: gap.centerPercent + "%" }}>
+                  {gap.label}
+                </span>
+              </Fragment>
+            ))}
             {view.bars.map((bar, i) => (
               <Fragment key={bar.id}>
                 <button

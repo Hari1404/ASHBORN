@@ -14,6 +14,7 @@ import {
   dayLegendFor,
   daySentence,
   dayTitle,
+  gapText,
   DAY_AXIS_ZOOM_MARGIN_MINUTES,
   DAY_AXIS_ZOOM_MIN_HOURS,
   DAY_NOTE_ROUND_MINUTES,
@@ -646,5 +647,101 @@ describe("the times of a pill (Day screen idea 5)", () => {
   it("is a fact and not a verdict (no word of advice or praise)", () => {
     const v = view(HTML_SESSIONS)
     for (const bar of v.bars) expect(bar.detail).not.toMatch(/better|should|only|keep|great|!/i)
+  })
+})
+
+describe("the breaks between the sessions (Day screen idea 6)", () => {
+  // The same clock text with some seconds, to make a break that is not a whole minute.
+  const withSeconds = (iso: string, seconds: number) => iso.replace(":00+00:00", ":" + String(seconds).padStart(2, "0") + "+00:00")
+
+  it("gives one break between each two neighbours, with its words, in whole minutes (the day of day-view.html)", () => {
+    const v = view(HTML_SESSIONS)
+    expect(v.gaps.map((gap) => gap.minutes)).toEqual([153, 233, 254])
+    expect(v.gaps.map((gap) => gap.label)).toEqual(["2 h 33 min", "3 h 53 min", "4 h 14 min"])
+    expect(v.gaps.map((gap) => gap.id)).toEqual([v.bars[0].id, v.bars[1].id, v.bars[2].id])
+    expect(v.gaps.map((gap) => gap.afterIndex)).toEqual([1, 2, 3])
+  })
+
+  it("says a short break as it is: 5 min between two sessions that follow each other", () => {
+    const v = view([session("05:40", 22, "STUDY"), session("06:07", 27, "STUDY")])
+    expect(v.gaps).toHaveLength(1)
+    expect(v.gaps[0].minutes).toBe(5)
+    expect(v.gaps[0].label).toBe("5 min")
+  })
+
+  it("draws a break from the end of one pill to the start of the next, on the axis that is drawn, centred between", () => {
+    const sessions = [session("05:40", 22, "STUDY"), session("06:07", 27, "STUDY"), session("08:30", 20, "STUDY")]
+    for (const axisMode of ["zoom", "full"] as const) {
+      const v = buildDayView({ day: DAY, sessions, score: HTML_SCORE, deviceZone: KOLKATA, axisMode })
+      expect(v.gaps).toHaveLength(2)
+      v.gaps.forEach((gap, i) => {
+        const before = v.bars[i]
+        const after = v.bars[i + 1]
+        expect(gap.leftPercent).toBeCloseTo(before.leftPercent + before.widthPercent, 2)
+        expect(gap.leftPercent + gap.widthPercent).toBeCloseTo(after.leftPercent, 2)
+        expect(gap.centerPercent).toBeCloseTo(gap.leftPercent + gap.widthPercent / 2, 2)
+      })
+    }
+  })
+
+  it("has the same minutes and words on both axes, only the places differ", () => {
+    const sessions = [session("05:40", 22, "STUDY"), session("06:07", 27, "STUDY")]
+    const zoom = buildDayView({ day: DAY, sessions, score: HTML_SCORE, deviceZone: KOLKATA, axisMode: "zoom" })
+    const full = buildDayView({ day: DAY, sessions, score: HTML_SCORE, deviceZone: KOLKATA, axisMode: "full" })
+    expect(zoom.gaps.map((g) => [g.minutes, g.label])).toEqual(full.gaps.map((g) => [g.minutes, g.label]))
+    expect(zoom.gaps[0].widthPercent).toBeGreaterThan(full.gaps[0].widthPercent)
+  })
+
+  it("has no break for no session or one session", () => {
+    expect(view([]).gaps).toEqual([])
+    expect(view([session("09:00", 30, "STUDY")]).gaps).toEqual([])
+  })
+
+  it("puts the sessions in the order of their start first, so the break is between neighbours whatever the order given", () => {
+    const v = view([HTML_SESSIONS[2], HTML_SESSIONS[0], HTML_SESSIONS[3], HTML_SESSIONS[1]])
+    expect(v.gaps.map((gap) => gap.label)).toEqual(["2 h 33 min", "3 h 53 min", "4 h 14 min"])
+  })
+
+  it("draws no break for sessions that touch or overlap, or for a break under half a minute, and draws one of 30 seconds as 1 min", () => {
+    const first = session("07:00", 30, "A")
+    const touching = session("07:30", 30, "B")
+    expect(view([first, touching]).gaps).toEqual([])
+    const overlapping = session("07:20", 30, "B")
+    expect(view([first, overlapping]).gaps).toEqual([])
+    const justUnder = session("07:30", 30, "B", { startedAt: withSeconds(touching.startedAt, 29) })
+    expect(view([first, justUnder]).gaps).toEqual([])
+    const half = session("07:30", 30, "B", { startedAt: withSeconds(touching.startedAt, 30) })
+    expect(view([first, half]).gaps.map((gap) => gap.label)).toEqual(["1 min"])
+  })
+
+  it("counts the break in real time, so two time zones do not change it", () => {
+    const v = view([session("07:00", 30, "A", { tz: "Asia/Kolkata" }), session("08:30", 30, "B", { tz: "Asia/Kolkata" })], HTML_SCORE, { deviceZone: "UTC" })
+    expect(v.gaps.map((gap) => gap.minutes)).toEqual([60])
+  })
+
+  it("is a fact and not a verdict (no word of advice or praise)", () => {
+    const v = view(HTML_SESSIONS)
+    for (const gap of v.gaps) expect(gap.label).not.toMatch(/better|should|only|keep|great|long|short|!/i)
+  })
+
+  describe("gapText", () => {
+    it.each([
+      [0, "0 min"],
+      [1, "1 min"],
+      [5, "5 min"],
+      [59, "59 min"],
+      [60, "1 h"],
+      [61, "1 h 1 min"],
+      [80, "1 h 20 min"],
+      [120, "2 h"],
+      [153, "2 h 33 min"],
+    ])("says %i minutes as %s", (minutes, words) => {
+      expect(gapText(minutes)).toBe(words)
+    })
+
+    it("rounds to whole minutes and never goes below zero", () => {
+      expect(gapText(4.6)).toBe("5 min")
+      expect(gapText(-3)).toBe("0 min")
+    })
   })
 })
