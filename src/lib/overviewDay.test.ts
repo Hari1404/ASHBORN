@@ -594,3 +594,57 @@ describe("the days of this week up to today", () => {
   })
 })
 // AB:OVERVIEW.TESTS:END
+
+describe("the times of a pill (Day screen idea 5)", () => {
+  it("gives every pill the clock times of its session and one line with the times, the tag and the quality", () => {
+    const v = view(HTML_SESSIONS)
+    expect(v.bars.map((bar) => [bar.startText, bar.endText])).toEqual([
+      ["07:00", "07:52"],
+      ["10:25", "11:05"],
+      ["14:58", "15:26"],
+      ["19:40", "20:02"],
+    ])
+    expect(v.bars.map((bar) => bar.detail)).toEqual([
+      "07:00 to 07:52 \u00b7 NPTEL \u00b7 deep",
+      "10:25 to 11:05 \u00b7 STUDY \u00b7 deep",
+      "14:58 to 15:26 \u00b7 STUDY \u00b7 solid",
+      "19:40 to 20:02 \u00b7 STUDY \u00b7 solid",
+    ])
+  })
+
+  it("says No tag for a session without a tag, and the quality of the active seconds (meh, solid, deep, flow)", () => {
+    const v = view([session("06:00", 5, null), session("07:00", 15, "A"), session("08:00", 45, "B"), session("10:00", 95, "C")])
+    expect(v.bars.map((bar) => bar.detail)).toEqual([
+      "06:00 to 06:05 \u00b7 No tag \u00b7 meh",
+      "07:00 to 07:15 \u00b7 A \u00b7 solid",
+      "08:00 to 08:45 \u00b7 B \u00b7 deep",
+      "10:00 to 11:35 \u00b7 C \u00b7 flow",
+    ])
+  })
+
+  it("writes the end of a session that runs over midnight on the clock of the next day", () => {
+    const v = view([session("23:50", 20, "STUDY")])
+    expect(v.bars[0].startText).toBe("23:50")
+    expect(v.bars[0].endText).toBe("00:10")
+    expect(v.bars[0].detail).toBe("23:50 to 00:10 \u00b7 STUDY \u00b7 solid")
+  })
+
+  it("reads the times on the clock of the zone saved with the session, not of the device", () => {
+    const v = view([session("07:00", 30, "STUDY", { tz: "Asia/Kolkata" })], HTML_SCORE, { deviceZone: "UTC" })
+    expect(v.bars[0].startText).toBe("07:00")
+    const device = view([session("07:00", 30, "STUDY", { tz: null })], HTML_SCORE, { deviceZone: "UTC" })
+    expect(device.bars[0].startText).toBe("01:30")
+  })
+
+  it("does not depend on the axis: the zoomed and the full view give the same times", () => {
+    const sessions = [session("05:40", 22, "STUDY"), session("06:20", 27, "STUDY")]
+    const zoom = buildDayView({ day: DAY, sessions, score: HTML_SCORE, deviceZone: KOLKATA, axisMode: "zoom" })
+    const full = buildDayView({ day: DAY, sessions, score: HTML_SCORE, deviceZone: KOLKATA, axisMode: "full" })
+    expect(zoom.bars.map((bar) => bar.detail)).toEqual(full.bars.map((bar) => bar.detail))
+  })
+
+  it("is a fact and not a verdict (no word of advice or praise)", () => {
+    const v = view(HTML_SESSIONS)
+    for (const bar of v.bars) expect(bar.detail).not.toMatch(/better|should|only|keep|great|!/i)
+  })
+})

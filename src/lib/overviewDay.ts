@@ -49,6 +49,10 @@ export type DayBar = {
   minutes: number
   tagLabel: string
   label: string
+  // The clock times of the session on the clock of its own zone ("04:35", "04:57"; a session that runs over midnight ends on the next day's clock, so "00:10"), and the line the screen shows when the pill is tapped: "04:35 to 04:57 \u00b7 Study \u00b7 solid" (Day screen idea 5).
+  startText: string
+  endText: string
+  detail: string
 }
 export type DayTagSegment = { label: string; seconds: number; minutes: number }
 export type DayWoke = { label: string; leftPercent: number }
@@ -243,6 +247,8 @@ export function buildDayView(input: {
     const right = axisPercent(endMinutes, axis)
     const minutes = Math.round(session.activeSeconds / 60)
     const tagLabel = session.tag ?? NO_TAG_LABEL
+    const startText = clockText(startMinutes)
+    const endText = clockText(((endMinutes % 1440) + 1440) % 1440)
     return {
       id: session.id,
       quality,
@@ -253,6 +259,9 @@ export function buildDayView(input: {
       minutes,
       tagLabel,
       label: minutes + " \u00b7 " + tagLabel,
+      startText,
+      endText,
+      detail: startText + " to " + endText + " \u00b7 " + tagLabel + " \u00b7 " + quality,
     }
   })
 

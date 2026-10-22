@@ -291,6 +291,26 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   opacity: 0;
   transform: scaleX(0.1);
   transform-origin: left;
+  /* A pill is a button (Day screen idea 5): the browser's own button look is taken off. It is hidden until the sheet is revealed, so that Tab and a tap cannot reach a pill that is not drawn yet. */
+  visibility: hidden;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The tap area of a pill is taller and a little wider than the pill itself (about 44 px high), so a finger can hit a thin pill. */
+.ab-day-bar::before {
+  content: "";
+  position: absolute;
+  inset: -15px -4px;
+}
+
+.ab-day-bar[aria-pressed="true"],
+.ab-day-bar:focus-visible {
+  outline: 2px solid var(--ab-day-accent);
+  outline-offset: 3px;
 }
 
 @keyframes ab-day-grow {
@@ -305,6 +325,7 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
 }
 
 .ab-day-sheet[data-reveal="true"] .ab-day-bar {
+  visibility: visible;
   opacity: 1;
   transform: none;
   animation: ab-day-grow 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
@@ -362,6 +383,14 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
 
 .ab-day-ticks span:last-child {
   transform: translateX(-100%);
+}
+
+/* The times of the tapped pill (OverviewDayView.tsx, DayBar.detail of the day model): one line under the hour marks. It keeps its height when empty, so the tag bar below never moves when a pill is tapped. */
+.ab-day-detail {
+  min-height: 18px;
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--ab-day-ink);
 }
 
 /* The "Full day" switch under the hour marks (OverviewDayView.tsx, only for a day where the zoomed axis is shorter than the full one). Pressed means the full axis (06 to 24) is shown; it is in the bright colour of the condition like the chosen day of the week row. */

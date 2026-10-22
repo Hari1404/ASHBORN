@@ -497,8 +497,11 @@ describe("the time axis: zoomed by default, Full day for the whole of it (Day sc
     expect(toggle()?.getAttribute("type")).toBe("button")
     expect(toggle()?.getAttribute("aria-pressed")).toBe("false")
     const ticks = q(".ab-day-ticks") as HTMLElement
+    const detail = q(".ab-day-detail") as HTMLElement
     const row = q(".ab-day-axisrow") as HTMLElement
-    expect(ticks.nextElementSibling).toBe(row)
+    // The line with the times of a tapped pill (idea 5) sits between the hour marks and the Full day button.
+    expect(ticks.nextElementSibling).toBe(detail)
+    expect(detail.nextElementSibling).toBe(row)
     expect(row.nextElementSibling).toBe(q(".ab-day-tags"))
   })
 
@@ -791,11 +794,13 @@ describe("closing", () => {
 })
 
 describe("the keyboard", () => {
-  it("goes round Close and the days: from the last day to Close, and back from Close to the last day", async () => {
+  it("goes round Close, the days and the pills: from the last button to Close, and back from Close to the last button", async () => {
     await show()
     await answer()
     const close = q(".ab-day-close")
-    const last = all(".ab-day-chip")[2]
+    // The pills are buttons now (idea 5), so the last button of the day of day-view.html is its last pill.
+    const last = all(".ab-day button").at(-1) as HTMLElement
+    expect(last.classList.contains("ab-day-bar")).toBe(true)
     last.focus()
     expect((await press("Tab")).defaultPrevented).toBe(true)
     expect(document.activeElement).toBe(close)
@@ -1423,6 +1428,160 @@ describe("the motion of the data: pills, tag bar and figures (Day screen idea 4)
   it("is written in the css: nothing moves at lite level 2 or with reduced motion", () => {
     const lite2 = block('.ab-day[data-lite-level="2"] .ab-day-bar,\n.ab-day[data-lite-level="2"] .ab-day-tags')
     expect(lite2).toContain("animation: none !important;")
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"))
+    expect(reduced).toMatch(/\.ab-day-bar,\s*\.ab-day-tags \{\s*animation: none !important;/)
+  })
+})
+describe("the times of a pill: a tap on a pill shows its session (Day screen idea 5)", () => {
+  const TUE = "2026-10-20"
+  const TUE_SESSIONS = [session("09:00", 30, "MATHS"), session("13:00", 45, "MATHS")]
+  const tueScore = () => score({ day: TUE, creditedMinutes: 75, sessions: 2, shortSessions: 0, longestStretchMinutes: 45 })
+  const chip = (name: string) => all(".ab-day-chip").find((c) => c.getAttribute("aria-label")?.startsWith(name)) as HTMLElement
+  const pills = () => all(".ab-day-bar")
+  const line = () => q(".ab-day-detail")?.textContent
+  const pressedPills = () => pills().map((pill) => pill.getAttribute("aria-pressed"))
+  const css = readFileSync("src/dayview.css", "utf8")
+  const block = (start: string) => {
+    const at = css.indexOf(start + " {")
+    expect(at).toBeGreaterThan(-1)
+    return css.slice(at, css.indexOf("}", at) + 1)
+  }
+
+  it("makes every pill a button that is not pressed, with its minutes and times as its name", async () => {
+    await show()
+    await answer()
+    expect(pills()).toHaveLength(4)
+    for (const pill of pills()) {
+      expect(pill.tagName).toBe("BUTTON")
+      expect(pill.getAttribute("type")).toBe("button")
+    }
+    expect(pressedPills()).toEqual(["false", "false", "false", "false"])
+    expect(pills().map((pill) => pill.getAttribute("aria-label"))).toEqual([
+      "52 minutes, 07:00 to 07:52 \u00b7 NPTEL \u00b7 deep",
+      "40 minutes, 10:25 to 11:05 \u00b7 STUDY \u00b7 deep",
+      "28 minutes, 14:58 to 15:26 \u00b7 STUDY \u00b7 solid",
+      "22 minutes, 19:40 to 20:02 \u00b7 STUDY \u00b7 solid",
+    ])
+  })
+
+  it("has an empty line, a polite status, right under the hour marks, until a pill is tapped", async () => {
+    await show()
+    await answer()
+    const detail = q(".ab-day-detail") as HTMLElement
+    expect(detail.tagName).toBe("P")
+    expect(detail.getAttribute("role")).toBe("status")
+    expect(detail.textContent).toBe("")
+    expect(q(".ab-day-ticks")?.nextElementSibling).toBe(detail)
+    expect(detail.classList.contains("ab-day-r")).toBe(true)
+  })
+
+  it("shows the times, the tag and the quality of a pill when it is tapped, and marks that pill as pressed", async () => {
+    await show()
+    await answer()
+    await click(pills()[1])
+    expect(line()).toBe("10:25 to 11:05 \u00b7 STUDY \u00b7 deep")
+    expect(pressedPills()).toEqual(["false", "true", "false", "false"])
+  })
+
+  it("moves the line to another pill that is tapped, and takes it away when the same pill is tapped again", async () => {
+    await show()
+    await answer()
+    await click(pills()[0])
+    expect(line()).toBe("07:00 to 07:52 \u00b7 NPTEL \u00b7 deep")
+    await click(pills()[3])
+    expect(line()).toBe("19:40 to 20:02 \u00b7 STUDY \u00b7 solid")
+    expect(pressedPills()).toEqual(["false", "false", "false", "true"])
+    await click(pills()[3])
+    expect(line()).toBe("")
+    expect(pressedPills()).toEqual(["false", "false", "false", "false"])
+  })
+
+  it("is reached by the keyboard: a pill takes the focus, and Enter and Space of a button press it (a click)", async () => {
+    await show()
+    await answer()
+    pills()[2].focus()
+    expect(document.activeElement).toBe(pills()[2])
+    await click(document.activeElement)
+    expect(line()).toBe("14:58 to 15:26 \u00b7 STUDY \u00b7 solid")
+  })
+
+  it("keeps the line when the axis is switched, because the times do not depend on the axis", async () => {
+    await show()
+    await answer({ score: score({ creditedMinutes: 49, sessions: 2, longestStretchMinutes: 27 }), sessions: [session("05:40", 22, "STUDY"), session("06:20", 27, "STUDY")] })
+    await click(pills()[0])
+    expect(line()).toBe("05:40 to 06:02 \u00b7 STUDY \u00b7 solid")
+    await click(q(".ab-day-full"))
+    expect(line()).toBe("05:40 to 06:02 \u00b7 STUDY \u00b7 solid")
+    expect(pressedPills()).toEqual(["true", "false"])
+  })
+
+  it("takes the line away when another day of the week is chosen, and does not bring it back when the first day is chosen again", async () => {
+    await show()
+    await answer()
+    await click(pills()[0])
+    expect(line()).toBe("07:00 to 07:52 \u00b7 NPTEL \u00b7 deep")
+    await click(chip("Tuesday"))
+    await answer({ index: 1, score: tueScore(), sessions: TUE_SESSIONS })
+    expect(q(".ab-day-title")?.textContent).toBe("Tuesday")
+    expect(line()).toBe("")
+    expect(pressedPills()).toEqual(["false", "false"])
+    // Back on the first day, whose sessions (and so their ids) are the same as before: the pill that was open is not open again.
+    await click(chip("Wednesday"))
+    await answer({ index: 2 })
+    expect(q(".ab-day-title")?.textContent).toBe("Wednesday")
+    expect(line()).toBe("")
+    expect(pressedPills()).toEqual(["false", "false", "false", "false"])
+  })
+
+  it("does not move or build anything again when a pill is tapped (the sheet, the track and the pills stay)", async () => {
+    await show()
+    await answer()
+    await pass(LAND_MS)
+    await pass(REVEAL_DELAY_MS)
+    const track = q(".ab-day-track")
+    const before = pills()
+    const readings = api.scores.length
+    await click(before[1])
+    expect(q(".ab-day-track")).toBe(track)
+    expect(pills()).toEqual(before)
+    expect(q(".ab-day-sheet")?.getAttribute("data-reveal")).toBe("true")
+    expect(q(".ab-day-track")?.getAttribute("data-again")).toBe("false")
+    expect(api.scores.length).toBe(readings)
+  })
+
+  it("leaves Escape to close the whole screen, also when a pill has the focus", async () => {
+    await show()
+    await answer()
+    await click(pills()[0])
+    const event = await press("Escape")
+    expect(event.defaultPrevented).toBe(true)
+    expect(q(".ab-day")?.dataset.on).toBe("false")
+    await pass(FADE_MS)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("has no line and no pill for a day without a session", async () => {
+    await show()
+    await answer({ score: score({ creditedMinutes: 0, sessions: 0, shortSessions: 0, longestStretchMinutes: 0 }), sessions: [] })
+    expect(pills()).toHaveLength(0)
+    expect(q(".ab-day-detail")).toBeNull()
+  })
+
+  it("is written in the css: the button look is taken off, the tap area is about 44 px high, and the pill is hidden until the reveal", () => {
+    const base = block(".ab-day-bar")
+    for (const rule of ["visibility: hidden;", "padding: 0;", "border: 0;", "cursor: pointer;", "font: inherit;"]) expect(base).toContain(rule)
+    expect(block(".ab-day-bar::before")).toContain("inset: -15px -4px;")
+    expect(block('.ab-day-sheet[data-reveal="true"] .ab-day-bar')).toContain("visibility: visible;")
+  })
+
+  it("is written in the css: a pressed or focused pill has a ring in the bright colour, and the line keeps its height when empty", () => {
+    expect(css).toMatch(/\.ab-day-bar\[aria-pressed="true"\],\s*\.ab-day-bar:focus-visible \{[^}]*outline: 2px solid var\(--ab-day-accent\);/)
+    expect(block(".ab-day-detail")).toContain("min-height: 18px;")
+  })
+
+  it("is written in the css: the animation of the pills is untouched (a keyframe animation, off at lite level 2 and with reduced motion)", () => {
+    expect(block('.ab-day-sheet[data-reveal="true"] .ab-day-bar')).toMatch(/animation: ab-day-grow 0\.7s [^;]*both;/)
+    expect(css).toContain('.ab-day[data-lite-level="2"] .ab-day-bar,')
     const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"))
     expect(reduced).toMatch(/\.ab-day-bar,\s*\.ab-day-tags \{\s*animation: none !important;/)
   })
