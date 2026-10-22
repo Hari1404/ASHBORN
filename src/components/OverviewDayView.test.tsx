@@ -742,6 +742,13 @@ describe("the colours of the condition", () => {
     expect(css).not.toMatch(/#ff6a3c|rgba\(255, 106, 60|rgba\(255, 150, 100/)
   })
 
+  it("draws the focus ring of Close and Try again in the bright colour, and leaves the gold ring of the shared glass button to the Overview", () => {
+    const css = readFileSync("src/dayview.css", "utf8")
+    const overviewCss = readFileSync("src/overview.css", "utf8")
+    expect(css).toMatch(/\.ab-glass-button\.ab-day-close:focus-visible,\s*\.ab-glass-button\.ab-day-retry:focus-visible \{[^}]*outline-color: var\(--ab-day-accent\);/)
+    expect(overviewCss).toMatch(/\.ab-glass-button:focus-visible \{[^}]*outline: 2px solid #e8b062;/)
+  })
+
   it("still says the weekday as a word, for the css to colour", async () => {
     await show({ condition: "good" })
     await answer()

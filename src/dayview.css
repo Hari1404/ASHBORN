@@ -137,6 +137,12 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   width: min(240px, 100%);
 }
 
+/* The focus ring of Close and Try again takes the bright colour of the condition (--ab-day-accent). The gold ring comes from .ab-glass-button in overview.css, which the "See the whole day" button of the Overview uses too, so it is changed here and not there; the two classes in the selector make it win whichever css file is read last. */
+.ab-glass-button.ab-day-close:focus-visible,
+.ab-glass-button.ab-day-retry:focus-visible {
+  outline-color: var(--ab-day-accent);
+}
+
 .ab-day-caps {
   font-size: 10px;
   line-height: 1;
