@@ -1,3 +1,4 @@
+import { CONDITION_MINUTES, presetOfCondition, type OverviewCondition } from "@/lib/overviewCondition"
 import type { DayScore, DaySession } from "@/lib/timerApi"
 import { parseServerTimeMs, qualityOf, type Quality } from "@/lib/timerMaths"
 
@@ -180,6 +181,30 @@ export function daySentence(score: Pick<DayScore, "sessions" | "shortSessions" |
   const longest = Math.max(1, Math.round(score.longestStretchMinutes))
   const short = score.shortSessions > 0 ? score.shortSessions + " lasted" : "none lasted"
   return words + " session" + (n === 1 ? "" : "s") + ". The longest stretch ran " + longest + ", and " + short + " under ten."
+}
+
+// The extra line under the sentence (Day screen idea 3): how far the day is from the NEXT level, as a fact and never a verdict. The levels are the conditions of C64: notEnough (Rose) is next to okay (Corona) at CONDITION_MINUTES.okayFrom, okay is next to good (Lagoon) at CONDITION_MINUTES.goodFrom; unknown has no next level and good is the top one, so both give no line (null), and so does a day whose minutes are not past zero or are already at the next level (the condition given and the minutes then disagree, and nothing is guessed). condition is the condition the day is DRAWN in (the screen's colours), creditedMinutes the day number of the day score (so it can differ from the total of the tag bar, which is why the words say \"about\"). The minutes are rounded to the nearest 5; under 5 it says \"Under 5\". isToday picks the wording: \"About 70 minutes to Corona.\" for today, which can still change, and \"About 70 minutes short of Corona.\" for a day that is over. The name of the level is the name of its look (Corona, Lagoon). It never replaces the sentence.
+export const DAY_NOTE_ROUND_MINUTES = 5
+export function dayNote(input: { condition: OverviewCondition; creditedMinutes: number | null; isToday: boolean }): string | null {
+  const { condition, creditedMinutes, isToday } = input
+  if (creditedMinutes === null || !Number.isFinite(creditedMinutes) || creditedMinutes <= 0) return null
+  let target: number
+  let next: OverviewCondition
+  if (condition === "notEnough") {
+    target = CONDITION_MINUTES.okayFrom
+    next = "okay"
+  } else if (condition === "okay") {
+    target = CONDITION_MINUTES.goodFrom
+    next = "good"
+  } else {
+    return null
+  }
+  const left = target - creditedMinutes
+  if (left <= 0) return null
+  const name = presetOfCondition(next)
+  const level = name.charAt(0).toUpperCase() + name.slice(1)
+  const amount = left < DAY_NOTE_ROUND_MINUTES ? "Under " + DAY_NOTE_ROUND_MINUTES : "About " + Math.round(left / DAY_NOTE_ROUND_MINUTES) * DAY_NOTE_ROUND_MINUTES
+  return amount + " minutes " + (isToday ? "to " : "short of ") + level + "."
 }
 
 // Everything the day view draws, for one day. day is the local day (YYYY-MM-DD). sessions are the saved sessions of that day (any order; they are put in the order of their start). score is the day score of the same day. deviceZone is used for a session saved without a zone. wokeMinutes is the wake time in minutes since midnight, or null when it is not known: then no "Woke" mark is drawn (the app has no wake time yet, so nothing is guessed).

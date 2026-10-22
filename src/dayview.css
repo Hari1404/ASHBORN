@@ -121,6 +121,14 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   color: #c9c2ba;
 }
 
+/* The one extra line under the sentence (OverviewDayView.tsx, dayNote of the day model): smaller and dimmer than the sentence, so the sentence stays the record and this is the observation. It comes in a half step after the sentence. */
+.ab-day-note {
+  margin: 8px 0 0;
+  max-width: 34ch;
+  font-size: clamp(14px, 2.1vw, 16px);
+  color: rgba(236, 230, 223, 0.55);
+}
+
 .ab-day-quiet {
   margin: 0 0 16px;
   font-size: 14px;

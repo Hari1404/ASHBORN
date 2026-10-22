@@ -16,11 +16,14 @@ import {
   dayTitle,
   DAY_AXIS_ZOOM_MARGIN_MINUTES,
   DAY_AXIS_ZOOM_MIN_HOURS,
+  DAY_NOTE_ROUND_MINUTES,
+  dayNote,
   NO_TAG_LABEL,
   shiftDay,
   weekDaysUpTo,
   zoomedDayAxis,
 } from "./overviewDay"
+import { CONDITION_MINUTES, OVERVIEW_CONDITIONS, presetOfCondition } from "./overviewCondition"
 import type { DaySession } from "./timerApi"
 import { DEEP_FROM_SECONDS, FLOW_FROM_SECONDS, SOLID_FROM_SECONDS, qualityOf } from "./timerMaths"
 
@@ -271,6 +274,71 @@ describe("the zoomed axis (Day screen idea 2)", () => {
       const long = buildDayView({ day: DAY, sessions: [session("12:00", 330, "A", { activeSeconds: 330 * 60 })], score: oneScore, deviceZone: KOLKATA, axisMode: "zoom" })
       expect(hours(long.axis)).toEqual([9, 21])
     })
+  })
+})
+
+describe("the note under the sentence: the distance to the next level (Day screen idea 3)", () => {
+  const today = (condition: "unknown" | "notEnough" | "okay" | "good", creditedMinutes: number | null) => dayNote({ condition, creditedMinutes, isToday: true })
+  const over = (condition: "unknown" | "notEnough" | "okay" | "good", creditedMinutes: number | null) => dayNote({ condition, creditedMinutes, isToday: false })
+
+  it("says how far a Rose day is from Corona, and a Corona day from Lagoon, rounded to 5 minutes", () => {
+    expect(today("notEnough", 50)).toBe("About 70 minutes to Corona.")
+    expect(today("notEnough", 100)).toBe("About 20 minutes to Corona.")
+    expect(today("okay", 142)).toBe("About 100 minutes to Lagoon.")
+    expect(today("okay", 200)).toBe("About 40 minutes to Lagoon.")
+    expect(DAY_NOTE_ROUND_MINUTES).toBe(5)
+  })
+
+  it("rounds to the nearest 5 and says Under 5 when less than 5 is left", () => {
+    expect(today("notEnough", 112.4)).toBe("About 10 minutes to Corona.")
+    expect(today("notEnough", 115)).toBe("About 5 minutes to Corona.")
+    expect(today("notEnough", 116)).toBe("Under 5 minutes to Corona.")
+    expect(today("notEnough", 119.9)).toBe("Under 5 minutes to Corona.")
+    expect(today("okay", 237.5)).toBe("Under 5 minutes to Lagoon.")
+    expect(today("notEnough", 1)).toBe("About 120 minutes to Corona.")
+  })
+
+  it("uses the minutes of the rule of the conditions, not numbers of its own", () => {
+    expect(today("notEnough", CONDITION_MINUTES.okayFrom - 30)).toBe("About 30 minutes to Corona.")
+    expect(today("okay", CONDITION_MINUTES.goodFrom - 30)).toBe("About 30 minutes to Lagoon.")
+  })
+
+  it("names the next level by the name of its look", () => {
+    const name = (condition: "okay" | "good") => presetOfCondition(condition).charAt(0).toUpperCase() + presetOfCondition(condition).slice(1)
+    expect(today("notEnough", 60)).toContain(name("okay"))
+    expect(today("okay", 150)).toContain(name("good"))
+  })
+
+  it("says \"short of\" for a day that is over, and \"to\" for today", () => {
+    expect(over("notEnough", 50)).toBe("About 70 minutes short of Corona.")
+    expect(over("okay", 142)).toBe("About 100 minutes short of Lagoon.")
+    expect(over("notEnough", 118)).toBe("Under 5 minutes short of Corona.")
+  })
+
+  it("gives no line on the top level, on unknown, and for no time at all", () => {
+    expect(today("good", 300)).toBeNull()
+    expect(today("unknown", 50)).toBeNull()
+    expect(today("notEnough", 0)).toBeNull()
+    expect(today("notEnough", null)).toBeNull()
+    expect(today("notEnough", Number.NaN)).toBeNull()
+    expect(today("notEnough", -5)).toBeNull()
+    for (const condition of OVERVIEW_CONDITIONS) {
+      if (condition === "unknown" || condition === "good") expect(today(condition, 100)).toBeNull()
+    }
+  })
+
+  it("gives no line when the minutes are already at the next level (the condition given and the minutes disagree)", () => {
+    expect(today("notEnough", CONDITION_MINUTES.okayFrom)).toBeNull()
+    expect(today("notEnough", 142)).toBeNull()
+    expect(today("okay", CONDITION_MINUTES.goodFrom)).toBeNull()
+    expect(today("okay", 300)).toBeNull()
+  })
+
+  it("is only a fact: no verdict words, no emoji, one short sentence that ends with a full stop", () => {
+    for (const note of [today("notEnough", 50), today("okay", 142), over("notEnough", 50), today("notEnough", 118)]) {
+      expect(note).toMatch(/^(About \d+|Under 5) minutes (to|short of) [A-Z][a-z]+\.$/)
+      expect(note).not.toMatch(/better|should|only|just|keep|!/i)
+    }
   })
 })
 

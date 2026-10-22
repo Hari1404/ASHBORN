@@ -609,6 +609,91 @@ describe("the time axis: zoomed by default, Full day for the whole of it (Day sc
   })
 })
 
+describe("the note under the sentence: the distance to the next level (Day screen idea 3)", () => {
+  const note = () => q(".ab-day-note")
+
+  it("says how far a Rose day is from Corona, as a second line right under the sentence", async () => {
+    await show({ condition: "notEnough" })
+    await answer({ score: score({ creditedMinutes: 50 }) })
+    expect(note()?.textContent).toBe("About 70 minutes to Corona.")
+    expect(note()?.tagName).toBe("P")
+    expect(q(".ab-day-sentence")?.nextElementSibling).toBe(note())
+    // The sentence stays as it was: the note never replaces it.
+    expect(q(".ab-day-sentence")?.textContent).toBe("Four sessions. The longest stretch ran 52, and none lasted under ten.")
+  })
+
+  it("says how far a Corona day is from Lagoon", async () => {
+    await show({ condition: "okay" })
+    await answer({ score: score({ creditedMinutes: 142 }) })
+    expect(note()?.textContent).toBe("About 100 minutes to Lagoon.")
+  })
+
+  it("has no note on Lagoon, on Atmosphere, for a day with no time, and when the minutes already reach the next level", async () => {
+    await show({ condition: "good" })
+    await answer({ score: score({ creditedMinutes: 300 }) })
+    expect(note()).toBeNull()
+    await unmount()
+    document.body.replaceChildren(appRoot as HTMLElement)
+    api.scores = []
+    api.sessions = []
+    await show()
+    await answer()
+    expect(note()).toBeNull()
+    await unmount()
+    document.body.replaceChildren(appRoot as HTMLElement)
+    api.scores = []
+    api.sessions = []
+    await show({ condition: "notEnough" })
+    await answer({ score: score({ creditedMinutes: 0, sessions: 0, longestStretchMinutes: 0 }), sessions: [] })
+    expect(q(".ab-day-sentence")?.textContent).toBe("No session this day.")
+    expect(note()).toBeNull()
+    await unmount()
+    document.body.replaceChildren(appRoot as HTMLElement)
+    api.scores = []
+    api.sessions = []
+    await show({ condition: "notEnough" })
+    await answer({ score: score({ creditedMinutes: 142 }) })
+    expect(note()).toBeNull()
+  })
+
+  it("follows the day that is shown: \"short of\" for a day that is over, and back to \"to\" for today", async () => {
+    await show({ condition: "notEnough" })
+    await answer({ score: score({ creditedMinutes: 50 }) })
+    expect(note()?.textContent).toBe("About 70 minutes to Corona.")
+    const tuesday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Tuesday") as HTMLElement
+    await click(tuesday)
+    await answer({ index: api.scores.length - 1, score: score({ day: "2026-10-20", creditedMinutes: 75 }), sessions: HTML_SESSIONS })
+    expect(q(".ab-day-title")?.textContent).toBe("Tuesday")
+    expect(note()?.textContent).toBe("About 45 minutes short of Corona.")
+    const monday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Monday") as HTMLElement
+    await click(monday)
+    await answer({ index: api.scores.length - 1, score: score({ day: "2026-10-19", creditedMinutes: 200 }), sessions: HTML_SESSIONS })
+    expect(note()?.textContent).toBe("About 40 minutes short of Lagoon.")
+    const wednesday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Wednesday, today") as HTMLElement
+    await click(wednesday)
+    await answer({ index: api.scores.length - 1, score: score({ creditedMinutes: 50 }), sessions: HTML_SESSIONS })
+    expect(note()?.textContent).toBe("About 70 minutes to Corona.")
+  })
+
+  it("is part of the day that is shown, so it is dimmed with it while another day is read", async () => {
+    await show({ condition: "notEnough" })
+    await answer({ score: score({ creditedMinutes: 50 }) })
+    expect(note()?.closest(".ab-day-body")).not.toBeNull()
+    expect(note()?.classList.contains("ab-day-r")).toBe(true)
+    const tuesday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Tuesday") as HTMLElement
+    await click(tuesday)
+    expect(q(".ab-day-body")?.getAttribute("data-busy")).toBe("true")
+    expect(note()?.textContent).toBe("About 70 minutes to Corona.")
+  })
+
+  it("is written in the css as a smaller and dimmer line than the sentence", () => {
+    const css = readFileSync("src/dayview.css", "utf8")
+    expect(css).toMatch(/\.ab-day-note \{[^}]*margin: 8px 0 0;/)
+    expect(css).toMatch(/\.ab-day-note \{[^}]*font-size: clamp\(14px, 2\.1vw, 16px\);/)
+    expect(css).toMatch(/\.ab-day-note \{[^}]*color: rgba\(236, 230, 223, 0\.55\);/)
+  })
+})
+
 describe("when the day cannot be read", () => {
   it("says so, with Try again, when the score cannot be read", async () => {
     await show()
