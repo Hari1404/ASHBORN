@@ -17,8 +17,20 @@ import {
   gapText,
   DAY_AXIS_ZOOM_MARGIN_MINUTES,
   DAY_AXIS_ZOOM_MIN_HOURS,
+  DAY_NOTE_EARLY_BEFORE_HOUR,
+  DAY_NOTE_GAP_FROM_MINUTES,
+  DAY_NOTE_LATE_AFTER_HOUR,
+  DAY_NOTE_MIX_MAX_PARTS,
+  DAY_NOTE_ORDER,
   DAY_NOTE_ROUND_MINUTES,
+  DAY_NOTE_TIGHT_MAX_MINUTES,
+  DAY_NOTE_TIGHT_MIN_SESSIONS,
+  dayMixNote,
   dayNote,
+  dayObservation,
+  dayRhythmNote,
+  dayTimeNote,
+  ordinalText,
   NO_TAG_LABEL,
   shiftDay,
   weekDaysUpTo,
@@ -26,6 +38,7 @@ import {
 } from "./overviewDay"
 import { CONDITION_MINUTES, OVERVIEW_CONDITIONS, presetOfCondition } from "./overviewCondition"
 import type { DaySession } from "./timerApi"
+import type { DayTagSegment } from "./overviewDay"
 import { DEEP_FROM_SECONDS, FLOW_FROM_SECONDS, SOLID_FROM_SECONDS, qualityOf } from "./timerMaths"
 
 // AB:OVERVIEW.TESTS:START
@@ -340,6 +353,223 @@ describe("the note under the sentence: the distance to the next level (Day scree
       expect(note).toMatch(/^(About \d+|Under 5) minutes (to|short of) [A-Z][a-z]+\.$/)
       expect(note).not.toMatch(/better|should|only|just|keep|!/i)
     }
+  })
+})
+
+describe("more lines for the note: time of day, rhythm and tag mix (Day screen idea 7)", () => {
+  const at = (clock: string) => {
+    const [h, m] = clock.split(":").map(Number)
+    return h * 60 + m
+  }
+  const segment = (label: string, minutes: number): DayTagSegment => ({ label, seconds: minutes * 60, minutes })
+  const FACT = /^[A-Z][^!]*\.$/
+  const NO_VERDICT = /better|should|only|just|keep|!/i
+
+  describe("the words of a place in a row", () => {
+    it("are words up to tenth and numbers with their ending after that", () => {
+      expect([1, 2, 3, 10].map(ordinalText)).toEqual(["first", "second", "third", "tenth"])
+      expect([11, 12, 13, 21, 22, 23, 24, 101, 111, 112].map(ordinalText)).toEqual(["11th", "12th", "13th", "21st", "22nd", "23rd", "24th", "101st", "111th", "112th"])
+    })
+  })
+
+  describe("time of day (dayTimeNote)", () => {
+    it("says when every session started before 06:00, with the number of sessions in words", () => {
+      expect(dayTimeNote([at("04:35")])).toBe("It started before 06:00.")
+      expect(dayTimeNote([at("04:35"), at("05:10")])).toBe("Both started before 06:00.")
+      expect(dayTimeNote([at("01:00"), at("04:35"), at("05:59")])).toBe("All three started before 06:00.")
+      expect(dayTimeNote([100, 120, 140, 160])).toBe("All four started before 06:00.")
+      expect(dayTimeNote(Array.from({ length: 12 }, (_, i) => 60 + i))).toBe("All 12 started before 06:00.")
+    })
+
+    it("says when every session started after 21:00", () => {
+      expect(dayTimeNote([at("21:30")])).toBe("It started after 21:00.")
+      expect(dayTimeNote([at("21:30"), at("23:10")])).toBe("Both started after 21:00.")
+      expect(dayTimeNote([at("21:05"), at("22:00"), at("23:55"), at("21:40")])).toBe("All four started after 21:00.")
+    })
+
+    it("holds the hours exactly: 06:00 is not before 06:00 and 21:00 is not after 21:00", () => {
+      expect(DAY_NOTE_EARLY_BEFORE_HOUR).toBe(DAY_AXIS_START_HOUR)
+      expect(DAY_NOTE_LATE_AFTER_HOUR).toBe(21)
+      expect(dayTimeNote([at("05:59")])).toBe("It started before 06:00.")
+      expect(dayTimeNote([at("06:00")])).toBeNull()
+      expect(dayTimeNote([at("21:00")])).toBeNull()
+      expect(dayTimeNote([at("21:01")])).toBe("It started after 21:00.")
+    })
+
+    it("says nothing for no session, for one session out of the hours, and for a day that is part early, part late or in between", () => {
+      expect(dayTimeNote([])).toBeNull()
+      expect(dayTimeNote([at("12:00")])).toBeNull()
+      expect(dayTimeNote([at("04:35"), at("08:00")])).toBeNull()
+      expect(dayTimeNote([at("04:35"), at("22:00")])).toBeNull()
+      expect(dayTimeNote([at("21:30"), at("20:30")])).toBeNull()
+    })
+  })
+
+  describe("rhythm (dayRhythmNote)", () => {
+    it("tells the longest break and between which sessions, in the words of the connector on the screen", () => {
+      expect(dayRhythmNote([40])).toBe("A 40 min gap between the first and second.")
+      expect(dayRhythmNote([5, 40, 12])).toBe("A 40 min gap between the second and third.")
+      expect(dayRhythmNote([80, 20])).toBe("A 1 h 20 min gap between the first and second.")
+      expect(dayRhythmNote([10, 120])).toBe("A 2 h gap between the second and third.")
+      expect(dayRhythmNote([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 90])).toBe("A 1 h 30 min gap between the 12th and 13th.")
+    })
+
+    it("takes the first one when two breaks are equally long", () => {
+      expect(dayRhythmNote([45, 45])).toBe("A 45 min gap between the first and second.")
+      expect(dayRhythmNote([10, 60, 60, 30])).toBe("A 1 h gap between the second and third.")
+    })
+
+    it("tells a break from DAY_NOTE_GAP_FROM_MINUTES on, not under it", () => {
+      expect(DAY_NOTE_GAP_FROM_MINUTES).toBe(30)
+      expect(dayRhythmNote([30])).toBe("A 30 min gap between the first and second.")
+      expect(dayRhythmNote([29])).toBeNull()
+      expect(dayRhythmNote([20, 29])).toBeNull()
+    })
+
+    it("says no break was longer than 10 minutes on a day of three sessions or more, and is quiet when there is only one break", () => {
+      expect(DAY_NOTE_TIGHT_MAX_MINUTES).toBe(10)
+      expect(DAY_NOTE_TIGHT_MIN_SESSIONS).toBe(3)
+      expect(dayRhythmNote([5, 10])).toBe("No break longer than 10 minutes.")
+      expect(dayRhythmNote([3, 4, 9, 2])).toBe("No break longer than 10 minutes.")
+      expect(dayRhythmNote([5, 11])).toBeNull()
+      expect(dayRhythmNote([12, 20])).toBeNull()
+      expect(dayRhythmNote([5])).toBeNull()
+      expect(dayRhythmNote([10])).toBeNull()
+    })
+
+    it("counts sessions that touch or overlap as breaks of no length", () => {
+      expect(dayRhythmNote([0, 0])).toBe("No break longer than 10 minutes.")
+      expect(dayRhythmNote([-3, 0, -1])).toBe("No break longer than 10 minutes.")
+      expect(dayRhythmNote([-20, 45])).toBe("A 45 min gap between the second and third.")
+    })
+
+    it("says nothing for a day with no break at all (no session or one)", () => {
+      expect(dayRhythmNote([])).toBeNull()
+    })
+  })
+
+  describe("tag mix (dayMixNote)", () => {
+    it("says all of it was one tag when a day of two or more sessions has only that tag", () => {
+      expect(dayMixNote([segment("Study", 49)], 2)).toBe("All of it was Study.")
+      expect(dayMixNote([segment("NPTEL", 120)], 5)).toBe("All of it was NPTEL.")
+    })
+
+    it("says nothing for one session, for a day with only untagged time, and for no time at all", () => {
+      expect(dayMixNote([segment("Study", 49)], 1)).toBeNull()
+      expect(dayMixNote([segment(NO_TAG_LABEL, 60)], 3)).toBeNull()
+      expect(dayMixNote([], 0)).toBeNull()
+      expect(dayMixNote([segment("Study", 0), segment("NPTEL", 0)], 2)).toBeNull()
+    })
+
+    it("gives the shares of the active time in whole percents, biggest first", () => {
+      expect(dayMixNote([segment("Study", 70), segment("NPTEL", 30)], 4)).toBe("Study 70%, NPTEL 30%.")
+      expect(dayMixNote([segment("Study", 50), segment("NPTEL", 30), segment("Gym", 20)], 5)).toBe("Study 50%, NPTEL 30%, Gym 20%.")
+      expect(dayMixNote([segment("Study", 60), segment(NO_TAG_LABEL, 60)], 2)).toBe("Study 50%, No tag 50%.")
+    })
+
+    it("always adds up to 100: the extra points go to the biggest remainders, the earlier one on a tie", () => {
+      expect(dayMixNote([segment("A", 1), segment("B", 1), segment("C", 1)], 3)).toBe("A 34%, B 33%, C 33%.")
+      expect(dayMixNote([segment("A", 2), segment("B", 1)], 3)).toBe("A 67%, B 33%.")
+      for (const minutes of [[7, 5, 3], [1, 1, 1], [13, 11], [97, 2, 1], [5, 4, 3, 2, 1], [90, 31, 17, 9]]) {
+        const note = dayMixNote(minutes.map((m, i) => segment("T" + i, m)), minutes.length) as string
+        const percents = [...note.matchAll(/(\d+)%/g)].map((hit) => Number(hit[1]))
+        expect(percents.reduce((sum, value) => sum + value, 0)).toBe(100)
+        expect(percents.every((value) => value > 0)).toBe(true)
+      }
+    })
+
+    it("names at most DAY_NOTE_MIX_MAX_PARTS places: the biggest tags first and the others as the rest", () => {
+      expect(DAY_NOTE_MIX_MAX_PARTS).toBe(3)
+      expect(dayMixNote([segment("A", 40), segment("B", 30), segment("C", 20), segment("D", 10)], 4)).toBe("A 40%, B 30%, the rest 30%.")
+      expect(dayMixNote([segment("A", 25), segment("B", 25), segment("C", 25), segment("D", 15), segment("E", 10)], 5)).toBe("A 25%, B 25%, the rest 50%.")
+    })
+
+    it("leaves out a tag that rounds to 0%, and says nothing when only one tag is left", () => {
+      expect(dayMixNote([segment("A", 3000), segment("B", 1000), segment("C", 5)], 3)).toBe("A 75%, B 25%.")
+      expect(dayMixNote([segment("A", 3000), segment("B", 5)], 2)).toBeNull()
+    })
+  })
+
+  describe("the note itself (dayObservation)", () => {
+    const base = { creditedMinutes: 300, isToday: true, deviceZone: KOLKATA }
+    const early = [session("04:35", 22, "STUDY"), session("05:10", 27, "STUDY")]
+    // Three sessions with breaks of 20 minutes, none before 06 or after 21, and two tags: nothing to say about the time or the breaks.
+    const mixed = [session("08:00", 30, "STUDY"), session("08:50", 30, "NPTEL"), session("09:40", 30, "STUDY")]
+
+    it("tries the kinds in the fixed order distance, time, rhythm, mix", () => {
+      expect(DAY_NOTE_ORDER).toEqual(["distance", "time", "rhythm", "mix"])
+    })
+
+    it("gives the distance to the next level first, whatever else the day holds", () => {
+      expect(dayObservation({ ...base, condition: "notEnough", creditedMinutes: 50, sessions: early })).toBe("About 70 minutes to Corona.")
+      expect(dayObservation({ ...base, condition: "okay", creditedMinutes: 142, sessions: HTML_SESSIONS, isToday: false })).toBe("About 100 minutes short of Lagoon.")
+    })
+
+    it("gives the time of day when there is no distance line (the top level)", () => {
+      expect(dayObservation({ ...base, condition: "good", sessions: early })).toBe("Both started before 06:00.")
+    })
+
+    it("gives the rhythm when the time of day has nothing to say", () => {
+      expect(dayObservation({ ...base, condition: "good", sessions: HTML_SESSIONS })).toBe("A 4 h 14 min gap between the third and fourth.")
+      const tight = [session("08:00", 30, "A"), session("08:35", 30, "B"), session("09:10", 30, "A")]
+      expect(dayObservation({ ...base, condition: "good", sessions: tight })).toBe("No break longer than 10 minutes.")
+    })
+
+    it("gives the tag mix when neither the time nor the breaks have anything to say", () => {
+      expect(dayObservation({ ...base, condition: "good", sessions: mixed })).toBe("STUDY 67%, NPTEL 33%.")
+      expect(dayObservation({ ...base, condition: "unknown", sessions: [session("08:00", 30, "STUDY"), session("08:50", 30, "STUDY")] })).toBe("All of it was STUDY.")
+    })
+
+    it("gives nothing for a day with no session, and for one session with nothing to say", () => {
+      expect(dayObservation({ ...base, condition: "good", sessions: [] })).toBeNull()
+      expect(dayObservation({ ...base, condition: "good", sessions: [session("10:00", 60, "STUDY")] })).toBeNull()
+    })
+
+    it("falls to the next kind when the one before is silent, also for unknown and when the minutes already reach the next level", () => {
+      expect(dayObservation({ ...base, condition: "unknown", creditedMinutes: 50, sessions: early })).toBe("Both started before 06:00.")
+      expect(dayObservation({ ...base, condition: "notEnough", creditedMinutes: 142, sessions: early })).toBe("Both started before 06:00.")
+      expect(dayObservation({ ...base, condition: "notEnough", creditedMinutes: null, sessions: early })).toBe("Both started before 06:00.")
+    })
+
+    it("reads the starts on the clock of the zone saved with each session, and of the device for a session without one", () => {
+      // 04:35 and 05:10 in India are 08:05 and 08:40 in Tokyo, so they are not early there; the next kind (the tag mix) then has the word.
+      const tokyo = early.map((item) => ({ ...item, tz: "Asia/Tokyo" }))
+      expect(dayObservation({ ...base, condition: "good", sessions: tokyo })).toBe("All of it was STUDY.")
+      const none = early.map((item) => ({ ...item, tz: null }))
+      expect(dayObservation({ ...base, condition: "good", sessions: none, deviceZone: KOLKATA })).toBe("Both started before 06:00.")
+      expect(dayObservation({ ...base, condition: "good", sessions: none, deviceZone: "Asia/Tokyo" })).toBe("All of it was STUDY.")
+    })
+
+    it("does not depend on the order the sessions come in, and does not change them", () => {
+      const shuffled = [HTML_SESSIONS[3], HTML_SESSIONS[0], HTML_SESSIONS[2], HTML_SESSIONS[1]]
+      const copy = [...shuffled]
+      expect(dayObservation({ ...base, condition: "good", sessions: shuffled })).toBe("A 4 h 14 min gap between the third and fourth.")
+      expect(shuffled).toEqual(copy)
+    })
+
+    it("counts a break from the end of a session to the start of the next in real time, across two zones", () => {
+      // 08:00 to 08:30 in India, then a session that started 08:30 in India but is saved on the clock of Tokyo: the break is 0, not 3 h 30 min.
+      const touching = [session("08:00", 30, "A"), { ...session("08:30", 30, "A"), tz: "Asia/Tokyo" }, session("09:00", 30, "A")]
+      expect(dayObservation({ ...base, condition: "good", sessions: touching })).toBe("No break longer than 10 minutes.")
+    })
+
+    it("is only a fact: one short sentence that ends with a full stop, no verdict words, no exclamation mark, no emoji", () => {
+      const lines = [
+        dayObservation({ ...base, condition: "good", sessions: early }),
+        dayObservation({ ...base, condition: "good", sessions: HTML_SESSIONS }),
+        dayObservation({ ...base, condition: "good", sessions: [session("08:00", 30, "A"), session("08:35", 30, "B"), session("09:10", 30, "A")] }),
+        dayObservation({ ...base, condition: "good", sessions: mixed }),
+        dayObservation({ ...base, condition: "unknown", sessions: [session("08:00", 30, "STUDY"), session("08:50", 30, "STUDY")] }),
+        dayTimeNote([at("22:00"), at("23:00")]),
+      ]
+      for (const line of lines) {
+        expect(line).not.toBeNull()
+        expect(line).toMatch(FACT)
+        expect(line).not.toMatch(NO_VERDICT)
+        expect(line).not.toMatch(/\p{Extended_Pictographic}/u)
+        expect((line as string).length).toBeLessThan(60)
+      }
+    })
   })
 })
 

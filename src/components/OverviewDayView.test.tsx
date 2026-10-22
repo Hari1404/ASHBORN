@@ -63,8 +63,11 @@ let getContext: { mockRestore: () => void } | null = null
 function indiaTime(clock: string, addMinutes = 0): string {
   const [h, m] = clock.split(":").map(Number)
   const total = h * 60 + m - 330 + addMinutes
+  // A clock time before 05:30 in India is the evening of the day before in UTC, and one after 29:30 the next day (the database way of writing the time is UTC).
+  const day = total < 0 ? "2026-10-20" : total >= 1440 ? "2026-10-22" : DAY
+  const inDay = ((total % 1440) + 1440) % 1440
   const pad = (n: number) => String(n).padStart(2, "0")
-  return DAY + "T" + pad(Math.floor(total / 60)) + ":" + pad(total % 60) + ":00+00:00"
+  return day + "T" + pad(Math.floor(inDay / 60)) + ":" + pad(inDay % 60) + ":00+00:00"
 }
 
 let counter = 0
@@ -631,17 +634,17 @@ describe("the note under the sentence: the distance to the next level (Day scree
     expect(note()?.textContent).toBe("About 100 minutes to Lagoon.")
   })
 
-  it("has no note on Lagoon, on Atmosphere, for a day with no time, and when the minutes already reach the next level", async () => {
+  it("has no line about the next level on Lagoon, on Atmosphere, for a day with no time, and when the minutes already reach the next level (the next kind of line, Day screen idea 7, then has the word, and a day with no session has none)", async () => {
     await show({ condition: "good" })
     await answer({ score: score({ creditedMinutes: 300 }) })
-    expect(note()).toBeNull()
+    expect(note()?.textContent).toBe("A 4 h 14 min gap between the third and fourth.")
     await unmount()
     document.body.replaceChildren(appRoot as HTMLElement)
     api.scores = []
     api.sessions = []
     await show()
     await answer()
-    expect(note()).toBeNull()
+    expect(note()?.textContent).toBe("A 4 h 14 min gap between the third and fourth.")
     await unmount()
     document.body.replaceChildren(appRoot as HTMLElement)
     api.scores = []
@@ -656,7 +659,7 @@ describe("the note under the sentence: the distance to the next level (Day scree
     api.sessions = []
     await show({ condition: "notEnough" })
     await answer({ score: score({ creditedMinutes: 142 }) })
-    expect(note()).toBeNull()
+    expect(note()?.textContent).toBe("A 4 h 14 min gap between the third and fourth.")
   })
 
   it("follows the day that is shown: \"short of\" for a day that is over, and back to \"to\" for today", async () => {
@@ -694,6 +697,102 @@ describe("the note under the sentence: the distance to the next level (Day scree
     expect(css).toMatch(/\.ab-day-note \{[^}]*margin: 8px 0 0;/)
     expect(css).toMatch(/\.ab-day-note \{[^}]*font-size: clamp\(14px, 2\.1vw, 16px\);/)
     expect(css).toMatch(/\.ab-day-note \{[^}]*color: rgba\(236, 230, 223, 0\.55\);/)
+  })
+})
+
+describe("more lines for the note: time of day, rhythm and tag mix (Day screen idea 7)", () => {
+  const note = () => q(".ab-day-note")
+  const early = [session("04:35", 22, "STUDY"), session("05:10", 27, "STUDY")]
+  const mixed = [session("08:00", 30, "STUDY"), session("08:50", 30, "NPTEL"), session("09:40", 30, "STUDY")]
+  const tight = [session("08:00", 30, "STUDY"), session("08:35", 30, "NPTEL"), session("09:10", 30, "STUDY")]
+
+  it("shows the time of day as the one line under the sentence, on a day that has no line about the next level", async () => {
+    await show({ condition: "good" })
+    await answer({ score: score({ creditedMinutes: 300, sessions: 2, longestStretchMinutes: 27 }), sessions: early })
+    expect(note()?.textContent).toBe("Both started before 06:00.")
+    expect(note()?.tagName).toBe("P")
+    expect(q(".ab-day-sentence")?.nextElementSibling).toBe(note())
+    expect(note()?.classList.contains("ab-day-r")).toBe(true)
+    expect(all(".ab-day-note")).toHaveLength(1)
+    // The sentence stays as it was: the note never replaces it.
+    expect(q(".ab-day-sentence")?.textContent).toBe("Two sessions. The longest stretch ran 27, and none lasted under ten.")
+  })
+
+  it("shows the longest break and where it was", async () => {
+    await show({ condition: "good" })
+    await answer({ score: score({ creditedMinutes: 300 }) })
+    expect(note()?.textContent).toBe("A 4 h 14 min gap between the third and fourth.")
+  })
+
+  it("shows that no break was longer than 10 minutes", async () => {
+    await show({ condition: "good" })
+    await answer({ score: score({ creditedMinutes: 300, sessions: 3 }), sessions: tight })
+    expect(note()?.textContent).toBe("No break longer than 10 minutes.")
+  })
+
+  it("shows the share of each tag when the time and the breaks have nothing to say", async () => {
+    await show({ condition: "good" })
+    await answer({ score: score({ creditedMinutes: 300, sessions: 3 }), sessions: mixed })
+    expect(note()?.textContent).toBe("STUDY 67%, NPTEL 33%.")
+  })
+
+  it("shows that all of it was one tag", async () => {
+    await show({ condition: "good" })
+    await answer({ score: score({ creditedMinutes: 300, sessions: 2 }), sessions: [session("08:00", 30, "STUDY"), session("08:50", 30, "STUDY")] })
+    expect(note()?.textContent).toBe("All of it was STUDY.")
+  })
+
+  it("keeps the distance to the next level first: a Rose or Corona day still shows it, whatever the sessions say", async () => {
+    await show({ condition: "notEnough" })
+    await answer({ score: score({ creditedMinutes: 50, sessions: 2 }), sessions: early })
+    expect(note()?.textContent).toBe("About 70 minutes to Corona.")
+    expect(all(".ab-day-note")).toHaveLength(1)
+  })
+
+  it("has no line when nothing is worth saying: one session, or no session", async () => {
+    await show({ condition: "good" })
+    await answer({ score: score({ creditedMinutes: 300, sessions: 1 }), sessions: [session("10:00", 60, "STUDY")] })
+    expect(note()).toBeNull()
+    await unmount()
+    document.body.replaceChildren(appRoot as HTMLElement)
+    api.scores = []
+    api.sessions = []
+    await show({ condition: "good" })
+    await answer({ score: score({ creditedMinutes: 0, sessions: 0, longestStretchMinutes: 0 }), sessions: [] })
+    expect(q(".ab-day-sentence")?.textContent).toBe("No session this day.")
+    expect(note()).toBeNull()
+  })
+
+  it("reads the starts on the clock of the zone given to the screen", async () => {
+    // 04:35 and 05:10 in India are 08:05 and 08:40 in Tokyo: not early there, so the tag mix has the word.
+    await show({ condition: "good", zone: "Asia/Tokyo" })
+    await answer({ score: score({ creditedMinutes: 300, sessions: 2 }), sessions: early.map((item) => ({ ...item, tz: null })) })
+    expect(note()?.textContent).toBe("All of it was STUDY.")
+  })
+
+  it("follows the day that is shown, and the line is the one of that day", async () => {
+    await show({ condition: "good" })
+    await answer({ score: score({ creditedMinutes: 300 }) })
+    expect(note()?.textContent).toBe("A 4 h 14 min gap between the third and fourth.")
+    const tuesday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Tuesday") as HTMLElement
+    await click(tuesday)
+    await answer({ index: api.scores.length - 1, score: score({ day: "2026-10-20", creditedMinutes: 300, sessions: 2 }), sessions: early })
+    expect(q(".ab-day-title")?.textContent).toBe("Tuesday")
+    expect(note()?.textContent).toBe("Both started before 06:00.")
+    const monday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Monday") as HTMLElement
+    await click(monday)
+    await answer({ index: api.scores.length - 1, score: score({ day: "2026-10-19", creditedMinutes: 300, sessions: 3 }), sessions: mixed })
+    expect(note()?.textContent).toBe("STUDY 67%, NPTEL 33%.")
+  })
+
+  it("does not change while the day is shown (Full day, a tap on a pill)", async () => {
+    await show({ condition: "good" })
+    await answer({ score: score({ creditedMinutes: 300 }) })
+    const before = note()?.textContent
+    await click(q(".ab-day-full"))
+    expect(note()?.textContent).toBe(before)
+    await click(all(".ab-day-bar")[0])
+    expect(note()?.textContent).toBe(before)
   })
 })
 
