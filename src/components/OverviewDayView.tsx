@@ -14,10 +14,12 @@ import "../dayview.css"
 // THE WEEK (Week view): above the weekday there is a row of the days of this week, Monday to today (weekDaysUpTo of the day model, C62; today is the day the button gave). A tap on a day shows that day's sentence, pills and tag bar. Nothing is built again for it: the beam, the black screen and the sheet stay where they are and the reveal does not play a second time, only the content changes and the colour goes to the colours of that day. Each day has the colours of its own condition (conditionFromMinutes of its credited minutes, C64); today keeps the condition the button gave, so the screen matches the Overview behind it. While another day is read the day that is shown stays, a little dimmer, until the new one arrives. The database is asked for the chosen day only (the same two readings as for today). A phone (lite level 1) draws the beam at a pixel ratio of 1; at lite level 2 the beam falls once and then stands still (src/lib/lite.ts).
 // THE TIME AXIS (Day screen idea 2): the timeline is zoomed to the window of the day by default (from an hour before the first session to an hour after the last one, in whole steps of 3 hours, at least 6 hours, never wider than the full axis; zoomedDayAxis of the day model, C62), because the full axis of 06 to 24 leaves most of the line empty and the pills thin. A small \"Full day\" button under the hour marks (ab-day-full, only for a day where the zoom is shorter than the full axis) switches to the full axis and back; the choice stays when another day is chosen. Both axes are laid out when the day is read, so the switch asks the database for nothing and plays no opening.
 // THE NOTE (Day screen idea 3): under the sentence there can be ONE more line, in a smaller and dimmer voice, that says how far the day is from the next level (\"About 70 minutes to Corona.\"; for a day that is over \"About 70 minutes short of Corona.\"). It comes from dayNote of the day model (C62) and never replaces the sentence; it is there only on the levels that have a next one (Rose and Corona) and only while the minutes are short of it.
+// THE MOTION OF THE DATA (Day screen idea 4): after the light has landed the pills grow out of their left end one after another, the tag bar wipes in from the left and the minutes of the tags count up from 0 (all in dayview.css; the numbers in the text are always the final ones, the counting is drawn over them by the css). When another day of the week is chosen the beam, the sheet and the sentence are NOT played again; only the pills of the new day grow in again, shorter and quicker (the track says data-again), and the tag bar and the minutes stay as they are. With reduced motion, and at lite level 2 (data-lite-level on the screen), nothing moves: the final picture is there at once. A phone (lite level 1) keeps the motion, it is only css.
 // While it is open: the page behind it does not scroll and takes no tap or focus (the element root is inert), Escape and the Close button close it, Tab stays inside it, the moving background of the Overview is hidden (so it stops drawing, see dayview.css) and the focus goes back to the button that opened it.
 type Props = { day: string; zone: string; condition?: OverviewCondition; onClose: () => void }
 // A day that has been read: its text, the condition whose colours it is drawn in, and everything the screen draws for it.
-type Loaded = { day: string; condition: OverviewCondition; views: { zoom: DayView; full: DayView }; note: string | null }
+// again is true when the day came after the opening had already played (a day chosen in the week row): its pills then grow in again, shorter.
+type Loaded = { day: string; condition: OverviewCondition; views: { zoom: DayView; full: DayView }; note: string | null; again: boolean }
 
 // The beam. beamPosition 0.5 is the middle of the screen. The COLOUR is not here: it is the beam colour of the condition (palette.beam of overviewCondition.ts, so the laser goes with the background of the same condition). The intensity is lower than the library default (1.8): at the default a bright colour burns out to white, at 0.7 it stays its colour with a white hot core. The spread is the library default (1.5): the owner looked at the shorter spread of day-view.html and chose the default. The mouse does not move the light (day-view.html has no such thing). Every other setting stays at the library default.
 const BEAM = { beamPosition: 0.5, intensity: 0.7, spread: 1.5, mouseInteraction: false }
@@ -91,6 +93,8 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
   const landingRef = useRef<HTMLDivElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
+  // True from the moment the day has come in for the first time (the opening has played). A day that is read after that is drawn with the short growing of its pills only.
+  const openedRef = useRef(false)
 
   // The colours are those of the day that is shown; before any day is shown they are those of the condition the button gave. They stay while the next day is read and change when it arrives.
   const shownCondition = loaded?.condition ?? condition
@@ -178,7 +182,7 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
         const base = { day: selected, sessions, score, deviceZone: zone, qualityColors: dayPaletteOf(dayCondition).qualities }
         const views = { zoom: buildDayView({ ...base, axisMode: "zoom" }), full: buildDayView({ ...base, axisMode: "full" }) }
         const note = dayNote({ condition: dayCondition, creditedMinutes: score.creditedMinutes, isToday: selected === day })
-        setLoaded({ day: selected, condition: dayCondition, views, note })
+        setLoaded({ day: selected, condition: dayCondition, views, note, again: openedRef.current })
       })
       .catch(() => {
         if (alive) setFailed(true)
@@ -203,7 +207,10 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
   const ready = loaded !== null
   useEffect(() => {
     if (!lit || !ready) return
-    const id = window.setTimeout(() => setShown(true), reduce ? 0 : REVEAL_DELAY_MS)
+    const id = window.setTimeout(() => {
+      openedRef.current = true
+      setShown(true)
+    }, reduce ? 0 : REVEAL_DELAY_MS)
     return () => window.clearTimeout(id)
   }, [lit, ready, reduce])
 
@@ -236,6 +243,7 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
       data-on={on && !leaving ? "true" : "false"}
       data-lit={lit ? "true" : "false"}
       data-condition={shownCondition}
+      data-lite-level={LITE_LEVEL}
       style={{ "--ab-day-beam": palette.beam, "--ab-day-accent": palette.accent } as CSSProperties}
     >
       <div ref={beamRef} className="ab-day-beam" aria-hidden="true">
@@ -296,6 +304,7 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
               <DayBody
                 view={fullDay ? loaded.views.full : loaded.views.zoom}
                 note={loaded.note}
+                again={loaded.again}
                 zoomable={loaded.views.zoom.zoomable}
                 fullDay={fullDay}
                 onToggleFullDay={() => setFullDay((value) => !value)}
@@ -314,6 +323,7 @@ export default function OverviewDayView({ day, zone, condition = "unknown", onCl
 type DayBodyProps = {
   view: DayView
   note: string | null
+  again: boolean
   zoomable: boolean
   fullDay: boolean
   onToggleFullDay: () => void
@@ -321,7 +331,9 @@ type DayBodyProps = {
   trackRef: RefObject<HTMLDivElement | null>
 }
 
-function DayBody({ view, note, zoomable, fullDay, onToggleFullDay, legend, trackRef }: DayBodyProps) {
+function DayBody({ view, note, again, zoomable, fullDay, onToggleFullDay, legend, trackRef }: DayBodyProps) {
+  // The tag bar and its figures wait for the pills (dayview.css reads --pills, at most the first few count), so the data comes in as one movement.
+  const afterPills = { ...step(3), "--pills": view.bars.length } as CSSProperties
   return (
     <>
       <h1 className="ab-day-title ab-day-r" style={step(0)}>
@@ -337,7 +349,7 @@ function DayBody({ view, note, zoomable, fullDay, onToggleFullDay, legend, track
       ) : null}
       {view.bars.length > 0 ? (
         <>
-          <div ref={trackRef} className="ab-day-track ab-day-r" style={step(2)}>
+          <div ref={trackRef} className="ab-day-track ab-day-r" data-again={again ? "true" : "false"} style={step(2)}>
             <div className="ab-day-line" />
             {view.woke !== null ? (
               <>
@@ -380,15 +392,18 @@ function DayBody({ view, note, zoomable, fullDay, onToggleFullDay, legend, track
               </button>
             </div>
           ) : null}
-          <div className="ab-day-tags ab-day-r" style={step(3)} aria-hidden="true">
+          <div className="ab-day-tags ab-day-r" style={afterPills} aria-hidden="true">
             {view.tagBar.map((part) => (
               <i key={part.label} style={{ flex: Math.max(part.seconds, 1) }} />
             ))}
           </div>
-          <div className="ab-day-tl ab-day-caps ab-day-r" style={step(3)}>
+          <div className="ab-day-tl ab-day-caps ab-day-r" style={afterPills}>
             {view.tagBar.map((part) => (
               <span key={part.label} style={{ flex: Math.max(part.seconds, 1) }}>
-                {part.label} <b>{part.minutes}</b>
+                {part.label}{" "}
+                <b className="ab-day-count" style={{ "--ab-day-n": part.minutes } as CSSProperties}>
+                  {part.minutes}
+                </b>
               </span>
             ))}
           </div>

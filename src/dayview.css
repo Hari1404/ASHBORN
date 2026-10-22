@@ -281,7 +281,7 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   background: #000;
 }
 
-/* A pill grows out of its left end, after the text has come in. */
+/* A pill grows out of its left end, after the text has come in (Day screen idea 4). It is a keyframe animation and not a transition, so that the same growing can be played again for the pills of a day chosen in the week row: those pills are new elements that are built while the sheet is already revealed. Before the reveal a pill is small and hidden; at the reveal it grows, one pill after another (--i is the number of the pill). */
 .ab-day-bar {
   position: absolute;
   top: 27px;
@@ -291,15 +291,30 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   opacity: 0;
   transform: scaleX(0.1);
   transform-origin: left;
-  transition:
-    transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 0.7s;
-  transition-delay: calc(450ms + var(--i, 0) * 220ms);
+}
+
+@keyframes ab-day-grow {
+  from {
+    opacity: 0;
+    transform: scaleX(0.1);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .ab-day-sheet[data-reveal="true"] .ab-day-bar {
   opacity: 1;
   transform: none;
+  animation: ab-day-grow 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(450ms + var(--i, 0) * 220ms);
+}
+
+/* A day chosen in the week row (OverviewDayView.tsx sets data-again on the track): only its pills grow in again, shorter and quicker. The beam, the sheet and the text are not played again. */
+.ab-day-sheet[data-reveal="true"] .ab-day-track[data-again="true"] .ab-day-bar {
+  animation-duration: 0.45s;
+  animation-delay: calc(var(--i, 0) * 70ms);
 }
 
 .ab-day-blab {
@@ -428,6 +443,69 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   letter-spacing: 0.16em;
 }
 
+/* The tag bar wipes in from the left and the minutes of the tags count up from 0 (Day screen idea 4), both after the first pills have grown: --ab-day-tagwait is 450ms plus 220ms for each of the first four pills (OverviewDayView.tsx sets --pills, the number of pills). The figure in the text is always the final one; the counting is drawn over it by the css below, so the page reads the same without it. */
+.ab-day-tags,
+.ab-day-tl {
+  --ab-day-tagwait: calc(450ms + min(var(--pills, 1), 4) * 220ms);
+}
+
+.ab-day-tl.ab-day-r {
+  transition-delay: var(--ab-day-tagwait);
+}
+
+@keyframes ab-day-wipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.ab-day-sheet[data-reveal="true"] .ab-day-tags {
+  animation: ab-day-wipe 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) var(--ab-day-tagwait) both;
+}
+
+/* The figure: a registered whole number that the animation moves from 0 to its own value (OverviewDayView.tsx sets --ab-day-n to the minutes). The real text is made see-through and keeps the place, and a counter of the same number is drawn over it, so nothing shifts while it counts. Only where motion is wanted: reduced motion and lite level 2 keep the plain text. */
+@property --ab-day-n {
+  syntax: "<integer>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@keyframes ab-day-count {
+  from {
+    --ab-day-n: 0;
+  }
+}
+
+.ab-day-count {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ab-day:not([data-lite-level="2"]) .ab-day-sheet[data-reveal="true"] .ab-day-count {
+    position: relative;
+    color: transparent;
+    counter-reset: ab-day-n var(--ab-day-n);
+    animation: ab-day-count 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) var(--ab-day-tagwait) both;
+  }
+
+  .ab-day:not([data-lite-level="2"]) .ab-day-sheet[data-reveal="true"] .ab-day-count::after {
+    content: counter(ab-day-n);
+    position: absolute;
+    top: 0;
+    left: 0;
+    color: var(--ab-day-ink);
+  }
+}
+
+/* At lite level 2 nothing is drawn moving: the pills and the tag bar are there at once, in their final place. */
+.ab-day[data-lite-level="2"] .ab-day-bar,
+.ab-day[data-lite-level="2"] .ab-day-tags {
+  animation: none !important;
+}
+
 .ab-day-legend {
   display: flex;
   flex-wrap: wrap;
@@ -462,6 +540,10 @@ html[data-ab-day-open] main.ab-stub > .ab-ascii-bg {
   .ab-day-r,
   .ab-day-week {
     filter: none;
+  }
+  .ab-day-bar,
+  .ab-day-tags {
+    animation: none !important;
   }
 }
 /* AB:OVERVIEW.DAYVIEW:END */

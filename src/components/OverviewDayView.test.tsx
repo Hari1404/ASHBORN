@@ -1297,4 +1297,134 @@ describe("the week: the days of this week up to today", () => {
     expect(source).toContain('import { timerDayScore, timerDaySessions } from "@/lib/timerApi"')
   })
 })
+
+describe("the motion of the data: pills, tag bar and figures (Day screen idea 4)", () => {
+  const TUE = "2026-10-20"
+  const TUE_SESSIONS = [session("09:00", 30, "MATHS"), session("13:00", 45, "MATHS")]
+  const tueScore = () => score({ day: TUE, creditedMinutes: 75, sessions: 2, shortSessions: 0, longestStretchMinutes: 45 })
+  const chip = (name: string) => all(".ab-day-chip").find((c) => c.getAttribute("aria-label")?.startsWith(name)) as HTMLElement
+  const opened = async () => {
+    await show()
+    await answer()
+    await pass(LAND_MS)
+    await pass(REVEAL_DELAY_MS)
+  }
+  // The text of a block of the css from the line that starts it to the first closing brace (the blocks of this file do not nest, except the keyframes and the media queries, which the tests read with their own patterns).
+  const css = readFileSync("src/dayview.css", "utf8")
+  const block = (start: string) => {
+    const at = css.indexOf(start + " {")
+    expect(at).toBeGreaterThan(-1)
+    return css.slice(at, css.indexOf("}", at) + 1)
+  }
+
+  it("gives the css the number of pills and the final minutes of every tag, and keeps the final figure in the text", async () => {
+    await opened()
+    expect(q(".ab-day-tags")?.style.getPropertyValue("--pills")).toBe("4")
+    expect(q(".ab-day-tl")?.style.getPropertyValue("--pills")).toBe("4")
+    expect(all(".ab-day-count").map((b) => b.style.getPropertyValue("--ab-day-n"))).toEqual(["90", "52"])
+    expect(texts(".ab-day-count")).toEqual(["90", "52"])
+    expect(texts(".ab-day-tl span")).toEqual(["STUDY 90", "NPTEL 52"])
+  })
+
+  it("keeps the final figures in the text with reduced motion too (the css then draws no counting)", async () => {
+    setReducedMotion(true)
+    await opened()
+    expect(texts(".ab-day-count")).toEqual(["90", "52"])
+    expect(q(".ab-day-sheet")?.dataset.reveal).toBe("true")
+  })
+
+  it("draws the first day as the opening, with the long growing of the pills (not again)", async () => {
+    await opened()
+    expect(q(".ab-day-track")?.dataset.again).toBe("false")
+  })
+
+  it("grows only the pills of a day chosen in the week row again, and plays nothing else again", async () => {
+    await opened()
+    const same = [q(".ab-day-sheet"), q(".ab-day-track"), q(".ab-day-tags"), q(".ab-day-tl"), q(".ab-day-title"), q("#beam-stub")]
+    const pillsBefore = all(".ab-day-bar")
+    await click(chip("Tuesday"))
+    // While the day is read the day that is shown is not touched.
+    expect(q(".ab-day-track")?.dataset.again).toBe("false")
+    await answer({ index: 1, score: tueScore(), sessions: TUE_SESSIONS })
+    expect(q(".ab-day-track")?.dataset.again).toBe("true")
+    const pillsAfter = all(".ab-day-bar")
+    expect(pillsAfter).toHaveLength(2)
+    expect(pillsAfter.some((bar) => pillsBefore.includes(bar))).toBe(false)
+    expect(q(".ab-day-sheet")?.dataset.reveal).toBe("true")
+    ;[q(".ab-day-sheet"), q(".ab-day-track"), q(".ab-day-tags"), q(".ab-day-tl"), q(".ab-day-title"), q("#beam-stub")].forEach((el, i) => expect(el).toBe(same[i]))
+    expect(q(".ab-day-tags")?.style.getPropertyValue("--pills")).toBe("2")
+    expect(texts(".ab-day-count")).toEqual(["75"])
+  })
+
+  it("does not grow the pills again when the axis is switched (they keep their elements and only move)", async () => {
+    await show()
+    await answer({ score: score({ creditedMinutes: 49, sessions: 2, longestStretchMinutes: 27 }), sessions: [session("05:40", 22, "STUDY"), session("06:20", 27, "STUDY")] })
+    await pass(LAND_MS)
+    await pass(REVEAL_DELAY_MS)
+    const pills = all(".ab-day-bar")
+    await click(q(".ab-day-full"))
+    expect(all(".ab-day-bar")).toEqual(pills)
+    expect(q(".ab-day-track")?.dataset.again).toBe("false")
+  })
+
+  it("counts a day that is read before the light has landed as part of the opening, not as a day chosen later", async () => {
+    await show()
+    await click(chip("Tuesday"))
+    await answer({ index: 1, score: tueScore(), sessions: TUE_SESSIONS })
+    expect(q(".ab-day-track")?.dataset.again).toBe("false")
+    await pass(LAND_MS)
+    await pass(REVEAL_DELAY_MS)
+    expect(q(".ab-day-track")?.dataset.again).toBe("false")
+    expect(q(".ab-day-sheet")?.dataset.reveal).toBe("true")
+  })
+
+  it("says the lite level on the screen, for the css (0 laptop, 1 phone, 2 phone that stands still)", async () => {
+    for (const level of [0, 1, 2]) {
+      lite.level = level
+      await show()
+      expect(q(".ab-day")?.getAttribute("data-lite-level")).toBe(String(level))
+      await unmount()
+      container?.remove()
+      container = null
+    }
+  })
+
+  it("is written in the css: the pills grow with a keyframe animation (not a transition), shorter for a day chosen later", () => {
+    expect(css).toMatch(/@keyframes ab-day-grow \{\s*from \{[^}]*scaleX\(0\.1\)[^}]*\}\s*to \{[^}]*transform: none;/)
+    expect(block(".ab-day-bar")).not.toContain("transition")
+    expect(block('.ab-day-sheet[data-reveal="true"] .ab-day-bar')).toMatch(/animation: ab-day-grow 0\.7s [^;]*both;/)
+    expect(block('.ab-day-sheet[data-reveal="true"] .ab-day-bar')).toContain("animation-delay: calc(450ms + var(--i, 0) * 220ms);")
+    const again = block('.ab-day-sheet[data-reveal="true"] .ab-day-track[data-again="true"] .ab-day-bar')
+    expect(again).toContain("animation-duration: 0.45s;")
+    expect(again).toContain("animation-delay: calc(var(--i, 0) * 70ms);")
+  })
+
+  it("is written in the css: the tag bar wipes in from the left after the first pills, and its figures wait for the same moment", () => {
+    expect(css).toMatch(/@keyframes ab-day-wipe \{\s*from \{\s*clip-path: inset\(0 100% 0 0\);\s*\}\s*to \{\s*clip-path: inset\(0 0 0 0\);/)
+    expect(block(".ab-day-tags,\n.ab-day-tl")).toContain("--ab-day-tagwait: calc(450ms + min(var(--pills, 1), 4) * 220ms);")
+    expect(block('.ab-day-sheet[data-reveal="true"] .ab-day-tags')).toMatch(/animation: ab-day-wipe 0\.9s [^;]*var\(--ab-day-tagwait\) both;/)
+    expect(block(".ab-day-tl.ab-day-r")).toContain("transition-delay: var(--ab-day-tagwait);")
+  })
+
+  it("is written in the css: the figure counts up with a registered whole number, drawn over the real text, only where motion is wanted", () => {
+    expect(css).toMatch(/@property --ab-day-n \{\s*syntax: "<integer>";\s*inherits: false;\s*initial-value: 0;/)
+    expect(css).toMatch(/@keyframes ab-day-count \{\s*from \{\s*--ab-day-n: 0;/)
+    const wanted = css.slice(css.indexOf("@media (prefers-reduced-motion: no-preference)"))
+    const open = wanted.slice(0, wanted.indexOf("/* At lite level 2"))
+    expect(open).toContain('.ab-day:not([data-lite-level="2"]) .ab-day-sheet[data-reveal="true"] .ab-day-count {')
+    expect(open).toContain("color: transparent;")
+    expect(open).toContain("counter-reset: ab-day-n var(--ab-day-n);")
+    expect(open).toContain("animation: ab-day-count 0.9s")
+    expect(open).toContain("content: counter(ab-day-n);")
+    // Nothing that hides the real text is written outside that media query.
+    expect(css.slice(0, css.indexOf("@media (prefers-reduced-motion: no-preference)"))).not.toMatch(/(^|[\s;{])color: transparent;/)
+  })
+
+  it("is written in the css: nothing moves at lite level 2 or with reduced motion", () => {
+    const lite2 = block('.ab-day[data-lite-level="2"] .ab-day-bar,\n.ab-day[data-lite-level="2"] .ab-day-tags')
+    expect(lite2).toContain("animation: none !important;")
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"))
+    expect(reduced).toMatch(/\.ab-day-bar,\s*\.ab-day-tags \{\s*animation: none !important;/)
+  })
+})
 // AB:OVERVIEW.TESTS:END
