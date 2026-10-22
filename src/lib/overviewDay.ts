@@ -12,6 +12,8 @@ export const DAY_AXIS_STEP_HOURS = 3
 // The zoomed axis (the screen draws it by default, "Full day" brings the axis above back): it runs from one hour before the first moment of the day to one hour after the last one, widened to whole steps of 3 hours, never shorter than 6 hours and never wider than the full axis.
 export const DAY_AXIS_ZOOM_MARGIN_MINUTES = 60
 export const DAY_AXIS_ZOOM_MIN_HOURS = 6
+// The break between two sessions (Day screen idea 6) is drawn when it is at least this many whole minutes (rounded); a smaller one, and sessions that touch or overlap, have none.
+export const DAY_GAP_MIN_MINUTES = 1
 
 // The four colours of the quality of a session, as in day-view.html. They are written here once: the bars and the legend both take them from here. These are the colours of day-view.html and the default; the screen gives the colours of the condition instead (qualityColors of buildDayView and dayLegendFor). The names are the ones of qualityOf (timerMaths.ts), and the legend is in the order meh, solid, deep, flow.
 export const DAY_QUALITY_COLORS: Record<Quality, string> = {
@@ -49,7 +51,13 @@ export type DayBar = {
   minutes: number
   tagLabel: string
   label: string
+  // The clock times of the session on the clock of its own zone ("04:35", "04:57"; a session that runs over midnight ends on the next day's clock, so "00:10"), and the line the screen shows when the pill is tapped: "04:35 to 04:57 \u00b7 Study \u00b7 solid" (Day screen idea 5).
+  startText: string
+  endText: string
+  detail: string
 }
+// The break between a session and the one after it, as a connector between the two pills: where it runs on the axis, how long it is in whole minutes, and its words (\"5 min\", \"1 h\", \"1 h 20 min\"). id is the id of the session before the break, afterIndex the place (in the order of the pills) of the session after it, which the screen uses to bring the break in after that pill has grown.
+export type DayGap = { id: string; afterIndex: number; leftPercent: number; widthPercent: number; centerPercent: number; minutes: number; label: string }
 export type DayTagSegment = { label: string; seconds: number; minutes: number }
 export type DayWoke = { label: string; leftPercent: number }
 export type DayView = {
@@ -60,6 +68,7 @@ export type DayView = {
   zoomable: boolean
   woke: DayWoke | null
   bars: DayBar[]
+  gaps: DayGap[]
   tagBar: DayTagSegment[]
 }
 
@@ -207,6 +216,15 @@ export function dayNote(input: { condition: OverviewCondition; creditedMinutes: 
   return amount + " minutes " + (isToday ? "to " : "short of ") + level + "."
 }
 
+// The words of a break of whole minutes: under an hour \"5 min\", a whole number of hours \"2 h\", else \"1 h 20 min\".
+export function gapText(minutes: number): string {
+  const whole = Math.max(0, Math.round(minutes))
+  if (whole < 60) return whole + " min"
+  const hours = Math.floor(whole / 60)
+  const rest = whole % 60
+  return rest === 0 ? hours + " h" : hours + " h " + rest + " min"
+}
+
 // Everything the day view draws, for one day. day is the local day (YYYY-MM-DD). sessions are the saved sessions of that day (any order; they are put in the order of their start). score is the day score of the same day. deviceZone is used for a session saved without a zone. wokeMinutes is the wake time in minutes since midnight, or null when it is not known: then no "Woke" mark is drawn (the app has no wake time yet, so nothing is guessed).
 export function buildDayView(input: {
   day: string
@@ -224,7 +242,7 @@ export function buildDayView(input: {
       const startMs = parseServerTimeMs(session.startedAt)
       const endMs = parseServerTimeMs(session.endedAt)
       const startMinutes = clockMinutes(startMs, session.tz ?? input.deviceZone)
-      return { session, startMs, startMinutes, endMinutes: startMinutes + (endMs - startMs) / 60000 }
+      return { session, startMs, endMs, startMinutes, endMinutes: startMinutes + (endMs - startMs) / 60000 }
     })
     .sort((a, b) => a.startMs - b.startMs)
 
@@ -243,6 +261,8 @@ export function buildDayView(input: {
     const right = axisPercent(endMinutes, axis)
     const minutes = Math.round(session.activeSeconds / 60)
     const tagLabel = session.tag ?? NO_TAG_LABEL
+    const startText = clockText(startMinutes)
+    const endText = clockText(((endMinutes % 1440) + 1440) % 1440)
     return {
       id: session.id,
       quality,
@@ -253,8 +273,31 @@ export function buildDayView(input: {
       minutes,
       tagLabel,
       label: minutes + " \u00b7 " + tagLabel,
+      startText,
+      endText,
+      detail: startText + " to " + endText + " \u00b7 " + tagLabel + " \u00b7 " + quality,
     }
   })
+
+  // The breaks between one session and the next (Day screen idea 6): the time from the end of a session to the start of the next one, counted in real time (so two zones never confuse it), drawn from the end of the one pill to the start of the next on the axis that is drawn. A break shorter than DAY_GAP_MIN_MINUTES, sessions that touch or overlap, and a break that has no width on the axis (both ends held at the same edge) have none.
+  const gaps: DayGap[] = []
+  for (let i = 1; i < placed.length; i += 1) {
+    const before = placed[i - 1]
+    const after = placed[i]
+    const minutes = Math.round((after.startMs - before.endMs) / 60000)
+    const left = axisPercent(before.endMinutes, axis)
+    const right = axisPercent(after.startMinutes, axis)
+    if (minutes < DAY_GAP_MIN_MINUTES || right <= left) continue
+    gaps.push({
+      id: bars[i - 1].id,
+      afterIndex: i,
+      leftPercent: left,
+      widthPercent: Math.round((right - left) * 1000) / 1000,
+      centerPercent: Math.round(((left + right) / 2) * 1000) / 1000,
+      minutes,
+      label: gapText(minutes),
+    })
+  }
 
   // The seconds of each tag (no tag is one group of its own), the biggest first; two tags with the same seconds stay in the order of their first session.
   const totals = new Map<string | null, number>()
@@ -270,6 +313,7 @@ export function buildDayView(input: {
     zoomable,
     woke: woke === null ? null : { label: "Woke " + clockText(woke), leftPercent: axisPercent(woke, axis) },
     bars,
+    gaps,
     tagBar,
   }
 }

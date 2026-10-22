@@ -497,8 +497,11 @@ describe("the time axis: zoomed by default, Full day for the whole of it (Day sc
     expect(toggle()?.getAttribute("type")).toBe("button")
     expect(toggle()?.getAttribute("aria-pressed")).toBe("false")
     const ticks = q(".ab-day-ticks") as HTMLElement
+    const detail = q(".ab-day-detail") as HTMLElement
     const row = q(".ab-day-axisrow") as HTMLElement
-    expect(ticks.nextElementSibling).toBe(row)
+    // The line with the times of a tapped pill (idea 5) sits between the hour marks and the Full day button.
+    expect(ticks.nextElementSibling).toBe(detail)
+    expect(detail.nextElementSibling).toBe(row)
     expect(row.nextElementSibling).toBe(q(".ab-day-tags"))
   })
 
@@ -791,11 +794,13 @@ describe("closing", () => {
 })
 
 describe("the keyboard", () => {
-  it("goes round Close and the days: from the last day to Close, and back from Close to the last day", async () => {
+  it("goes round Close, the days and the pills: from the last button to Close, and back from Close to the last button", async () => {
     await show()
     await answer()
     const close = q(".ab-day-close")
-    const last = all(".ab-day-chip")[2]
+    // The pills are buttons now (idea 5), so the last button of the day of day-view.html is its last pill.
+    const last = all(".ab-day button").at(-1) as HTMLElement
+    expect(last.classList.contains("ab-day-bar")).toBe(true)
     last.focus()
     expect((await press("Tab")).defaultPrevented).toBe(true)
     expect(document.activeElement).toBe(close)
@@ -1424,6 +1429,344 @@ describe("the motion of the data: pills, tag bar and figures (Day screen idea 4)
     const lite2 = block('.ab-day[data-lite-level="2"] .ab-day-bar,\n.ab-day[data-lite-level="2"] .ab-day-tags')
     expect(lite2).toContain("animation: none !important;")
     const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"))
+    expect(reduced).toMatch(/\.ab-day-bar,\s*\.ab-day-tags \{\s*animation: none !important;/)
+  })
+})
+describe("the times of a pill: a tap on a pill shows its session (Day screen idea 5)", () => {
+  const TUE = "2026-10-20"
+  const TUE_SESSIONS = [session("09:00", 30, "MATHS"), session("13:00", 45, "MATHS")]
+  const tueScore = () => score({ day: TUE, creditedMinutes: 75, sessions: 2, shortSessions: 0, longestStretchMinutes: 45 })
+  const chip = (name: string) => all(".ab-day-chip").find((c) => c.getAttribute("aria-label")?.startsWith(name)) as HTMLElement
+  const pills = () => all(".ab-day-bar")
+  const line = () => q(".ab-day-detail")?.textContent
+  const pressedPills = () => pills().map((pill) => pill.getAttribute("aria-pressed"))
+  const css = readFileSync("src/dayview.css", "utf8")
+  const block = (start: string) => {
+    const at = css.indexOf(start + " {")
+    expect(at).toBeGreaterThan(-1)
+    return css.slice(at, css.indexOf("}", at) + 1)
+  }
+
+  it("makes every pill a button that is not pressed, with its minutes and times as its name", async () => {
+    await show()
+    await answer()
+    expect(pills()).toHaveLength(4)
+    for (const pill of pills()) {
+      expect(pill.tagName).toBe("BUTTON")
+      expect(pill.getAttribute("type")).toBe("button")
+    }
+    expect(pressedPills()).toEqual(["false", "false", "false", "false"])
+    expect(pills().map((pill) => pill.getAttribute("aria-label"))).toEqual([
+      "52 minutes, 07:00 to 07:52 \u00b7 NPTEL \u00b7 deep",
+      "40 minutes, 10:25 to 11:05 \u00b7 STUDY \u00b7 deep",
+      "28 minutes, 14:58 to 15:26 \u00b7 STUDY \u00b7 solid",
+      "22 minutes, 19:40 to 20:02 \u00b7 STUDY \u00b7 solid",
+    ])
+  })
+
+  it("has an empty line, a polite status, right under the hour marks, until a pill is tapped", async () => {
+    await show()
+    await answer()
+    const detail = q(".ab-day-detail") as HTMLElement
+    expect(detail.tagName).toBe("P")
+    expect(detail.getAttribute("role")).toBe("status")
+    expect(detail.textContent).toBe("")
+    expect(q(".ab-day-ticks")?.nextElementSibling).toBe(detail)
+    expect(detail.classList.contains("ab-day-r")).toBe(true)
+  })
+
+  it("shows the times, the tag and the quality of a pill when it is tapped, and marks that pill as pressed", async () => {
+    await show()
+    await answer()
+    await click(pills()[1])
+    expect(line()).toBe("10:25 to 11:05 \u00b7 STUDY \u00b7 deep")
+    expect(pressedPills()).toEqual(["false", "true", "false", "false"])
+  })
+
+  it("moves the line to another pill that is tapped, and takes it away when the same pill is tapped again", async () => {
+    await show()
+    await answer()
+    await click(pills()[0])
+    expect(line()).toBe("07:00 to 07:52 \u00b7 NPTEL \u00b7 deep")
+    await click(pills()[3])
+    expect(line()).toBe("19:40 to 20:02 \u00b7 STUDY \u00b7 solid")
+    expect(pressedPills()).toEqual(["false", "false", "false", "true"])
+    await click(pills()[3])
+    expect(line()).toBe("")
+    expect(pressedPills()).toEqual(["false", "false", "false", "false"])
+  })
+
+  it("is reached by the keyboard: a pill takes the focus, and Enter and Space of a button press it (a click)", async () => {
+    await show()
+    await answer()
+    pills()[2].focus()
+    expect(document.activeElement).toBe(pills()[2])
+    await click(document.activeElement)
+    expect(line()).toBe("14:58 to 15:26 \u00b7 STUDY \u00b7 solid")
+  })
+
+  it("keeps the line when the axis is switched, because the times do not depend on the axis", async () => {
+    await show()
+    await answer({ score: score({ creditedMinutes: 49, sessions: 2, longestStretchMinutes: 27 }), sessions: [session("05:40", 22, "STUDY"), session("06:20", 27, "STUDY")] })
+    await click(pills()[0])
+    expect(line()).toBe("05:40 to 06:02 \u00b7 STUDY \u00b7 solid")
+    await click(q(".ab-day-full"))
+    expect(line()).toBe("05:40 to 06:02 \u00b7 STUDY \u00b7 solid")
+    expect(pressedPills()).toEqual(["true", "false"])
+  })
+
+  it("takes the line away when another day of the week is chosen, and does not bring it back when the first day is chosen again", async () => {
+    await show()
+    await answer()
+    await click(pills()[0])
+    expect(line()).toBe("07:00 to 07:52 \u00b7 NPTEL \u00b7 deep")
+    await click(chip("Tuesday"))
+    await answer({ index: 1, score: tueScore(), sessions: TUE_SESSIONS })
+    expect(q(".ab-day-title")?.textContent).toBe("Tuesday")
+    expect(line()).toBe("")
+    expect(pressedPills()).toEqual(["false", "false"])
+    // Back on the first day, whose sessions (and so their ids) are the same as before: the pill that was open is not open again.
+    await click(chip("Wednesday"))
+    await answer({ index: 2 })
+    expect(q(".ab-day-title")?.textContent).toBe("Wednesday")
+    expect(line()).toBe("")
+    expect(pressedPills()).toEqual(["false", "false", "false", "false"])
+  })
+
+  it("does not move or build anything again when a pill is tapped (the sheet, the track and the pills stay)", async () => {
+    await show()
+    await answer()
+    await pass(LAND_MS)
+    await pass(REVEAL_DELAY_MS)
+    const track = q(".ab-day-track")
+    const before = pills()
+    const readings = api.scores.length
+    await click(before[1])
+    expect(q(".ab-day-track")).toBe(track)
+    expect(pills()).toEqual(before)
+    expect(q(".ab-day-sheet")?.getAttribute("data-reveal")).toBe("true")
+    expect(q(".ab-day-track")?.getAttribute("data-again")).toBe("false")
+    expect(api.scores.length).toBe(readings)
+  })
+
+  it("leaves Escape to close the whole screen, also when a pill has the focus", async () => {
+    await show()
+    await answer()
+    await click(pills()[0])
+    const event = await press("Escape")
+    expect(event.defaultPrevented).toBe(true)
+    expect(q(".ab-day")?.dataset.on).toBe("false")
+    await pass(FADE_MS)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("has no line and no pill for a day without a session", async () => {
+    await show()
+    await answer({ score: score({ creditedMinutes: 0, sessions: 0, shortSessions: 0, longestStretchMinutes: 0 }), sessions: [] })
+    expect(pills()).toHaveLength(0)
+    expect(q(".ab-day-detail")).toBeNull()
+  })
+
+  it("is written in the css: the button look is taken off, the tap area is about 44 px high, and the pill is hidden until the reveal", () => {
+    const base = block(".ab-day-bar")
+    for (const rule of ["visibility: hidden;", "padding: 0;", "border: 0;", "cursor: pointer;", "font: inherit;"]) expect(base).toContain(rule)
+    expect(block(".ab-day-bar::before")).toContain("inset: -15px -4px;")
+    expect(block('.ab-day-sheet[data-reveal="true"] .ab-day-bar')).toContain("visibility: visible;")
+  })
+
+  it("is written in the css: a pressed or focused pill has a ring in the bright colour, and the line keeps its height when empty", () => {
+    expect(css).toMatch(/\.ab-day-bar\[aria-pressed="true"\],\s*\.ab-day-bar:focus-visible \{[^}]*outline: 2px solid var\(--ab-day-accent\);/)
+    expect(block(".ab-day-detail")).toContain("min-height: 18px;")
+  })
+
+  it("is written in the css: the animation of the pills is untouched (a keyframe animation, off at lite level 2 and with reduced motion)", () => {
+    expect(block('.ab-day-sheet[data-reveal="true"] .ab-day-bar')).toMatch(/animation: ab-day-grow 0\.7s [^;]*both;/)
+    expect(css).toContain('.ab-day[data-lite-level="2"] .ab-day-bar,')
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"))
+    expect(reduced).toMatch(/\.ab-day-bar,\s*\.ab-day-tags \{\s*animation: none !important;/)
+  })
+})
+describe("the breaks between the pills (Day screen idea 6)", () => {
+  // 05:40 to 06:02, 06:07 to 06:34 (a break of 5 minutes), 08:30 to 08:50 (a break of 1 h 56 min). The zoomed axis is 03 to 12 (9 hours).
+  const CHAIN = [session("05:40", 22, "STUDY"), session("06:07", 27, "STUDY"), session("08:30", 20, "STUDY")]
+  const chainScore = () => score({ creditedMinutes: 69, sessions: 3, shortSessions: 0, longestStretchMinutes: 27 })
+  const chainView = (axisMode: "zoom" | "full") => buildDayView({ day: DAY, sessions: CHAIN, score: chainScore(), deviceZone: KOLKATA, axisMode })
+  const connectors = () => all(".ab-day-gap")
+  const words = () => all(".ab-day-gaplab")
+  const css = readFileSync("src/dayview.css", "utf8")
+  const block = (start: string) => {
+    const at = css.indexOf(start + " {")
+    expect(at).toBeGreaterThan(-1)
+    return css.slice(at, css.indexOf("}", at) + 1)
+  }
+
+  it("draws a connector and its words for each break, as the day model says (the day of day-view.html)", async () => {
+    await show()
+    await answer()
+    const expected = buildDayView({ day: DAY, sessions: HTML_SESSIONS, score: score(), deviceZone: KOLKATA }).gaps
+    expect(expected).toHaveLength(3)
+    expect(connectors()).toHaveLength(3)
+    expect(connectors().map((c) => c.style.left)).toEqual(expected.map((g) => g.leftPercent + "%"))
+    expect(connectors().map((c) => c.style.width)).toEqual(expected.map((g) => g.widthPercent + "%"))
+    expect(texts(".ab-day-gaplab")).toEqual(["2 h 33 min", "3 h 53 min", "4 h 14 min"])
+    expect(words().map((w) => w.style.left)).toEqual(expected.map((g) => g.centerPercent + "%"))
+  })
+
+  it("keeps the connector out of the reading of a screen reader and takes no tap, and the words are plain text", async () => {
+    await show()
+    await answer()
+    for (const c of connectors()) {
+      expect(c.getAttribute("aria-hidden")).toBe("true")
+      expect(c.tagName).toBe("SPAN")
+    }
+    expect(all(".ab-day-gaplab").every((w) => w.tagName === "SPAN")).toBe(true)
+    expect(block(".ab-day-gap")).toContain("pointer-events: none;")
+    expect(block(".ab-day-gaplab")).toContain("pointer-events: none;")
+  })
+
+  it("draws the connectors before the pills in the track, so that a pill covers the ends of a connector", async () => {
+    await show()
+    await answer()
+    const children = [...(q(".ab-day-track")?.children ?? [])]
+    const lastConnector = Math.max(...connectors().map((c) => children.indexOf(c)))
+    const firstPill = Math.min(...all(".ab-day-bar").map((b) => children.indexOf(b)))
+    expect(lastConnector).toBeGreaterThan(-1)
+    expect(lastConnector).toBeLessThan(firstPill)
+  })
+
+  it("draws no break for a day with one session and no timeline for a day without one", async () => {
+    await show()
+    await answer({ score: score({ sessions: 1, longestStretchMinutes: 30 }), sessions: [session("09:00", 30, "STUDY")] })
+    expect(connectors()).toHaveLength(0)
+    expect(words()).toHaveLength(0)
+    await unmount()
+    container?.remove()
+    document.body.replaceChildren(appRoot as HTMLElement)
+    api.scores = []
+    api.sessions = []
+    await show()
+    await answer({ score: score({ creditedMinutes: 0, sessions: 0, shortSessions: 0, longestStretchMinutes: 0 }), sessions: [] })
+    expect(connectors()).toHaveLength(0)
+  })
+
+  it("gives the track the number of pills and each break the place of the pill after it, for the css", async () => {
+    await show()
+    await answer()
+    expect(q(".ab-day-track")?.style.getPropertyValue("--pills")).toBe("4")
+    expect(connectors().map((c) => c.style.getPropertyValue("--i"))).toEqual(["1", "2", "3"])
+    expect(words().map((w) => w.style.getPropertyValue("--i"))).toEqual(["1", "2", "3"])
+  })
+
+  it("moves the breaks with the axis: the zoomed and the full axis give their own places and the same words", async () => {
+    await show()
+    await answer({ score: chainScore(), sessions: CHAIN })
+    const lefts = () => connectors().map((c) => c.style.left + "/" + c.style.width)
+    expect(lefts()).toEqual(chainView("zoom").gaps.map((g) => g.leftPercent + "%/" + g.widthPercent + "%"))
+    expect(texts(".ab-day-gaplab")).toEqual(["5 min", "1 h 56 min"])
+    await click(q(".ab-day-full"))
+    expect(lefts()).toEqual(chainView("full").gaps.map((g) => g.leftPercent + "%/" + g.widthPercent + "%"))
+    expect(texts(".ab-day-gaplab")).toEqual(["5 min", "1 h 56 min"])
+  })
+
+  it("follows the day that is chosen in the week row", async () => {
+    await show()
+    await answer()
+    expect(connectors()).toHaveLength(3)
+    const tuesday = all(".ab-day-chip").find((c) => c.getAttribute("aria-label") === "Tuesday") as HTMLElement
+    await click(tuesday)
+    await answer({ index: 1, score: score({ day: "2026-10-20", creditedMinutes: 69, sessions: 3 }), sessions: CHAIN })
+    expect(texts(".ab-day-gaplab")).toEqual(["5 min", "1 h 56 min"])
+  })
+
+  describe("the words only where they fit between the two pills", () => {
+    let rectSpy: { mockRestore: () => void } | null = null
+    let trackWidth = 0
+    let wordsWidth = 0
+
+    beforeEach(() => {
+      rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+        const width = this.classList.contains("ab-day-track") ? trackWidth : this.classList.contains("ab-day-gaplab") ? wordsWidth : 0
+        return { left: 0, right: width, width, top: 0, bottom: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+      })
+    })
+    afterEach(() => rectSpy?.mockRestore())
+
+    const fits = () => words().map((w) => w.dataset.fits)
+
+    it("keeps the words where the screen has no size (a screen that is not laid out)", async () => {
+      trackWidth = 0
+      wordsWidth = 0
+      await show()
+      await answer({ score: chainScore(), sessions: CHAIN })
+      expect(fits()).toEqual(["true", "true"])
+    })
+
+    it("drops the words of a break that is too narrow for them and keeps the connector", async () => {
+      trackWidth = 1000
+      wordsWidth = 80
+      await show()
+      await answer({ score: chainScore(), sessions: CHAIN })
+      // 5 minutes on 9 hours is about 0.9 percent, 9 pixels: no room for 80 pixels of words. 1 h 56 min is about 21 percent: room enough.
+      expect(fits()).toEqual(["false", "true"])
+      expect(connectors()).toHaveLength(2)
+    })
+
+    it("keeps 6 pixels of room on each side: words 12 pixels narrower than the gap fit, words 11 pixels narrower do not", async () => {
+      trackWidth = 1000
+      const gap = chainView("zoom").gaps[1]
+      const room = (1000 * gap.widthPercent) / 100
+      wordsWidth = room - 12
+      await show()
+      await answer({ score: chainScore(), sessions: CHAIN })
+      expect(words()[1].dataset.fits).toBe("true")
+      await unmount()
+      container?.remove()
+      document.body.replaceChildren(appRoot as HTMLElement)
+      api.scores = []
+      api.sessions = []
+      wordsWidth = room - 11
+      await show()
+      await answer({ score: chainScore(), sessions: CHAIN })
+      expect(words()[1].dataset.fits).toBe("false")
+    })
+
+    it("is worked out again for the axis that is shown (the full axis makes every break narrower)", async () => {
+      trackWidth = 1000
+      wordsWidth = 150
+      await show()
+      await answer({ score: chainScore(), sessions: CHAIN })
+      // On the zoomed axis the long break is about 21 percent (210 pixels) and fits 150 pixels of words; on the full axis (03 to 24) it is about 9 percent (90 pixels) and does not.
+      expect(fits()).toEqual(["false", "true"])
+      await click(q(".ab-day-full"))
+      expect(fits()).toEqual(["false", "false"])
+      await click(q(".ab-day-full"))
+      expect(fits()).toEqual(["false", "true"])
+    })
+
+    it("hides the words that do not fit in the css, and does not take them out of the page", () => {
+      expect(block('.ab-day-gaplab[data-fits="false"]')).toContain("visibility: hidden;")
+    })
+  })
+
+  it("is written in the css: hidden before the reveal, in after the pill that follows has grown, shorter for a day chosen later", () => {
+    expect(block(".ab-day-gap")).toContain("opacity: 0;")
+    expect(block(".ab-day-gaplab")).toContain("opacity: 0;")
+    expect(css).toMatch(/@keyframes ab-day-gapin \{\s*from \{\s*opacity: 0;\s*\}\s*to \{\s*opacity: 1;/)
+    const reveal = block('.ab-day-sheet[data-reveal="true"] .ab-day-gap,\n.ab-day-sheet[data-reveal="true"] .ab-day-gaplab')
+    expect(reveal).toContain("opacity: 1;")
+    expect(reveal).toMatch(/animation: ab-day-gapin 0\.5s [^;]*both;/)
+    expect(reveal).toContain("animation-delay: calc(800ms + var(--i, 0) * 220ms);")
+    expect(block(".ab-day-bar")).not.toContain("transition")
+    expect(block(".ab-day-gap")).not.toContain("transition")
+    const again = block('.ab-day-sheet[data-reveal="true"] .ab-day-track[data-again="true"] .ab-day-gap,\n.ab-day-sheet[data-reveal="true"] .ab-day-track[data-again="true"] .ab-day-gaplab')
+    expect(again).toContain("animation-duration: 0.3s;")
+    expect(again).toContain("animation-delay: calc(200ms + var(--i, 0) * 70ms);")
+  })
+
+  it("is written in the css: nothing of the breaks moves at lite level 2 or with reduced motion, and the idea 4 lists are as they were", () => {
+    expect(block('.ab-day[data-lite-level="2"] .ab-day-gap,\n.ab-day[data-lite-level="2"] .ab-day-gaplab')).toContain("animation: none !important;")
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"))
+    expect(reduced).toMatch(/\.ab-day-gap,\s*\.ab-day-gaplab \{\s*animation: none !important;/)
     expect(reduced).toMatch(/\.ab-day-bar,\s*\.ab-day-tags \{\s*animation: none !important;/)
   })
 })
