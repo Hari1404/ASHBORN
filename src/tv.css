@@ -1,0 +1,18 @@
+/* AB:GUIDE.TV-CSS:START */
+/* The TV screen. Copied from tv_turn_animation.html (the approved preview); the class names are new. */
+.tv-stage{position:fixed;inset:0;container-type:inline-size;background:#000;overflow:hidden}
+.tv-pic{position:absolute;inset:0;transform-origin:50% 50%}
+
+/* static layer: sits inside the picture so it squashes with it */
+.tv-noise{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;opacity:0;pointer-events:none;mix-blend-mode:screen}
+
+/* the bright line and the dot: on top of the picture, not squashed by it */
+.tv-line{position:absolute;left:0;top:50%;width:100%;height:max(2px,.4cqw);background:linear-gradient(90deg,transparent,#dfe9ff 15%,#fff 50%,#dfe9ff 85%,transparent);box-shadow:0 0 1.2cqw .3cqw rgba(170,200,255,.9),0 0 4cqw .8cqw rgba(110,150,255,.5);opacity:0;transform:translateY(-50%);pointer-events:none}
+.tv-dot{position:absolute;left:50%;top:50%;width:max(6px,.8cqw);aspect-ratio:1;border-radius:50%;background:#fff;box-shadow:0 0 1.4cqw .4cqw rgba(170,200,255,.95),0 0 4cqw 1cqw rgba(110,150,255,.55);opacity:0;transform:translate(-50%,-50%);pointer-events:none}
+/* AB:GUIDE.TV-CSS:END */
+
+/* AB:GUIDE.PROVE-CSS:START */
+/* TEMPORARY, packet T1 only: the test button. Packet 12B removes it when the real Learn | Prove switch arrives. */
+.tv-prove{position:absolute;left:50%;bottom:max(32px,env(safe-area-inset-bottom));transform:translateX(-50%);min-width:120px;min-height:44px;padding:0 28px;border-radius:999px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:#fff;font:600 16px system-ui,sans-serif;letter-spacing:.04em;cursor:pointer}
+.tv-prove:disabled{opacity:.5;cursor:default}
+/* AB:GUIDE.PROVE-CSS:END */
