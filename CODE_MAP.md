@@ -17,6 +17,7 @@ Full rules: TAGGING_RULES.md
 | TIMER | Pro Timer: the maths, the database calls, the live state, the screen (page address #timer) with its glowing ball and its moving background, the stop alert (what Hold to end session opens), the comeback message (shown for a few seconds after GO BACK IN), the quick opening (the warm-up, the two reads at once and the look while loading), the staggered making of the glowing ball and the moving background (the background 300 ms and the heavy ball 600 ms after a session lights them, so the press of Start does not freeze the page) and their tests are built; the text effects of the lines (glow, heat, shake, strike, ghost, rise) are built too; the lines of the milestone messages (288 lines for the minutes 15, 25, 45, 60, 90, 120, 150 and 180, with the choice of one line) are built, and the milestone message that shows them (it waits until the page is visible, is shown late with a tag when it was missed, and is given up after 10 minutes) is built too |
 | CALENDAR | Calendar (not built yet) |
 | GUIDE | Guide (still a placeholder, but it sits inside the TV screen that turns off and on, with a temporary Prove test button; Packet T1) |
+| LEARN | Learn: the data and the rules of the learning part of the Guide (the sources of "Learning from", the label of a learn session, the subject colours); no screen yet (Packet 12A1) |
 | SHARED | Things used on several pages, such as theme settings (not built yet) |
 | AUTH | Sign-in plumbing: the Supabase connection, the saved sign-in, the choice of screen, the temporary signed-in screen |
 
@@ -94,6 +95,15 @@ Full rules: TAGGING_RULES.md
 | `AB:GUIDE.TV-CSS` | The css of the TV screen: the stage, the picture, the static layer, the bright line and the dot | `src/tv.css` | the look of the line and the dot; the stage must stay position: fixed with container-type (see CONNECTIONS.md C65) |
 | `AB:GUIDE.PROVE-TEST` | TEMPORARY, removed by Packet 12B: the Guide placeholder sits inside the TV screen with a test button, Prove, which plays the turn-off, holds black and plays the turn-on | `src/components/SignedInStub.tsx` | nothing; it is thrown away |
 | `AB:GUIDE.PROVE-CSS` | TEMPORARY, removed by Packet 12B: the css of the Prove button | `src/tv.css` | nothing; it is thrown away |
+
+## LEARN (the Learn part of the Guide screen)
+| Tag | What it is | Files | What you can change there |
+|---|---|---|---|
+| `AB:LEARN.SOURCES-DATA` | The catalogue of "Learning from" sources: own practice, Coursera (the IBM Python modules and lesson blocks, the three Math courses), NPTEL (an empty slot), Pro Git, other. Data only | `src/data/learn/sources.ts` | titles, the say lines, the cap letters and colours; add a source or a lesson block; retire a source. NEVER change or reuse a path (see CONNECTIONS.md C67) |
+| `AB:LEARN.SOURCES` | Reads that catalogue: the shape of a source path, find a source, its words, its end cap, retired, the lists of the picker, the validation. Pure functions | `src/lib/learnSources.ts` | nothing yet; the shape of a path is a decision (see CONNECTIONS.md C66) |
+| `AB:LEARN.LABEL` | The label of a learn session (what, source, review): their shapes, one label per session, and the words of the tap line. Pure functions | `src/lib/learnLabel.ts` | the words of the tap line; the shapes are decisions (see CONNECTIONS.md C66) |
+| `AB:LEARN.COLOURS` | The colour of each Learn subject, in three families (data stack, tools, maths) | `src/data/learn/subjectColours.ts` | the hex of each colour (placeholders, judged by eye); the tests keep them off the day colours and visible on black (see CONNECTIONS.md C68) |
+The tests of these four are not tagged: `src/lib/learnSources.test.ts`, `src/lib/learnLabel.test.ts` and `src/data/learn/subjectColours.test.ts`.
 
 ## Library components (installed React Bits source: not tagged, never edited)
 To change how one looks or moves, change its props where it is used, at the tag named here.

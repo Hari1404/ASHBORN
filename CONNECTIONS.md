@@ -1086,6 +1086,46 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `AB:OVERVIEW.TESTS @ src/components/OverviewBackground.test.tsx = describe("OverviewBackground: finding the condition itself", () => {`
 - Check by hand: after any change sign in and open the Overview on a laptop: with no time saved today (or a day score that cannot be read) the look is Atmosphere (blue and white); with under 2 hours it is Rose (red and pink); from 2 hours Corona (amber, only 0 and 1 as characters); from 4 hours Lagoon (teal). Compare with the day number of "Today in Pro Timer" on the same screen: they must agree. The Overview must not stay empty: with the network switched off it opens as Atmosphere after about a second and a half. The look must not change a moment after the Overview opened. The checker does not see how it looks.
 
+## Connections on LEARN
+
+### C66: The shapes of a learn label are written here and will be written again in the database
+- Tags: `AB:LEARN.LABEL`, `AB:LEARN.SOURCES`
+- If you change: the shape of an item id (two capital letters, a hyphen, one to three digits), the shape of a gate (the subject id, a slash, the region id), or the shape of a source path (parts of small letters, digits, dots and hyphens, joined by one slash, at most 80 characters)
+- Then also: Packet 12C writes the same shapes again in the database (the checks on learn_what and learn_via, and the learn arguments of timer_start). When that packet is built, change the database in the same packet. The tests write the shapes again on purpose: change both and run npm test.
+- If you forget: the app accepts a label that the database refuses (the session does not save), or the other way round.
+- Anchor: `AB:LEARN.LABEL @ src/lib/learnLabel.ts = export const ITEM_ID_SHAPE = /^[A-Z]{2}-[0-9]{1,3}$/`
+- Anchor: `AB:LEARN.LABEL @ src/lib/learnLabel.ts = export const GATE_SHAPE = /^[a-z]{2,12}\/[A-Z0-9-]{1,6}$/`
+- Anchor: `AB:LEARN.SOURCES @ src/lib/learnSources.ts = export const SOURCE_PATH_SHAPE = /^[a-z0-9][a-z0-9.-]*(\/[a-z0-9][a-z0-9.-]*)*$/`
+- Anchor: `AB:LEARN.SOURCES @ src/lib/learnSources.ts = export const SOURCE_PATH_MAX_LENGTH = 80`
+- Anchor: `src/lib/learnLabel.test.ts = expect(ITEM_ID_SHAPE.source).toBe("^[A-Z]{2}-[0-9]{1,3}$")`
+- Anchor: `src/lib/learnSources.test.ts = expect(SOURCE_PATH_MAX_LENGTH).toBe(80)`
+- Check by hand: nothing yet. After Packet 12C compare the checks in the database with the three shapes.
+
+### C67: A source path is frozen once it has been used
+- Tags: `AB:LEARN.SOURCES-DATA`, `AB:LEARN.SOURCES`
+- If you change: a path in the catalogue (the stored text of a source), for example own, coursera, coursera/ibm-python, coursera/math-ml, nptel, progit or other
+- Then also: do not change it and do not reuse it for something else. A saved session stores the path, so a changed or reused path sends old sessions to the wrong source. Retire the source (retired: true) and add a new one. The list of frozen paths is written again in learnSources.test.ts on purpose: add a path to it when the path ships.
+- If you forget: old sessions show the wrong source or none. The test "still holds every frozen path" fails first.
+- Anchor: `AB:LEARN.SOURCES-DATA @ src/data/learn/sources.ts = path: "own"`
+- Anchor: `AB:LEARN.SOURCES-DATA @ src/data/learn/sources.ts = path: "coursera",`
+- Anchor: `AB:LEARN.SOURCES-DATA @ src/data/learn/sources.ts = path: "coursera/ibm-python",`
+- Anchor: `AB:LEARN.SOURCES-DATA @ src/data/learn/sources.ts = path: "coursera/math-ml",`
+- Anchor: `AB:LEARN.SOURCES-DATA @ src/data/learn/sources.ts = path: "nptel",`
+- Anchor: `AB:LEARN.SOURCES-DATA @ src/data/learn/sources.ts = path: "progit",`
+- Anchor: `AB:LEARN.SOURCES-DATA @ src/data/learn/sources.ts = path: "other",`
+- Anchor: `src/lib/learnSources.test.ts = const FROZEN_PATHS = [`
+- Check by hand: nothing.
+
+### C68: A subject colour must never be a colour of the day screen
+- Tags: `AB:LEARN.COLOURS`, `AB:OVERVIEW.CONDITION`
+- If you change: a subject colour, or any colour of OVERVIEW_DAY_PALETTE (the beam, the bright colour and the four pill colours of each condition)
+- Then also: the test in subjectColours.test.ts reads OVERVIEW_DAY_PALETTE and fails when a subject colour is exactly a colour of the day palette (F5 of DECISIONS_LEARN.md). It finds equal colours only, not colours that are merely close, so after a change look at all four looks of the day screen by eye. A subject colour must also stay visible on black (a contrast of at least 3 to 1) and different from the others.
+- If you forget: a learn pill is mistaken for a colour of the day. This is why a learn pill also carries a mark and an end cap (DECISIONS_LEARN.md section 19b).
+- Anchor: `AB:LEARN.COLOURS @ src/data/learn/subjectColours.ts = export const SUBJECT_COLOURS: Record<SubjectId, string> = {`
+- Anchor: `AB:OVERVIEW.CONDITION @ src/lib/overviewCondition.ts = export const OVERVIEW_DAY_PALETTE: Record<OverviewCondition, OverviewDayPalette> = {`
+- Anchor: `src/data/learn/subjectColours.test.ts = import { OVERVIEW_DAY_PALETTE } from "../../lib/overviewCondition"`
+- Check by hand: after a change open the Overview in each of the four looks and look at a learn pill next to the day pills.
+
 ## Things to know (no check is possible)
 - The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).
 - Sign-ups are OFF in the Supabase dashboard. Users are created there by hand, with "Auto Confirm User" ticked.
