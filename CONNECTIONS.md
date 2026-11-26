@@ -1126,6 +1126,59 @@ Which parts of the code are tied to which other parts. Read this BEFORE you chan
 - Anchor: `src/data/learn/subjectColours.test.ts = import { OVERVIEW_DAY_PALETTE } from "../../lib/overviewCondition"`
 - Check by hand: after a change open the Overview in each of the four looks and look at a learn pill next to the day pills.
 
+### C69: An item id and a region key are frozen once they have shipped
+- Tags: `AB:LEARN.TIER1-DATA`, `AB:LEARN.FROZEN`, `AB:LEARN.DATA-CHECK`
+- If you change: an item id (PY-13), a region key (the subject id, a slash and the region id, python/D, which is also the gate), or the letters of a subject code
+- Then also: do not change it and do not reuse it for something else. A saved session stores it (item:PY-13, gate:python/D) and the database will store the started items and the passed gates by it (Packet 12C). Add a NEW id to src/data/learn/frozenIds.ts in the same change, so it is frozen from then on.
+- If you forget: a saved session or a started item points at nothing, or at the wrong item. The test "freezes every item id and every region key" fails first, and the check says "an id never goes away".
+- Anchor: `AB:LEARN.FROZEN @ src/data/learn/frozenIds.ts = export const FROZEN_ITEM_IDS: readonly string[] = [`
+- Anchor: `AB:LEARN.FROZEN @ src/data/learn/frozenIds.ts = export const FROZEN_REGION_KEYS: readonly string[] = [`
+- Anchor: `AB:LEARN.DATA-CHECK @ src/lib/learnData.ts = is missing from the content (an id never goes away)`
+- Anchor: `src/lib/learnData.test.ts = it("freezes every item id and every region key, in the order of the content", () => {`
+- Check by hand: nothing.
+
+### C70: A need points at something that exists, never at something later in the same subject, and never in a circle
+- Tags: `AB:LEARN.NEEDS`, `AB:LEARN.RULES`, `AB:LEARN.DATA-CHECK`
+- If you change: a need in needs.ts (its target, or HARD to SOFT), or what "met" means (a region need is met when its gate is passed, an item need when the item is done)
+- Then also: a HARD need locks in learnRules.ts (needMet, regionBlockers, itemBlockers); a SOFT need only shows as a hint. The check in learnData.ts stops a target that does not exist, a need on something later, and a circle. The text at the top of needs.ts says what met means: change it with needMet. The screens (Packets 12B and 12D) draw the needs as chips with the reason.
+- If you forget: an item stays locked for ever, or never locks. The tests of learnRules.test.ts and learnData.test.ts fail first.
+- Anchor: `AB:LEARN.NEEDS @ src/data/learn/needs.ts = export const REGION_NEEDS: Readonly<Record<string, readonly Need[]>> = {`
+- Anchor: `AB:LEARN.NEEDS @ src/data/learn/needs.ts = export const ITEM_NEEDS: Readonly<Record<string, readonly Need[]>> = {`
+- Anchor: `AB:LEARN.RULES @ src/lib/learnRules.ts = export function needMet(need: Need, facts: LearnFacts): boolean {`
+- Anchor: `AB:LEARN.DATA-CHECK @ src/lib/learnData.ts = the needs run in a circle`
+- Check by hand: nothing.
+
+### C71: The placeholder numbers of the time rules
+- Tags: `AB:LEARN.RULES`
+- If you change: SEED_ITEM_MINUTES, SEED_GATE_MINUTES, DEFAULT_PACE_HOURS, PACE_PRESETS or SOFT_DONE_MINUTES (every one is a PLACEHOLDER, safe to tune)
+- Then also: one test, "is the worked example of 10c", pins the numbers of DECISIONS_LEARN.md section 10c (Python A: 210 to 510 minutes, about 5 to 12 days at 5 hours a week). Change that test and sections 10b, 10c and Q14 to Q16 of the same file together. A screen must read these constants and never write "30 to 78" by itself (the item card says "about 30 to 78 min (placeholder range)" today in the preview).
+- If you forget: the card shows one range while the window is worked out from another.
+- Anchor: `AB:LEARN.RULES @ src/lib/learnRules.ts = export const SEED_ITEM_MINUTES: Readonly<MinuteRange> = { low: 30, high: 78 }`
+- Anchor: `AB:LEARN.RULES @ src/lib/learnRules.ts = export const SEED_GATE_MINUTES: Readonly<MinuteRange> = { low: 60, high: 120 }`
+- Anchor: `AB:LEARN.RULES @ src/lib/learnRules.ts = export const DEFAULT_PACE_HOURS = 5`
+- Anchor: `AB:LEARN.RULES @ src/lib/learnRules.ts = export const SOFT_DONE_MINUTES: Readonly<{ item: number; gate: number }> = { item: 10, gate: 15 }`
+- Anchor: `src/lib/learnRules.test.ts = expect(regionMinutes(LEARN_INDEX, "python/A")).toEqual({ low: 210, high: 510 })`
+- Check by hand: nothing.
+
+### C72: The facts that the rules read are days, and Packet 12C will save the same facts
+- Tags: `AB:LEARN.RULES`
+- If you change: the shape of ItemFact, RegionFact or LearnSessionUse
+- Then also: Packet 12C writes the tables learn_item_state and learn_region_state (started, done, gate passed) and the three learn fields of a session (learn_what, learn_via, learn_review). learnApi.ts must turn each saved moment into a calendar day in the time zone of the person, and each saved session into a LearnSessionUse with its counted seconds. Judgements (locked, late, red, green) are never saved: they are worked out from the facts.
+- If you forget: what the database keeps does not fit the rules, or a judgement is saved and goes stale when the pace changes.
+- Anchor: `AB:LEARN.RULES @ src/lib/learnRules.ts = export type ItemFact = { startedDay: string; doneDay: string | null }`
+- Anchor: `AB:LEARN.RULES @ src/lib/learnRules.ts = export type RegionFact = { startedDay: string; gatePassedDay: string | null }`
+- Anchor: `AB:LEARN.RULES @ src/lib/learnRules.ts = export type LearnSessionUse = { what: string | null; via: string | null; review: boolean; seconds: number }`
+- Check by hand: nothing yet. After Packet 12C compare the saved facts with these three shapes.
+
+### C73: The kinds and the sizes of the lines of an item card
+- Tags: `AB:LEARN.TIER1-DATA`, `AB:LEARN.DATA-CHECK`
+- If you change: the kinds of ability (write, predict, read, fix, say, pick), the number of learn lines (7 to 10), the number of ability lines (6 to 8), or the longest line (150 characters)
+- Then also: the type AbilityKind in tier1.ts and the list ABILITY_KINDS in learnData.ts say the same six words. The item card (Packets 12B and 12D) draws one icon for each kind. The content work that wrote the lines (ashborn_content_work, check.py) has the same ranges outside the repo.
+- If you forget: the data holds a kind that the card has no icon for, or the check refuses lines that were allowed.
+- Anchor: `AB:LEARN.TIER1-DATA @ src/data/learn/tier1.ts = export type AbilityKind = "write" | "predict" | "read" | "fix" | "say" | "pick"`
+- Anchor: `AB:LEARN.DATA-CHECK @ src/lib/learnData.ts = export const ABILITY_KINDS: readonly string[] = ["write", "predict", "read", "fix", "say", "pick"]`
+- Check by hand: nothing.
+
 ## Things to know (no check is possible)
 - The Project URL and the publishable key are meant to be in the browser app: row-level security (not yet written, there are no tables) is what protects data. The secret key must never be in the project. .env is ignored by git (Packet 03A checks this before it creates the file).
 - Sign-ups are OFF in the Supabase dashboard. Users are created there by hand, with "Auto Confirm User" ticked.
