@@ -1,0 +1,480 @@
+/* Styles of the Learn screen (src/components/LearnScreen.tsx and the parts it is made of). Tags: see CODE_MAP.md in the project root. The look is copied from the preview page ASHBORN_Learn_subjects_item_card.html (v6); the class names are new. */
+
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource/instrument-serif/latin-400-italic.css";
+
+/* AB:LEARN.CSS-VARS:START */
+/* The accent of the Learn screen. The screen sets --ab-learn-s to the colour of the subject it shows (src/data/learn/subjectColours.ts), and each subject tile of the hub sets it to the colour of its own subject. Two shades of it (--ab-learn-s2, 80% of the accent mixed with black, and --ab-learn-s3, 55%) are WORKED OUT where the colour is set: a shade declared higher up would stay the colour of the place that declared it. So every element that sets --ab-learn-s also carries the attribute data-accent (CONNECTIONS.md C76). The values here are the ones of Python, for a part that is drawn with no subject. */
+:root {
+  --ab-learn-s: #dfbefd;
+  --ab-learn-ease: cubic-bezier(0.23, 1, 0.32, 1);
+}
+:root,
+[data-accent] {
+  --ab-learn-s2: color-mix(in srgb, var(--ab-learn-s) 80%, #000);
+  --ab-learn-s3: color-mix(in srgb, var(--ab-learn-s) 55%, #000);
+}
+/* AB:LEARN.CSS-VARS:END */
+
+/* AB:LEARN.SCENE:START */
+/* The canvas of the moving picture (LearnScene.tsx): the size of the window, behind everything, never catches a tap. The brightness is set by the component (more of the subject finished, brighter) and a change fades over 1.2 seconds. */
+.ab-learn-scene {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity 1.2s var(--ab-learn-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ab-learn-scene {
+    transition: none;
+  }
+}
+/* AB:LEARN.SCENE:END */
+
+/* AB:LEARN.TITLE:START */
+/* The big title (LearnTitle.tsx). Every letter has its own gradient, from white to the accent, so a letter can fly in alone. The letters are inline blocks (a transform needs that), the words never break inside, and the space between two words is a real space. */
+.ab-learn-title {
+  margin: 6px 0 4px;
+  padding: 0;
+  width: fit-content;
+  font: italic 400 clamp(54px, 11vw, 104px) / 1 "Instrument Serif", Georgia, serif;
+}
+.ab-learn-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+.ab-learn-ch {
+  display: inline-block;
+  padding: 0 0.02em 0.08em;
+  background: linear-gradient(100deg, #fff 10%, var(--ab-learn-s) 55%, var(--ab-learn-s2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* The cursor of the typing effect (the terminal subject). */
+.ab-learn-cursor {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.9em;
+  margin-left: 0.1em;
+  background: var(--ab-learn-s);
+  vertical-align: -0.05em;
+  animation: ab-learn-blink 1s steps(1) infinite;
+}
+@keyframes ab-learn-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ab-learn-cursor {
+    animation: none;
+  }
+}
+/* AB:LEARN.TITLE:END */
+
+/* AB:LEARN.SPOT:START */
+/* The glow and the tilt of a tile (useLearnSpotlight.ts writes the four variables, learnSpotlight.ts works out the numbers). A tile takes part when it carries data-spot: "glow" (a glow only) or "tilt" (a glow and a tilt). It must hold a SpotGlow as its last child. Both show only on a device with a mouse. The tile itself sets its own box (border, radius, overflow); the glow takes the radius of the tile.
+   The defaults put the glow in the middle and the tilt at 0 until the mouse has moved. With reduced motion the tilt (and the lift) is off and the glow stays. A tile with aria-disabled="true" does not tilt. The tile classes of the screen (the same specificity as the rule of data-spot="tilt", later in this file) must keep the transform in their own transition. */
+[data-spot] {
+  --ab-learn-mx: 50%;
+  --ab-learn-my: 50%;
+  --ab-learn-rot-x: 0deg;
+  --ab-learn-rot-y: 0deg;
+  position: relative;
+  isolation: isolate;
+}
+[data-spot="tilt"] {
+  transition: transform 0.25s var(--ab-learn-ease);
+}
+.ab-learn-spl,
+.ab-learn-spe {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s var(--ab-learn-ease);
+}
+/* The soft light inside the tile, behind its content. */
+.ab-learn-spl {
+  z-index: -1;
+  background: radial-gradient(260px circle at var(--ab-learn-mx) var(--ab-learn-my), color-mix(in srgb, var(--ab-learn-s) 14%, transparent), transparent 70%);
+}
+/* The bright edge: a ring one pixel wide, lit near the pointer. */
+.ab-learn-spe {
+  z-index: 1;
+  padding: 1px;
+  background: radial-gradient(180px circle at var(--ab-learn-mx) var(--ab-learn-my), color-mix(in srgb, var(--ab-learn-s) 69%, transparent), transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+@media (hover: hover) and (pointer: fine) {
+  [data-spot]:hover .ab-learn-spl,
+  [data-spot]:hover .ab-learn-spe {
+    opacity: 1;
+  }
+  [data-spot="tilt"]:not([aria-disabled="true"]):hover {
+    transform: perspective(700px) rotateX(var(--ab-learn-rot-x)) rotateY(var(--ab-learn-rot-y)) translateY(-3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-spot="tilt"]:not([aria-disabled="true"]):hover {
+    transform: none;
+  }
+}
+/* AB:LEARN.SPOT:END */
+
+/* AB:LEARN.SCREEN:START */
+/* The Learn screen (LearnScreen.tsx): the root is a scroller the size of the window (inside the TV picture), the page sits above the moving picture, and the top bar with the Learn | Prove switch sticks to the top. The root sets the ink and the dim colour for everything inside it. The accent is set on the root by the screen when a subject is shown (data-accent is on it, see the part of this file that has the tag of the accent). */
+.ab-learn {
+  --ab-learn-ink: #ece6df;
+  --ab-learn-dim: #8d8780;
+  position: fixed;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  color-scheme: dark;
+  color: var(--ab-learn-ink);
+  background: radial-gradient(55% 40% at 10% 0%, color-mix(in srgb, var(--ab-learn-s) 14%, transparent), transparent), #050407;
+  font: 400 clamp(11px, 1.9vmin, 16px) / 1.4 "Space Grotesk Variable", "Space Grotesk", system-ui, sans-serif;
+}
+.ab-learn button {
+  font: inherit;
+  color: inherit;
+}
+.ab-learn-page {
+  position: relative;
+  z-index: 1;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 18px 40px;
+}
+.ab-learn-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: max(12px, env(safe-area-inset-top)) 18px 10px;
+  background: linear-gradient(#050407e6, #050407b3 70%, transparent);
+}
+.ab-learn-switch {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid #3a2f48;
+  background: #ffffff0a;
+}
+.ab-learn-sw {
+  min-height: 40px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.14s var(--ab-learn-ease), background-color 0.2s;
+}
+.ab-learn-sw:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.ab-learn-sw[aria-pressed="true"] {
+  background: var(--ab-learn-s);
+  color: #000;
+  font-weight: 500;
+}
+.ab-learn-sw:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.ab-learn-sw:focus-visible,
+.ab-learn-back:focus-visible,
+.ab-learn-tier:focus-visible,
+.ab-learn-tile:focus-visible {
+  outline: 2px solid var(--ab-learn-s);
+  outline-offset: 3px;
+}
+.ab-learn-cap {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ab-learn-dim);
+}
+.ab-learn-above {
+  margin-top: 14px;
+}
+.ab-learn-back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid #3a2f48;
+  background: #ffffff0a;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.14s var(--ab-learn-ease), border-color 0.2s;
+}
+.ab-learn-back:active {
+  transform: scale(0.97);
+}
+/* The line of words under the title: a wrong address, or a closed tier. It keeps its height when empty, so nothing jumps. */
+.ab-learn-note {
+  min-height: 20px;
+  margin: 4px 0 14px;
+  font-size: 13px;
+  color: #b9afc4;
+}
+.ab-learn-code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  color: #fff;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ab-learn-sw,
+  .ab-learn-back {
+    transition: none;
+  }
+}
+/* AB:LEARN.SCREEN:END */
+
+/* AB:LEARN.HUB:START */
+/* The hub: the six tier tabs and the subject tiles (LearnScreen.tsx). A tile keeps its transform in its own transition and comes later in this file than the tilt rule, so the tilt eases (CONNECTIONS.md C76). Each subject tile sets its own accent and carries data-accent. */
+.ab-learn-tiers {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 8px;
+  padding-bottom: 4px;
+  overflow-x: auto;
+}
+.ab-learn-tier {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid #3a2f48;
+  background: #ffffff0a;
+  white-space: nowrap;
+  cursor: pointer;
+  overflow: hidden;
+}
+.ab-learn-tier small {
+  font-size: 11px;
+  color: var(--ab-learn-dim);
+}
+.ab-learn-tier[aria-selected="true"] {
+  background: var(--ab-learn-s);
+  color: #000;
+  border-color: var(--ab-learn-s);
+  font-weight: 500;
+}
+.ab-learn-tier[aria-selected="true"] small {
+  color: #000a;
+}
+.ab-learn-tier[aria-disabled="true"] {
+  opacity: 0.5;
+}
+.ab-learn-lock {
+  flex: none;
+}
+.ab-learn-tpg {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 3px;
+  background: #000;
+  opacity: 0.45;
+  transform-origin: left;
+  transition: transform 0.6s var(--ab-learn-ease);
+}
+.ab-learn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 12px;
+}
+/* A tile of the hub or of a subject: a link that looks like a card. */
+.ab-learn-tile {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  min-height: 112px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid #2a2530;
+  background: linear-gradient(160deg, #17121c, #0b090e);
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.25s, transform 0.25s var(--ab-learn-ease);
+}
+@media (hover: hover) {
+  .ab-learn-tile:hover {
+    border-color: var(--ab-learn-s3);
+  }
+}
+.ab-learn-subj {
+  min-height: 132px;
+}
+.ab-learn-tc {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--ab-learn-s);
+}
+.ab-learn-tname {
+  display: block;
+  margin-top: 8px;
+  font: italic 400 22px / 1.1 "Instrument Serif", Georgia, serif;
+}
+.ab-learn-tline {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--ab-learn-dim);
+}
+.ab-learn-spg {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--ab-learn-s);
+  transform-origin: left;
+  transition: transform 0.6s var(--ab-learn-ease);
+}
+/* A finished tile: a lit edge that breathes, and a tick in the corner. */
+.ab-learn-tile[data-done="true"] {
+  border-color: color-mix(in srgb, var(--ab-learn-s) 65%, transparent);
+}
+.ab-learn-tile[data-done="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 24px color-mix(in srgb, var(--ab-learn-s) 45%, transparent);
+  animation: ab-learn-breathe 3.2s ease-in-out infinite alternate;
+}
+@keyframes ab-learn-breathe {
+  from {
+    opacity: 0.2;
+  }
+  to {
+    opacity: 0.95;
+  }
+}
+.ab-learn-bdg {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--ab-learn-s);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--ab-learn-s) 60%, transparent);
+  animation: ab-learn-tick 0.5s var(--ab-learn-ease) both;
+}
+@keyframes ab-learn-tick {
+  from {
+    transform: scale(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ab-learn-tpg,
+  .ab-learn-spg {
+    transition: none;
+  }
+  .ab-learn-tile[data-done="true"]::before,
+  .ab-learn-bdg {
+    animation: none;
+  }
+}
+/* AB:LEARN.HUB:END */
+
+/* AB:LEARN.SUBJECT:START */
+/* The subject view: a region is a heading with its count, a thin bar, the idea line and a grid of item tiles (the tile itself is the one of the hub part of this file). The marked item (the address names it) has the accent edge. */
+/* A region ends with a little air before the next one begins. */
+.ab-learn-region {
+  margin-bottom: 8px;
+}
+/* A tile that is scrolled to (the marked item, or one the keyboard reached) stays clear of the sticky top bar. */
+.ab-learn-item {
+  scroll-margin: 72px 0;
+}
+.ab-learn-rn {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 26px 0 10px;
+}
+.ab-learn-rname {
+  margin: 0;
+  font: italic 400 28px / 1 "Instrument Serif", Georgia, serif;
+  color: var(--ab-learn-ink);
+}
+.ab-learn-rcount[data-done="true"] {
+  color: var(--ab-learn-s);
+}
+.ab-learn-pbr {
+  height: 3px;
+  margin: -2px 0 10px;
+  border-radius: 3px;
+  background: #ffffff14;
+  overflow: hidden;
+}
+.ab-learn-pbr i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--ab-learn-s3), var(--ab-learn-s));
+  transform-origin: left;
+  transition: transform 0.6s var(--ab-learn-ease);
+}
+/* A finished region: the bar shimmers. */
+.ab-learn-pbr[data-all="true"] i {
+  background: linear-gradient(90deg, var(--ab-learn-s), #fff, var(--ab-learn-s));
+  background-size: 200% 100%;
+  animation: ab-learn-shimmer 2.6s linear infinite;
+}
+@keyframes ab-learn-shimmer {
+  from {
+    background-position: 160% 0;
+  }
+  to {
+    background-position: -60% 0;
+  }
+}
+.ab-learn-idea {
+  max-width: 70ch;
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--ab-learn-dim);
+}
+.ab-learn-tile[data-marked="true"] {
+  border-color: var(--ab-learn-s);
+  box-shadow: 0 0 0 1px var(--ab-learn-s);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ab-learn-pbr i {
+    transition: none;
+  }
+  .ab-learn-pbr[data-all="true"] i {
+    animation: none;
+  }
+}
+/* AB:LEARN.SUBJECT:END */

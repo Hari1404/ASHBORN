@@ -3,7 +3,7 @@ import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// The menu, the Pro Timer screen, the two backgrounds and the database client are replaced by small stand-ins: this file only tests which screen the stub chooses, which background it has and where the menu sits.
+// The menu, the Pro Timer screen, the Guide screen, the two backgrounds and the database client are replaced by small stand-ins: this file only tests which screen the stub chooses, which background it has and where the menu sits. The Guide screen has its own tests (GuideScreen.test.tsx).
 vi.mock("@/lib/supabase", () => ({ supabase: null }))
 vi.mock("@/lib/lite", () => ({ LITE_LEVEL: 1 }))
 vi.mock("@/components/DarkVeil", async () => {
@@ -32,6 +32,10 @@ vi.mock("@/lib/timerWarmup", () => ({
 vi.mock("@/components/TimerScreen", async () => {
   const { createElement: h } = await import("react")
   return { default: () => h("main", { id: "timer-stub" }) }
+})
+vi.mock("@/components/GuideScreen", async () => {
+  const { createElement: h } = await import("react")
+  return { default: () => h("main", { id: "guide-stub" }) }
 })
 
 import SignedInStub from "./SignedInStub"
@@ -81,11 +85,37 @@ describe("SignedInStub: which screen is shown", () => {
     expect(container?.querySelectorAll("main").length).toBe(1)
   })
 
-  it.each(["#overview", "#calendar", "#guide", "", "#nonsense"])("shows the placeholder with the menu beside it at %j", (hash) => {
+  it.each(["#overview", "#calendar", "", "#nonsense"])("shows the placeholder with the menu beside it at %j", (hash) => {
     open(hash)
     expect(has(".ab-stub")).toBe(true)
     expect(has("#timer-stub")).toBe(false)
+    expect(has("#guide-stub")).toBe(false)
     expect(container?.querySelector("#menu-stub")?.closest("main")).toBeNull()
+  })
+
+  it.each(["#guide", "#guide/python", "#guide/python/PY-14", "#guide/nonsense"])("shows the Guide screen, and not the placeholder, with the menu beside it at %j", (hash) => {
+    open(hash)
+    expect(has("#guide-stub")).toBe(true)
+    expect(has(".ab-stub")).toBe(false)
+    expect(has("#timer-stub")).toBe(false)
+    const menu = container?.querySelector("#menu-stub") ?? null
+    expect(menu).not.toBeNull()
+    expect(menu?.closest("main")).toBeNull()
+    expect(container?.querySelectorAll("main").length).toBe(1)
+  })
+
+  it.each(["#guide", "#guide/python/PY-14"])("has no Dark Veil, no title line and no Sign out button on the Guide at %j: the Learn screen has its own picture", (hash) => {
+    open(hash)
+    expect(has("#veil-stub")).toBe(false)
+    expect(has("#ascii-stub")).toBe(false)
+    expect(has(".ab-bg")).toBe(false)
+    expect(has(".ab-stub-title")).toBe(false)
+    expect(has(".ab-stub-button")).toBe(false)
+  })
+
+  it.each(["#overview", "#calendar", "", "#timer", "#nonsense"])("does not draw the Guide screen at %j", (hash) => {
+    open(hash)
+    expect(has("#guide-stub")).toBe(false)
   })
 
   it.each(["#overview", "", "#nonsense"])("has the Gradient ASCII background of the Overview, and not Dark Veil, at %j", (hash) => {
@@ -107,11 +137,12 @@ describe("SignedInStub: which screen is shown", () => {
     expect(has("#hud-stub")).toBe(false)
   })
 
-  it.each(["#calendar", "#guide"])("keeps the Dark Veil background in the half-size box ab-bg, and not the Gradient ASCII one, at %j", (hash) => {
-    open(hash)
+  it("keeps the Dark Veil background in the half-size box ab-bg, and not the Gradient ASCII one, on the Calendar", () => {
+    open("#calendar")
     expect(has("#veil-stub")).toBe(true)
     expect(has("#ascii-stub")).toBe(false)
     expect(container?.querySelector("#veil-stub")?.closest(".ab-bg")).not.toBeNull()
+    expect(container?.querySelector(".ab-stub-title")?.textContent).toBe("Calendar")
   })
 
   it("keeps the title, the line with the email, the note and the Sign out button on the Overview", () => {
@@ -134,15 +165,21 @@ describe("SignedInStub: which screen is shown", () => {
       window.dispatchEvent(new Event("hashchange"))
     })
     expect(has("#timer-stub")).toBe(false)
-    expect(container?.querySelector(".ab-stub-title")?.textContent).toBe("Guide")
+    expect(has("#guide-stub")).toBe(true)
+    expect(has(".ab-stub")).toBe(false)
+    act(() => {
+      window.location.hash = "#guide/python"
+      window.dispatchEvent(new Event("hashchange"))
+    })
+    expect(has("#guide-stub")).toBe(true)
   })
 
-  it("changes the background with the screen: Gradient ASCII on the Overview, Dark Veil on the Guide, and back", () => {
+  it("changes the background with the screen: Gradient ASCII on the Overview, Dark Veil on the Calendar, and back", () => {
     open("#overview")
     expect(has("#ascii-stub")).toBe(true)
     expect(has("#veil-stub")).toBe(false)
     act(() => {
-      window.location.hash = "#guide"
+      window.location.hash = "#calendar"
       window.dispatchEvent(new Event("hashchange"))
     })
     expect(has("#ascii-stub")).toBe(false)

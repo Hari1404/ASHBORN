@@ -11,8 +11,7 @@
 .tv-dot{position:absolute;left:50%;top:50%;width:max(6px,.8cqw);aspect-ratio:1;border-radius:50%;background:#fff;box-shadow:0 0 1.4cqw .4cqw rgba(170,200,255,.95),0 0 4cqw 1cqw rgba(110,150,255,.55);opacity:0;transform:translate(-50%,-50%);pointer-events:none}
 /* AB:GUIDE.TV-CSS:END */
 
-/* AB:GUIDE.PROVE-CSS:START */
-/* TEMPORARY, packet T1 only: the test button. Packet 12B removes it when the real Learn | Prove switch arrives. */
-.tv-prove{position:absolute;left:50%;bottom:max(32px,env(safe-area-inset-bottom));transform:translateX(-50%);min-width:120px;min-height:44px;padding:0 28px;border-radius:999px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:#fff;font:600 16px system-ui,sans-serif;letter-spacing:.04em;cursor:pointer}
-.tv-prove:disabled{opacity:.5;cursor:default}
-/* AB:GUIDE.PROVE-CSS:END */
+/* AB:GUIDE.SCREEN:START */
+/* The plain black picture of the Guide while the Learn screen is on its way (or could not be opened): one quiet line in the middle. It is here, not in learn.css, because learn.css arrives together with the Learn screen. */
+.ab-guide-note{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;margin:0;padding:0 24px;text-align:center;background:#000;color:rgba(255,255,255,.55);font:400 14px/1.4 "Space Grotesk Variable","Space Grotesk",system-ui,sans-serif;letter-spacing:.08em}
+/* AB:GUIDE.SCREEN:END */
