@@ -90,6 +90,19 @@
 [data-spot="tilt"] {
   transition: transform 0.25s var(--ab-learn-ease);
 }
+@property --ab-learn-tilt-k {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+@keyframes ab-learn-tilt-in {
+  from {
+    --ab-learn-tilt-k: 0;
+  }
+  to {
+    --ab-learn-tilt-k: 1;
+  }
+}
 .ab-learn-spl,
 .ab-learn-spe {
   position: absolute;
@@ -118,13 +131,23 @@
   [data-spot]:hover .ab-learn-spe {
     opacity: 1;
   }
+  /* The tilt follows the mouse DIRECTLY while the tile is hovered: no transform transition here (a transition that is started again on every mouse move was the biggest cost of the screen, about a third of the main-thread work while the mouse moves in a tile). The ease IN is a short animation of --ab-learn-tilt-k from 0 to 1, which scales the tilt and the lift; the ease OUT is the transform transition of the tile itself (it is back when the hover ends). A browser that cannot animate a registered variable shows the tile tilted at once, which is still right. */
   [data-spot="tilt"]:not([aria-disabled="true"]):hover {
-    transform: perspective(700px) rotateX(var(--ab-learn-rot-x)) rotateY(var(--ab-learn-rot-y)) translateY(-3px);
+    transform: perspective(700px) rotateX(calc(var(--ab-learn-rot-x) * var(--ab-learn-tilt-k))) rotateY(calc(var(--ab-learn-rot-y) * var(--ab-learn-tilt-k))) translateY(calc(-3px * var(--ab-learn-tilt-k)));
+    transition: border-color 0.25s;
+    animation: ab-learn-tilt-in 0.25s var(--ab-learn-ease);
   }
 }
 @media (prefers-reduced-motion: reduce) {
   [data-spot="tilt"]:not([aria-disabled="true"]):hover {
     transform: none;
+    animation: none;
+  }
+}
+/* While the page scrolls (useLearnSpotlight.ts sets data-scrolling="true" on the root, and takes it off 120 ms after the last scroll event) the page does not take the pointer, so a tile that passes under a mouse that rests does not start its glow, its tilt and its border change over and over. The top bar is not part of the page and stays alive. Only for a device with a mouse: a finger has no hover. */
+@media (hover: hover) and (pointer: fine) {
+  .ab-learn[data-scrolling="true"] .ab-learn-page {
+    pointer-events: none;
   }
 }
 /* AB:LEARN.SPOT:END */

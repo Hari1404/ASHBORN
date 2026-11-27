@@ -2,6 +2,7 @@
 import { act, createElement, createRef, type RefObject } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { SPOT_SCROLL_IDLE_MS, SPOT_SCROLLING_ATTRIBUTE } from "./learnSpotlight"
 import { useLearnSpotlight } from "./useLearnSpotlight"
 
 // The listener behind the glow and the tilt of the Learn tiles (Packet 12B, chunk 4), on a small page with two tiles.
@@ -61,6 +62,7 @@ function written(id: string, name: string): string {
 
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
   frames = []
   cancelled = []
   nextFrame = 1
@@ -81,6 +83,7 @@ afterEach(() => {
   root = null
   container = null
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe("useLearnSpotlight: writing the place of the pointer into a tile", () => {
@@ -256,5 +259,115 @@ describe("useLearnSpotlight: taking it away", () => {
     }
     expect(() => act(() => root?.render(createElement(Lonely)))).not.toThrow()
     expect(frames).toHaveLength(0)
+  })
+})
+
+// The scroll guard (the smoothness pass after Packet 12B): the root carries data-scrolling while its page scrolls, and the css takes the pointer away from the tiles in that time.
+describe("useLearnSpotlight: the scroll guard", () => {
+  const page = (): HTMLElement => el("root")
+  const scrolling = (): string | null => page().getAttribute(SPOT_SCROLLING_ATTRIBUTE)
+  const scroll = (): void => {
+    page().dispatchEvent(new Event("scroll"))
+  }
+
+  it("does not mark the root before any scroll has come", () => {
+    mount()
+    expect(scrolling()).toBeNull()
+  })
+
+  it("marks the root at the first scroll event, at once, not at the end of the wait", () => {
+    mount()
+    scroll()
+    expect(scrolling()).toBe("true")
+  })
+
+  it("takes the mark off 120 ms after the last scroll event, and not before", () => {
+    mount()
+    scroll()
+    vi.advanceTimersByTime(SPOT_SCROLL_IDLE_MS - 1)
+    expect(scrolling()).toBe("true")
+    vi.advanceTimersByTime(1)
+    expect(scrolling()).toBeNull()
+  })
+
+  it("starts the wait again at every scroll event, so a long scroll is one scroll", () => {
+    mount()
+    scroll()
+    vi.advanceTimersByTime(100)
+    scroll()
+    vi.advanceTimersByTime(100)
+    expect(scrolling()).toBe("true")
+    vi.advanceTimersByTime(20)
+    expect(scrolling()).toBeNull()
+  })
+
+  it("marks the root again by a scroll that comes after the mark was taken off", () => {
+    mount()
+    scroll()
+    vi.advanceTimersByTime(SPOT_SCROLL_IDLE_MS)
+    expect(scrolling()).toBeNull()
+    scroll()
+    expect(scrolling()).toBe("true")
+    vi.advanceTimersByTime(SPOT_SCROLL_IDLE_MS)
+    expect(scrolling()).toBeNull()
+  })
+
+  it("writes the mark once and not again at every scroll event", () => {
+    mount()
+    const setAttribute = vi.spyOn(page(), "setAttribute")
+    scroll()
+    scroll()
+    scroll()
+    expect(setAttribute.mock.calls.filter((c) => c[0] === SPOT_SCROLLING_ATTRIBUTE)).toHaveLength(1)
+    setAttribute.mockRestore()
+  })
+
+  it("listens to the scroll of the root, passively, because a listener that could stop a scroll slows the scroll down", () => {
+    const added = vi.spyOn(HTMLElement.prototype, "addEventListener")
+    mount()
+    // React puts listeners of its own on its container: only the ones that landed on the root of the page are ours
+    const ours = added.mock.calls.filter((c, i) => c[0] === "scroll" && added.mock.contexts[i] === page())
+    expect(ours).toHaveLength(1)
+    expect(ours[0][2]).toEqual({ passive: true })
+    added.mockRestore()
+  })
+
+  it("keeps the pointer working as before while no scroll is going on", () => {
+    mount()
+    giveBox("tilt")
+    move(el("tilt"), 130, 60)
+    runFrame()
+    expect(written("tilt", "--ab-learn-mx")).toBe("30px")
+    expect(scrolling()).toBeNull()
+  })
+
+  it("does not stop the glow and the tilt itself: that is the css's work (the hook only sets the mark)", () => {
+    mount()
+    giveBox("tilt")
+    scroll()
+    move(el("tilt"), 130, 60)
+    runFrame()
+    expect(written("tilt", "--ab-learn-mx")).toBe("30px")
+  })
+
+  it("takes the mark, the waiting end of the scroll and the listener away when the screen goes away", () => {
+    mount()
+    const node = page()
+    scroll()
+    expect(node.getAttribute(SPOT_SCROLLING_ATTRIBUTE)).toBe("true")
+    act(() => root?.unmount())
+    root = null
+    expect(node.getAttribute(SPOT_SCROLLING_ATTRIBUTE)).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+    node.dispatchEvent(new Event("scroll"))
+    expect(node.getAttribute(SPOT_SCROLLING_ATTRIBUTE)).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("leaves nothing waiting when the screen goes away with no scroll going on", () => {
+    mount()
+    act(() => root?.unmount())
+    root = null
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

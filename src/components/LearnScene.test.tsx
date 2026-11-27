@@ -17,7 +17,7 @@ vi.mock("@/lib/learnScenes", async (importOriginal) => {
 })
 
 import { NO_POINTER, STILL_TIME, drawScene, type SceneId } from "@/lib/learnScenes"
-import LearnScene, { SCENE_RESIZE_WAIT_MS } from "./LearnScene"
+import LearnScene, { SCENE_REFRESH_WINDOW, SCENE_RESIZE_WAIT_MS } from "./LearnScene"
 
 let root: Root | null = null
 let container: HTMLElement | null = null
@@ -25,7 +25,7 @@ let frames: { id: number; run: FrameRequestCallback }[] = []
 let nextFrame = 1
 let cancelled: number[] = []
 let box = { w: 800, h: 600 }
-let context: { setTransform: ReturnType<typeof vi.fn> }
+let context: { setTransform: ReturnType<typeof vi.fn>; clearRect: ReturnType<typeof vi.fn>; globalAlpha: number; globalCompositeOperation: string }
 let getContext: ReturnType<typeof vi.spyOn>
 let reduced = false
 
@@ -57,6 +57,28 @@ function frame(now: number): void {
   act(() => waiting.forEach((f) => f.run(now)))
 }
 
+// The screen gives `count` frames, `ms` apart (a 60 Hz screen when it is not said), one after the other: the first at `clock`, which goes on from call to call.
+// The pace of the scene is COUNTED in these frames, so the tests below feed whole frames and count the pictures; the time between them only has to be the time of the screen.
+const FRAME = 1000 / 60
+let clock = 1000
+function screen(count: number, ms = FRAME): void {
+  for (let i = 0; i < count; i++) {
+    frame(clock)
+    clock += ms
+  }
+}
+
+// The frames (0, 1, 2 ...) on which a picture was drawn, when the screen has given `count` frames.
+function drawnOn(count: number, ms = FRAME): number[] {
+  const hits: number[] = []
+  for (let i = 0; i < count; i++) {
+    const before = draws().length
+    screen(1, ms)
+    if (draws().length > before) hits.push(i)
+  }
+  return hits
+}
+
 function draws(): unknown[][] {
   return vi.mocked(drawScene).mock.calls as unknown[][]
 }
@@ -71,7 +93,8 @@ beforeEach(() => {
   box = { w: 800, h: 600 }
   reduced = false
   lite.level = 0
-  context = { setTransform: vi.fn() }
+  context = { setTransform: vi.fn(), clearRect: vi.fn(), globalAlpha: 1, globalCompositeOperation: "source-over" }
+  clock = 1000
   getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation((() => context) as never)
   Object.defineProperty(Element.prototype, "clientWidth", { configurable: true, get: () => box.w })
   Object.defineProperty(Element.prototype, "clientHeight", { configurable: true, get: () => box.h })
@@ -151,32 +174,42 @@ describe("LearnScene: the full look (lite level 0)", () => {
     expect(pointer).toBe(NO_POINTER)
   })
 
-  it("draws about 30 times a second: a frame that comes within 32 ms of the last picture draws nothing", () => {
+  it("draws on every 2nd frame of a 60 Hz screen, which is 30 pictures a second", () => {
     show({ lite: 0 })
-    frame(1000)
-    frame(1010)
-    frame(1031)
-    expect(draws()).toHaveLength(1)
-    frame(1032)
-    expect(draws()).toHaveLength(2)
-    expect(draws()[1][3]).toBeCloseTo(0.032, 5)
-    frame(1065)
-    expect(draws()).toHaveLength(3)
-    expect(draws()[2][3]).toBeCloseTo(0.065, 5)
+    expect(drawnOn(9)).toEqual([0, 2, 4, 6, 8])
+    // the same gap between every two pictures: two frames of the screen
+    const seconds = draws().map((d) => d[3] as number)
+    for (let i = 1; i < seconds.length; i++) expect(seconds[i] - seconds[i - 1]).toBeCloseTo(2 / 60, 5)
+  })
+
+  it("does not ask \"have 32 ms passed\": a frame that comes a little early or late still counts as one frame", () => {
+    show({ lite: 0 })
+    // frames that wobble by a millisecond or two around 16.7 ms: the old rule drew after 2 frames or after 3, by turns
+    const wobble = [0, 16, 34, 50, 67, 83, 101, 117, 134, 150, 167]
+    wobble.forEach((t) => frame(1000 + t))
+    expect(draws()).toHaveLength(6)
+  })
+
+  it("is not thrown by one late frame once the screen has been seen for a while", () => {
+    show({ lite: 0 })
+    expect(drawnOn(10)).toEqual([0, 2, 4, 6, 8])
+    clock += 60 // one frame that comes 60 ms late
+    expect(drawnOn(5)).toEqual([0, 2, 4]) // frames 10, 12 and 14 of the whole run: still every 2nd frame
   })
 
   it("asks for the next frame at every frame, drawn or not", () => {
     show({ lite: 0 })
-    frame(1000)
+    screen(1)
     expect(frames).toHaveLength(1)
-    frame(1005)
+    screen(1)
     expect(frames).toHaveLength(1)
+    expect(draws()).toHaveLength(1)
   })
 
   it("keeps one state from frame to frame, because the scenes build up the rain and the bins in it", () => {
     show({ scene: "terminal", lite: 0 })
-    frame(1000)
-    frame(1040)
+    screen(3)
+    expect(draws()).toHaveLength(2)
     expect(draws()[1][2]).toBe(draws()[0][2])
   })
 
@@ -184,25 +217,20 @@ describe("LearnScene: the full look (lite level 0)", () => {
     lite.level = 1
     show({})
     expect(canvas().width).toBe(400)
-    frame(1000)
-    frame(1040)
-    expect(draws()).toHaveLength(1)
-    frame(1050)
-    expect(draws()).toHaveLength(2)
+    expect(drawnOn(7)).toEqual([0, 3, 6])
   })
 })
 
 describe("LearnScene: lite", () => {
-  it("level 1 draws at half the size and 20 times a second", () => {
+  it("level 1 draws at half the size and on every 3rd frame, which is 20 pictures a second at 60 Hz", () => {
     show({ lite: 1 })
     expect(canvas().width).toBe(400)
     expect(canvas().height).toBe(300)
     expect(context.setTransform).toHaveBeenCalledWith(0.5, 0, 0, 0.5, 0, 0)
-    frame(1000)
-    frame(1049)
-    expect(draws()).toHaveLength(1)
-    frame(1050)
-    expect(draws()).toHaveLength(2)
+    expect(drawnOn(7)).toEqual([0, 3, 6])
+    const seconds = draws().map((d) => d[3] as number)
+    expect(seconds[1] - seconds[0]).toBeCloseTo(0.05, 5) // 3 frames of a 60 Hz screen: exactly 50 ms, every time
+    expect(seconds[2] - seconds[1]).toBeCloseTo(0.05, 5)
     // the scene is still drawn in the size of the box, the half size is only the pixels behind it
     expect(draws()[1][4]).toEqual({ w: 800, h: 600 })
   })
@@ -214,6 +242,53 @@ describe("LearnScene: lite", () => {
     expect(draws()).toHaveLength(1)
     expect(draws()[0][3]).toBe(STILL_TIME)
     expect(frames).toHaveLength(0)
+    expect(context.clearRect).toHaveBeenCalledTimes(1)
+    expect(context.clearRect).toHaveBeenCalledWith(0, 0, 800, 600)
+  })
+})
+
+describe("LearnScene: a screen faster than 60 Hz", () => {
+  const HZ120 = 1000 / 120
+
+  // The first two frames are seen before the screen is known (a 60 Hz screen is taken until two gaps have been seen), so the first gap between
+  // two pictures is short, once. From then on the pace is the pace of the screen.
+  it("level 0 draws on every 4th frame of a 120 Hz screen, which is still 30 pictures a second", () => {
+    show({ lite: 0 })
+    const hits = drawnOn(19, HZ120)
+    expect(hits.slice(0, 2)).toEqual([0, 2])
+    expect(hits.slice(2)).toEqual([6, 10, 14, 18])
+    const seconds = draws().map((d) => d[3] as number)
+    for (let i = 2; i < seconds.length; i++) expect(seconds[i] - seconds[i - 1]).toBeCloseTo(4 / 120, 5)
+  })
+
+  it("level 1 draws on every 6th frame of a 120 Hz screen, which is still 20 pictures a second", () => {
+    show({ lite: 1 })
+    const hits = drawnOn(22, HZ120)
+    expect(hits.slice(0, 2)).toEqual([0, 3])
+    expect(hits.slice(2)).toEqual([9, 15, 21])
+    const seconds = draws().map((d) => d[3] as number)
+    for (let i = 2; i < seconds.length; i++) expect(seconds[i] - seconds[i - 1]).toBeCloseTo(6 / 120, 5)
+  })
+
+  it("keeps what it has seen of the screen when the scene changes: the new scene is paced at once", () => {
+    show({ scene: "terminal", lite: 0 })
+    screen(10, HZ120)
+    show({ scene: "prob", lite: 0 })
+    const before = draws().length
+    const hits = drawnOn(9, HZ120)
+    expect(draws().length - before).toBe(hits.length)
+    expect(hits).toEqual([0, 4, 8]) // the first frame draws at once, then every 4th
+  })
+
+  it("looks at no more than the latest gaps, so a screen that changes its rate is followed", () => {
+    show({ lite: 0 })
+    screen(SCENE_REFRESH_WINDOW + 4, FRAME) // 60 Hz
+    screen(SCENE_REFRESH_WINDOW * 2, HZ120) // then 120 Hz (a window moved to another screen, or a power saver letting go)
+    const before = draws().length
+    const hits = drawnOn(12, HZ120)
+    expect(draws().length - before).toBe(hits.length)
+    const gaps = hits.slice(1).map((h, i) => h - hits[i])
+    expect(gaps.every((g) => g === 4)).toBe(true)
   })
 })
 
@@ -237,17 +312,61 @@ describe("LearnScene: reduced motion", () => {
 })
 
 describe("LearnScene: a new scene, colour or level", () => {
-  it("starts again with a clean canvas and a new state when the scene changes", () => {
+  it("starts again with a new state when the scene changes, and draws its first picture at the first frame", () => {
     show({ scene: "terminal", lite: 0 })
-    frame(1000)
+    screen(1)
     const before = draws()[0][2]
     show({ scene: "prob", lite: 0 })
-    expect(context.setTransform).toHaveBeenCalledTimes(2)
-    frame(2000)
+    screen(1)
     expect(draws()).toHaveLength(2)
     expect(draws()[1][0]).toBe("prob")
     expect(draws()[1][2]).not.toBe(before)
     expect(draws()[1][3]).toBe(0)
+  })
+
+  it("keeps the canvas as it is when the scene changes: no new width, no new height, the transform set once", () => {
+    show({ scene: "terminal", lite: 0 })
+    screen(1)
+    const el = canvas()
+    let widthSets = 0
+    let heightSets = 0
+    let w = el.width
+    let h = el.height
+    Object.defineProperty(el, "width", { configurable: true, get: () => w, set: (v: number) => ((w = v), widthSets++) })
+    Object.defineProperty(el, "height", { configurable: true, get: () => h, set: (v: number) => ((h = v), heightSets++) })
+    show({ scene: "prob", lite: 0 })
+    show({ scene: "numpy", lite: 0 })
+    show({ scene: "git", colour: "#8ce6a0", lite: 0 })
+    expect(widthSets).toBe(0)
+    expect(heightSets).toBe(0)
+    expect(context.setTransform).toHaveBeenCalledTimes(1)
+  })
+
+  it("leaves the old picture on the canvas until the first picture of the new scene, and wipes it just before that one", () => {
+    show({ scene: "terminal", lite: 0 })
+    screen(1)
+    expect(context.clearRect).toHaveBeenCalledTimes(1) // the wipe before the very first picture
+    show({ scene: "prob", lite: 0 })
+    expect(context.clearRect).toHaveBeenCalledTimes(1) // the scene has changed, nothing is wiped yet
+    screen(1)
+    expect(context.clearRect).toHaveBeenCalledTimes(2)
+    expect(context.clearRect).toHaveBeenLastCalledWith(0, 0, 800, 600)
+    const wiped = context.clearRect.mock.invocationCallOrder[1]
+    const drawn = vi.mocked(drawScene).mock.invocationCallOrder[1]
+    expect(wiped).toBeLessThan(drawn)
+    screen(5)
+    expect(context.clearRect).toHaveBeenCalledTimes(2) // one wipe a scene, not one a picture
+  })
+
+  it("puts the plain settings back when it wipes, because the scene before may have left the canvas faint or blended", () => {
+    show({ scene: "terminal", lite: 0 })
+    screen(1)
+    context.globalAlpha = 0.3
+    context.globalCompositeOperation = "lighter"
+    show({ scene: "prob", lite: 0 })
+    screen(1)
+    expect(context.globalAlpha).toBe(1)
+    expect(context.globalCompositeOperation).toBe("source-over")
   })
 
   it("never runs two timers: the old one is cancelled when the scene changes", () => {
@@ -289,7 +408,7 @@ describe("LearnScene: a new scene, colour or level", () => {
 describe("LearnScene: the size of the box", () => {
   it("measures again 120 ms after the last resize and starts the scene again", () => {
     show({ lite: 0 })
-    frame(1000)
+    screen(1)
     const before = draws()[0][2]
     box = { w: 1000, h: 700 }
     window.dispatchEvent(new Event("resize"))
@@ -298,7 +417,7 @@ describe("LearnScene: the size of the box", () => {
     vi.advanceTimersByTime(1)
     expect(canvas().width).toBe(1000)
     expect(canvas().height).toBe(700)
-    frame(1040)
+    screen(2)
     expect(draws()[1][4]).toEqual({ w: 1000, h: 700 })
     expect(draws()[1][2]).not.toBe(before)
   })
@@ -362,15 +481,15 @@ describe("LearnScene: the size of the box", () => {
     expect(context.setTransform).toHaveBeenCalledTimes(1)
   })
 
-  it("draws no extra picture at the new size while the scene moves: the next frame does it", () => {
+  it("draws no extra picture at the new size while the scene moves: the next picture does it", () => {
     show({ lite: 0 })
-    frame(1000)
+    screen(1)
     box = { w: 1000, h: 700 }
     window.dispatchEvent(new Event("resize"))
     vi.advanceTimersByTime(SCENE_RESIZE_WAIT_MS)
     expect(canvas().width).toBe(1000)
     expect(draws()).toHaveLength(1)
-    frame(1040)
+    screen(2)
     expect(draws()).toHaveLength(2)
   })
 

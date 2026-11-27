@@ -3,11 +3,14 @@ import { SUBJECT_COLOURS, SUBJECT_IDS } from "../data/learn/subjectColours"
 import {
   HOME_SCENE_COLOUR,
   NO_POINTER,
+  REFRESH_DEFAULT_MS,
   SCENE_IDS,
   STILL_TIME,
   createSceneState,
   drawScene,
+  framesPerPicture,
   hexAlpha,
+  refreshPeriod,
   sceneFramePlan,
   sceneOpacity,
   type SceneContext,
@@ -437,6 +440,99 @@ describe("how a scene is drawn on a device", () => {
     expect(sceneFramePlan(0, true)).toEqual({ scale: 1, frameMs: null })
     expect(sceneFramePlan(1, true)).toEqual({ scale: 0.5, frameMs: null })
     expect(sceneFramePlan(2, true)).toEqual({ scale: 0.5, frameMs: null })
+  })
+})
+
+describe("refreshPeriod: the time between two frames of the screen", () => {
+  it("is the time of a 60 Hz screen to begin with", () => {
+    expect(REFRESH_DEFAULT_MS).toBeCloseTo(16.667, 3)
+  })
+
+  it("is the 60 Hz time when no gap has been seen, and when only one has", () => {
+    expect(refreshPeriod([])).toBe(REFRESH_DEFAULT_MS)
+    expect(refreshPeriod([8.3])).toBe(REFRESH_DEFAULT_MS)
+  })
+
+  it("is the middle gap, so a screen at 60 Hz and one at 120 Hz are both found", () => {
+    expect(refreshPeriod([16.7, 16.6, 16.7])).toBe(16.7)
+    expect(refreshPeriod([8.3, 8.4, 8.3, 8.3])).toBeCloseTo(8.3, 5)
+    expect(refreshPeriod([16.7, 16.7])).toBe(16.7)
+  })
+
+  it("is not moved by a few late frames: the middle one counts, not the average", () => {
+    expect(refreshPeriod([16.7, 16.7, 120, 16.6, 16.7, 16.7, 300, 16.8, 16.7])).toBeCloseTo(16.7, 5)
+  })
+
+  it("does not care in which order the gaps came", () => {
+    expect(refreshPeriod([20, 16.7, 16.6, 90, 16.7])).toBe(refreshPeriod([90, 16.7, 20, 16.6, 16.7]))
+  })
+
+  it("leaves out gaps that are no time at all: zero, negative, NaN and infinity", () => {
+    expect(refreshPeriod([0, -5, Number.NaN, Number.POSITIVE_INFINITY])).toBe(REFRESH_DEFAULT_MS)
+    expect(refreshPeriod([0, 8.3, Number.NaN, 8.3, -1])).toBeCloseTo(8.3, 5)
+    expect(refreshPeriod([Number.NaN, 11.1])).toBe(REFRESH_DEFAULT_MS) // one usable gap is still too few
+  })
+
+  it("does not change the list it was given", () => {
+    const gaps = [30, 10, 20]
+    refreshPeriod(gaps)
+    expect(gaps).toEqual([30, 10, 20])
+  })
+})
+
+describe("framesPerPicture: how many frames of the screen one picture takes", () => {
+  const HZ60 = 1000 / 60
+  const HZ120 = 1000 / 120
+
+  it("is 2 for the full look and 3 for lite level 1 on a 60 Hz screen", () => {
+    expect(framesPerPicture(32, HZ60)).toBe(2)
+    expect(framesPerPicture(50, HZ60)).toBe(3)
+  })
+
+  it("is 4 and 6 on a 120 Hz screen, so the pictures come as often as on 60 Hz", () => {
+    expect(framesPerPicture(32, HZ120)).toBe(4)
+    expect(framesPerPicture(50, HZ120)).toBe(6)
+  })
+
+  it("takes the nearest whole number of frames on a 90 Hz screen, where the wanted pace does not divide evenly", () => {
+    expect(framesPerPicture(32, 1000 / 90)).toBe(3) // 2.9 frames
+    // 50 ms is 4.5 frames of 11.1 ms: a tie, so either neighbour is right, and it must not be less than 4 or more than 5
+    expect(framesPerPicture(50, 1000 / 90)).toBeGreaterThanOrEqual(4)
+    expect(framesPerPicture(50, 1000 / 90)).toBeLessThanOrEqual(5)
+  })
+
+  it("gives the same answer for a frame time that wobbles a little", () => {
+    for (const refresh of [16.2, 16.5, 16.7, 16.9, 17.2]) {
+      expect(framesPerPicture(50, refresh)).toBe(3)
+      expect(framesPerPicture(32, refresh)).toBe(2)
+    }
+  })
+
+  it("is never less than 1: a screen slower than the wanted pace draws at every frame", () => {
+    expect(framesPerPicture(32, 33.3)).toBe(1)
+    expect(framesPerPicture(32, 50)).toBe(1)
+    expect(framesPerPicture(32, 1000)).toBe(1)
+    expect(framesPerPicture(0, HZ60)).toBe(1)
+    expect(framesPerPicture(-10, HZ60)).toBe(1)
+  })
+
+  it("takes the 60 Hz time when the frame time is no usable number", () => {
+    for (const bad of [0, -3, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(framesPerPicture(32, bad)).toBe(2)
+      expect(framesPerPicture(50, bad)).toBe(3)
+    }
+  })
+
+  it("is 1 when the wanted pace is no usable number", () => {
+    expect(framesPerPicture(Number.NaN, HZ60)).toBe(1)
+    expect(framesPerPicture(Number.POSITIVE_INFINITY, HZ60)).toBe(1)
+  })
+
+  it("fits the frame times of the plan of every lite level that moves", () => {
+    const moving = ([0, 1] as const).map((level) => sceneFramePlan(level, false).frameMs)
+    expect(moving.every((ms): ms is number => ms !== null)).toBe(true)
+    // pictures a second on a 60 Hz screen: 30 and 20
+    expect(moving.map((ms) => Math.round(60 / framesPerPicture(ms as number, HZ60)))).toEqual([30, 20])
   })
 })
 

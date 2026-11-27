@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { SPOT_ATTRIBUTE, SPOT_TILT_DEG, SPOT_TILT_VALUE, SPOT_VARS, spotlightVars, type SpotRect } from "./learnSpotlight"
+import { SPOT_ATTRIBUTE, SPOT_SCROLLING_ATTRIBUTE, SPOT_SCROLL_IDLE_MS, SPOT_TILT_DEG, SPOT_TILT_VALUE, SPOT_VARS, spotlightVars, type SpotRect } from "./learnSpotlight"
 
 // The glow and the tilt of a Learn tile (Packet 12B, chunk 4): where the pointer is inside a tile, as the four css variables.
 // A tile 200 wide and 100 high, whose top left corner is at (100, 50) on the screen, with no scale.
@@ -14,6 +14,11 @@ describe("the names", () => {
 
   it("tilts a tile 10 degrees from one edge to the other", () => {
     expect(SPOT_TILT_DEG).toBe(10)
+  })
+
+  it("marks the root with data-scrolling while the page scrolls, and takes it off 120 ms after the last scroll", () => {
+    expect(SPOT_SCROLLING_ATTRIBUTE).toBe("data-scrolling")
+    expect(SPOT_SCROLL_IDLE_MS).toBe(120)
   })
 })
 

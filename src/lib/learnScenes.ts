@@ -65,6 +65,27 @@ export function sceneFramePlan(lite: LiteLevel, reduced: boolean): { scale: numb
   return { scale: 1, frameMs: 32 }
 }
 
+// The pace of the pictures. A scene is drawn on every n-th frame of the screen, not "when frameMs has passed since the last picture":
+// on a 60 Hz screen 50 ms is exactly 3 frames, so the smallest wobble of the clock decided between 3 frames (50 ms) and 4 frames (67 ms)
+// and a phone drew by turns after 50 and after 67 ms. Counting frames gives the same gap every time, on any screen.
+export const REFRESH_DEFAULT_MS = 1000 / 60
+
+// The time between two frames of the screen: the middle one of the gaps that were seen lately, so one late frame changes nothing.
+// With fewer than two usable gaps it is the time of a 60 Hz screen.
+export function refreshPeriod(gaps: readonly number[]): number {
+  const usable = gaps.filter((g) => Number.isFinite(g) && g > 0).sort((a, b) => a - b)
+  if (usable.length < 2) return REFRESH_DEFAULT_MS
+  return usable[Math.floor(usable.length / 2)]
+}
+
+// How many frames of the screen one picture of the scene takes (never less than 1): 2 for 30 pictures a second and 3 for 20 on a
+// 60 Hz screen, 4 and 6 on a 120 Hz screen. A screen that is slower than the wanted pace gets a picture at every frame.
+export function framesPerPicture(frameMs: number, refreshMs: number): number {
+  const period = Number.isFinite(refreshMs) && refreshMs > 0 ? refreshMs : REFRESH_DEFAULT_MS
+  const n = Math.round(frameMs / period)
+  return Number.isFinite(n) && n > 1 ? n : 1
+}
+
 // The scene grows brighter as the subject is finished: 0.4 with nothing done, 0.9 with everything done.
 export function sceneOpacity(fraction: number): number {
   const f = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0

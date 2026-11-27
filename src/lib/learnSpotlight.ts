@@ -17,6 +17,10 @@ export const SPOT_VARS = {
   rotateY: "--ab-learn-rot-y",
 } as const
 
+// While the page scrolls the root carries this attribute ("true") and the css takes the pointer away from the tiles, so a tile that passes under a resting mouse does not start its glow, its tilt and its border change again and again (about 100 ms of work a second on a laptop, in a measurement). It is taken off again when no scroll has come for SPOT_SCROLL_IDLE_MS.
+export const SPOT_SCROLLING_ATTRIBUTE = "data-scrolling"
+export const SPOT_SCROLL_IDLE_MS = 120
+
 // The tilt of a tile whose pointer goes from one edge to the other: 10 degrees, so at most 5 degrees either way.
 export const SPOT_TILT_DEG = 10
 
